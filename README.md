@@ -1,3 +1,16 @@
+LHE README
+=============
+
+# LHE
+LHE image and video coder and decoder
+
+LHE - Logarithmical Hopping Encoding - is a new spatial domain lossy compressor, based on weber-Feschner law
+This project comprises following components:
+- LHE basic image compressor/decompressor : non-elegible bit-rate
+- advanced LHE compressor/decompressor: elegible bit-rate
+- LHE video compressor/decompressor: designed for interactive video. Fast and no B frames allowed by design.
+
+
 FFmpeg README
 =============
 
