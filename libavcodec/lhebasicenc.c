@@ -8,8 +8,9 @@
  */
 #include "avcodec.h"
 #include "lhebasic.h"
+#include "internal.h"
 #include "libavutil/opt.h"
-
+#include "libavutil/imgutils.h"
 
 typedef struct LheBasicContext {
 
@@ -24,10 +25,29 @@ static av_cold int lhe_basic_encode_init(AVCodecContext *avctx)
 }
 
 static int lhe_basic_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
-                             const AVFrame *pict, int *got_packet)
+                             const AVFrame *frame, int *got_packet)
 {
-
     LheBasicContext *s = avctx->priv_data;
+
+    int ret = av_image_get_buffer_size(frame->format,
+                                           frame->width, frame->height, 1);
+
+    if (ret < 0)
+	    return ret;
+
+    if ((ret = ff_alloc_packet2(avctx, pkt, ret, ret)) < 0)
+            return ret;
+
+    if ((ret = av_image_copy_to_buffer(pkt->data, pkt->size,
+                                       frame->data, frame->linesize,
+                                       frame->format,
+                                       frame->width, frame->height, 1)) < 0)
+        return ret;
+
+    av_log(NULL, AV_LOG_INFO, "LHE Coding...buffer size %d \n", ret);
+
+    pkt->flags |= AV_PKT_FLAG_KEY;
+    *got_packet = 1;
 
     return 0;
 
