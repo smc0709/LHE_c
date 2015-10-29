@@ -396,6 +396,9 @@ enum AVCodecID {
     AV_CODEC_ID_ADPCM_THP_LE,
     AV_CODEC_ID_ADPCM_PSX,
 
+    /* LHE */
+    AV_CODEC_ID_LHE_BASIC,
+
     /* AMR */
     AV_CODEC_ID_AMR_NB = 0x12000,
     AV_CODEC_ID_AMR_WB,

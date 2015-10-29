@@ -1343,6 +1343,12 @@ static const AVCodecDescriptor codec_descriptors[] = {
                      AV_CODEC_PROP_LOSSLESS,
     },
     {
+        .id        = AV_CODEC_ID_LHE_BASIC,
+        .type      = AVMEDIA_TYPE_VIDEO,
+        .name      = "lhe",
+        .long_name = NULL_IF_CONFIG_SMALL("Basic LHE"),
+    },
+    {
         .id        = AV_CODEC_ID_LJPEG,
         .type      = AVMEDIA_TYPE_VIDEO,
         .name      = "ljpeg",
