@@ -1,5 +1,7 @@
 *~
 *.project
+*.kdev4
+*.kate-swp
 *.a
 *.o
 *.o.*

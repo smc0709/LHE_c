@@ -18,7 +18,7 @@ typedef struct LheBasicState {
 
 static av_cold int lhe_basic_decode_init(AVCodecContext *avctx)
 {
-	LheBasicState *s = avctx->priv_data;
+    LheBasicState *s = avctx->priv_data;
 
     return 0;
 }
@@ -26,14 +26,14 @@ static av_cold int lhe_basic_decode_init(AVCodecContext *avctx)
 static int lhe_basic_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, AVPacket *avpkt)
 {
 
-	LheBasicState *s = avctx->priv_data;
+    LheBasicState *s = avctx->priv_data;
 
     return 0;
 }
 
 static av_cold int lhe_basic_decode_close(AVCodecContext *avctx)
 {
-	LheBasicState *s = avctx->priv_data;
+    LheBasicState *s = avctx->priv_data;
 
     return 0;
 }

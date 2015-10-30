@@ -18,9 +18,9 @@ typedef struct LheBasicContext {
 
 static av_cold int lhe_basic_encode_init(AVCodecContext *avctx)
 {
-	LheBasicContext *s = avctx->priv_data;
+    LheBasicContext *s = avctx->priv_data;
 
-	return 0;
+    return 0;
 
 }
 
