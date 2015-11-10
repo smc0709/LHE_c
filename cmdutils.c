@@ -1340,8 +1340,8 @@ static void print_codec(const AVCodec *c)
     if (c->capabilities & AV_CODEC_CAP_CHANNEL_CONF)
         printf("chconf ");
     if (c->capabilities & AV_CODEC_CAP_PARAM_CHANGE)
-        printf("small ");
-    if (c->capabilities & AV_CODEC_CAP_PARAM_CHANGE)
+        printf("paramchange ");
+    if (c->capabilities & AV_CODEC_CAP_VARIABLE_FRAME_SIZE)
         printf("variable ");
     if (c->capabilities & (AV_CODEC_CAP_FRAME_THREADS |
                            AV_CODEC_CAP_SLICE_THREADS |
@@ -1421,7 +1421,7 @@ static int compare_codec_desc(const void *a, const void *b)
     const AVCodecDescriptor * const *da = a;
     const AVCodecDescriptor * const *db = b;
 
-    return (*da)->type != (*db)->type ? (*da)->type - (*db)->type :
+    return (*da)->type != (*db)->type ? FFDIFFSIGN((*da)->type, (*db)->type) :
            strcmp((*da)->name, (*db)->name);
 }
 

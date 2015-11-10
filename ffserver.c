@@ -305,15 +305,19 @@ static void ffm_set_write_index(AVFormatContext *s, int64_t pos,
     ffm->file_size = file_size;
 }
 
-static char *ctime1(char *buf2, int buf_size)
+static char *ctime1(char *buf2, size_t buf_size)
 {
     time_t ti;
     char *p;
 
     ti = time(NULL);
     p = ctime(&ti);
+    if (!p || !*p) {
+        *buf2 = '\0';
+        return buf2;
+    }
     av_strlcpy(buf2, p, buf_size);
-    p = buf2 + strlen(p) - 1;
+    p = buf2 + strlen(buf2) - 1;
     if (*p == '\n')
         *p = '\0';
     return buf2;
@@ -2318,7 +2322,7 @@ static int http_prepare_data(HTTPContext *c)
                         c->packet_stream_index = pkt.stream_index;
                         ctx = c->rtp_ctx[c->packet_stream_index];
                         if(!ctx) {
-                            av_free_packet(&pkt);
+                            av_packet_unref(&pkt);
                             break;
                         }
                         codec = ctx->streams[0]->codec;
@@ -2370,11 +2374,11 @@ static int http_prepare_data(HTTPContext *c)
 
                     codec->frame_number++;
                     if (len == 0) {
-                        av_free_packet(&pkt);
+                        av_packet_unref(&pkt);
                         goto redo;
                     }
                 }
-                av_free_packet(&pkt);
+                av_packet_unref(&pkt);
             }
         }
         break;
@@ -3548,7 +3552,7 @@ static void extract_mpeg4_header(AVFormatContext *infile)
             }
             mpeg4_count--;
         }
-        av_free_packet(&pkt);
+        av_packet_unref(&pkt);
     }
 }
 

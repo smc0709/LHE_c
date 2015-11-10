@@ -1,4 +1,6 @@
 /*
+ * copyright (c) 2015 Rodger Combs <rodger.combs@gmail.com>
+ *
  * This file is part of FFmpeg.
  *
  * FFmpeg is free software; you can redistribute it and/or
@@ -16,25 +18,26 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include "bit_depth_template.c"
+#ifndef AVUTIL_AES_INTERNAL_H
+#define AVUTIL_AES_INTERNAL_H
 
-static void FUNCC(get_pixels)(int16_t *av_restrict block, const uint8_t *_pixels,
-                              ptrdiff_t line_size)
-{
-    const pixel *pixels = (const pixel *) _pixels;
-    int i;
+#include "mem.h"
+#include <stdint.h>
 
-    /* read the pixels */
-    for (i = 0; i < 8; i++) {
-        block[0] = pixels[0];
-        block[1] = pixels[1];
-        block[2] = pixels[2];
-        block[3] = pixels[3];
-        block[4] = pixels[4];
-        block[5] = pixels[5];
-        block[6] = pixels[6];
-        block[7] = pixels[7];
-        pixels  += line_size / sizeof(pixel);
-        block   += 8;
-    }
-}
+typedef union {
+    uint64_t u64[2];
+    uint32_t u32[4];
+    uint8_t u8x4[4][4];
+    uint8_t u8[16];
+} av_aes_block;
+
+typedef struct AVAES {
+    // Note: round_key[16] is accessed in the init code, but this only
+    // overwrites state, which does not matter (see also commit ba554c0).
+    DECLARE_ALIGNED(16, av_aes_block, round_key)[15];
+    DECLARE_ALIGNED(16, av_aes_block, state)[2];
+    int rounds;
+    void (*crypt)(struct AVAES *a, uint8_t *dst, const uint8_t *src, int count, uint8_t *iv, int rounds);
+} AVAES;
+
+#endif /* AVUTIL_AES_INTERNAL_H */

@@ -57,6 +57,7 @@
 #include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
+#include "libavutil/qsort.h"
 
 #include "deshake.h"
 #include "deshake_opencl.h"
@@ -93,8 +94,7 @@ AVFILTER_DEFINE_CLASS(deshake);
 
 static int cmp(const void *a, const void *b)
 {
-    const double va = *(const double *)a, vb = *(const double *)b;
-    return va < vb ? -1 : ( va > vb ? 1 : 0 );
+    return FFDIFFSIGN(*(const double *)a, *(const double *)b);
 }
 
 /**
@@ -106,7 +106,7 @@ static double clean_mean(double *values, int count)
     int cut = count / 5;
     int x;
 
-    qsort(values, count, sizeof(double), cmp);
+    AV_QSORT(values, count, double, cmp);
 
     for (x = cut; x < count - cut; x++) {
         mean += values[x];

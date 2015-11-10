@@ -841,6 +841,7 @@ static int mpegts_set_stream_info(AVStream *st, PESContext *pes,
     if ((st->codec->codec_id == AV_CODEC_ID_NONE ||
             (st->request_probe > 0 && st->request_probe < AVPROBE_SCORE_STREAM_RETRY / 5)) &&
         !avcodec_is_open(st->codec) &&
+        st->probe_packets > 0 &&
         stream_type == STREAM_TYPE_PRIVATE_DATA) {
         st->codec->codec_type = AVMEDIA_TYPE_DATA;
         st->codec->codec_id   = AV_CODEC_ID_BIN_DATA;
@@ -2611,7 +2612,7 @@ static int mpegts_raw_read_packet(AVFormatContext *s, AVPacket *pkt)
     ret = read_packet(s, pkt->data, ts->raw_packet_size, &data);
     pkt->pos = avio_tell(s->pb);
     if (ret < 0) {
-        av_free_packet(pkt);
+        av_packet_unref(pkt);
         return ret;
     }
     if (data != pkt->data)
@@ -2654,7 +2655,7 @@ static int mpegts_read_packet(AVFormatContext *s, AVPacket *pkt)
     ts->pkt = pkt;
     ret = handle_packets(ts, 0);
     if (ret < 0) {
-        av_free_packet(ts->pkt);
+        av_packet_unref(ts->pkt);
         /* flush pes data left */
         for (i = 0; i < NB_PID_MAX; i++)
             if (ts->pids[i] && ts->pids[i]->type == MPEGTS_PES) {
@@ -2743,16 +2744,18 @@ static int64_t mpegts_get_dts(AVFormatContext *s, int stream_index,
         ret = av_read_frame(s, &pkt);
         if (ret < 0)
             return AV_NOPTS_VALUE;
-        av_free_packet(&pkt);
         if (pkt.dts != AV_NOPTS_VALUE && pkt.pos >= 0) {
             ff_reduce_index(s, pkt.stream_index);
             av_add_index_entry(s->streams[pkt.stream_index], pkt.pos, pkt.dts, 0, 0, AVINDEX_KEYFRAME /* FIXME keyframe? */);
             if (pkt.stream_index == stream_index && pkt.pos >= *ppos) {
+                int64_t dts = pkt.dts;
                 *ppos = pkt.pos;
-                return pkt.dts;
+                av_packet_unref(&pkt);
+                return dts;
             }
         }
         pos = pkt.pos;
+        av_packet_unref(&pkt);
     }
 
     return AV_NOPTS_VALUE;

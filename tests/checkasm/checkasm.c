@@ -76,6 +76,9 @@ static const struct {
     #if CONFIG_JPEG2000_DECODER
         { "jpeg2000dsp", checkasm_check_jpeg2000dsp },
     #endif
+    #if CONFIG_PIXBLOCKDSP
+        { "pixblockdsp", checkasm_check_pixblockdsp },
+    #endif
     #if CONFIG_V210_ENCODER
         { "v210enc", checkasm_check_v210enc },
     #endif
@@ -117,6 +120,7 @@ static const struct {
     { "SSSE3",    "ssse3",    AV_CPU_FLAG_SSSE3|AV_CPU_FLAG_ATOM },
     { "SSE4.1",   "sse4",     AV_CPU_FLAG_SSE4 },
     { "SSE4.2",   "sse42",    AV_CPU_FLAG_SSE42 },
+    { "AES-NI",   "aesni",    AV_CPU_FLAG_AESNI },
     { "AVX",      "avx",      AV_CPU_FLAG_AVX },
     { "XOP",      "xop",      AV_CPU_FLAG_XOP },
     { "FMA3",     "fma3",     AV_CPU_FLAG_FMA3 },
