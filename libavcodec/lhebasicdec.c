@@ -10,6 +10,7 @@
 
 typedef struct LheState {
     AVClass *class;  
+    LheBasicPrec prec;
 } LheState;
 
 
@@ -18,16 +19,29 @@ static av_cold int lhe_decode_init(AVCodecContext *avctx)
 {
     LheState *s = avctx->priv_data;
 
-    av_log(NULL, AV_LOG_INFO, "LHE CodingDecoding private data address %p \n", s);
+    av_log(NULL, AV_LOG_INFO, "LHE Decoding private data address %p \n", s);
 
+    lhe_init_cache(&s->prec);
+    
     return 0;
 }
 
+static void lhe_decode_one_hop_per_pixel (LheBasicPrec *prec, const uint8_t * lhe_data) {
+   
+    uint8_t original_color = bytestream_get_byte(&lhe_data);
+
+    av_log(NULL, AV_LOG_INFO, "Original Color %d \n", original_color);
+
+    
+}
 
 static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, AVPacket *avpkt)
 {
     LheState *s = avctx->priv_data;
-
+    const uint8_t *lhe_data = avpkt->data;
+    
+    lhe_decode_one_hop_per_pixel(&s->prec, lhe_data);
+    
     return 0;
 }
 
@@ -35,7 +49,7 @@ static av_cold int lhe_decode_close(AVCodecContext *avctx)
 {
     LheState *s = avctx->priv_data;
 
-    //av_freep(&s->prec.prec_luminance);
+    av_freep(&s->prec.prec_luminance);
     
     return 0;
 }
