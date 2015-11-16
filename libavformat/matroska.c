@@ -102,6 +102,7 @@ const CodecTags ff_mkv_codec_tags[]={
 const CodecMime ff_mkv_image_mime_tags[] = {
     {"image/gif"                  , AV_CODEC_ID_GIF},
     {"image/jpeg"                 , AV_CODEC_ID_MJPEG},
+    { "image/lhe"                 , AV_CODEC_ID_LHE},
     {"image/png"                  , AV_CODEC_ID_PNG},
     {"image/tiff"                 , AV_CODEC_ID_TIFF},
 

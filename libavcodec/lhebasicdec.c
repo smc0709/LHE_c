@@ -8,56 +8,53 @@
 #include "internal.h"
 #include "lhebasic.h"
 
-
-typedef struct LheBasicState {
-    GetByteContext gbc;
-
-} LheBasicState;
+typedef struct LheState {
+    AVClass *class;  
+} LheState;
 
 
 
-static av_cold int lhe_basic_decode_init(AVCodecContext *avctx)
+static av_cold int lhe_decode_init(AVCodecContext *avctx)
 {
-    LheBasicState *s = avctx->priv_data;
+    LheState *s = avctx->priv_data;
+
+    av_log(NULL, AV_LOG_INFO, "LHE CodingDecoding private data address %p \n", s);
 
     return 0;
 }
 
-static int lhe_basic_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, AVPacket *avpkt)
-{
 
-    LheBasicState *s = avctx->priv_data;
+static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, AVPacket *avpkt)
+{
+    LheState *s = avctx->priv_data;
 
     return 0;
 }
 
-static av_cold int lhe_basic_decode_close(AVCodecContext *avctx)
+static av_cold int lhe_decode_close(AVCodecContext *avctx)
 {
-    LheBasicState *s = avctx->priv_data;
+    LheState *s = avctx->priv_data;
 
+    //av_freep(&s->prec.prec_luminance);
+    
     return 0;
 }
-
-static const AVOption options[] = {
-
-};
 
 static const AVClass decoder_class = {
     .class_name = "lhe decoder",
     .item_name  = av_default_item_name,
-    .option     = options,
     .version    = LIBAVUTIL_VERSION_INT,
     .category   = AV_CLASS_CATEGORY_DECODER,
 };
 
-AVCodec ff_lhe_basic_decoder = {
+AVCodec ff_lhe_decoder = {
     .name           = "lhe",
-    .long_name      = NULL_IF_CONFIG_SMALL("LHE Basic"),
+    .long_name      = NULL_IF_CONFIG_SMALL("LHE"),
     .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_LHE_BASIC,
-    .priv_data_size = sizeof(LheBasicState),
-    .init           = lhe_basic_decode_init,
-    .close          = lhe_basic_decode_close,
-    .decode         = lhe_basic_decode_frame,
+    .id             = AV_CODEC_ID_LHE,
+    .priv_data_size = sizeof(LheState),
+    .init           = lhe_decode_init,
+    .close          = lhe_decode_close,
+    .decode         = lhe_decode_frame,
     .priv_class     = &decoder_class,
 };

@@ -29,7 +29,7 @@ const IdStrMap ff_img_tags[] = {
     { AV_CODEC_ID_MJPEG,      "jpg"      },
     { AV_CODEC_ID_MJPEG,      "jps"      },
     { AV_CODEC_ID_MJPEG,      "mpo"      },
-    { AV_CODEC_ID_LHE_BASIC,  "lhe"      },
+    { AV_CODEC_ID_LHE,        "lhe"      },
     { AV_CODEC_ID_LJPEG,      "ljpg"     },
     { AV_CODEC_ID_JPEGLS,     "jls"      },
     { AV_CODEC_ID_PNG,        "png"      },

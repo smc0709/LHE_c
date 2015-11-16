@@ -12,22 +12,22 @@
 #include "libavutil/opt.h"
 #include "libavutil/imgutils.h"
 
-typedef struct LheBasicContext {
+typedef struct LheContext {
+    AVClass *class;  
+} LheContext;
 
-} LheBasicContext;
-
-static av_cold int lhe_basic_encode_init(AVCodecContext *avctx)
+static av_cold int lhe_encode_init(AVCodecContext *avctx)
 {
-    LheBasicContext *s = avctx->priv_data;
+    LheContext *s = avctx->priv_data;
 
     return 0;
 
 }
 
-static int lhe_basic_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
+static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
                              const AVFrame *frame, int *got_packet)
 {
-    LheBasicContext *s = avctx->priv_data;
+    LheContext *s = avctx->priv_data;
 
     int ret = av_image_get_buffer_size(frame->format,
                                            frame->width, frame->height, 1);
@@ -53,9 +53,9 @@ static int lhe_basic_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
 
 }
 
-static int lhe_basic_encode_close(AVCodecContext *avctx)
+static int lhe_encode_close(AVCodecContext *avctx)
 {
-    LheBasicContext *s = avctx->priv_data;
+    LheContext *s = avctx->priv_data;
 
     return 0;
 
@@ -72,14 +72,14 @@ static const AVClass lhe_basic_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-AVCodec ff_lhe_basic_encoder = {
+AVCodec ff_lhe_encoder = {
     .name           = "lhe",
-    .long_name      = NULL_IF_CONFIG_SMALL("LHE basic"),
+    .long_name      = NULL_IF_CONFIG_SMALL("LHE"),
     .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_LHE_BASIC,
-    .priv_data_size = sizeof(LheBasicContext),
-    .init           = lhe_basic_encode_init,
-    .encode2        = lhe_basic_encode_frame,
-    .close          = lhe_basic_encode_close,
+    .id             = AV_CODEC_ID_LHE,
+    .priv_data_size = sizeof(LheContext),
+    .init           = lhe_encode_init,
+    .encode2        = lhe_encode_frame,
+    .close          = lhe_encode_close,
     .priv_class     = &lhe_basic_class,
 };
