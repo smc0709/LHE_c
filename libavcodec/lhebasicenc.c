@@ -7,7 +7,6 @@
  * LHE Basic encoder
  */
 
-#include <stdbool.h>
 #include "avcodec.h"
 #include "lhebasic.h"
 #include "internal.h"
@@ -34,34 +33,38 @@ static av_cold int lhe_encode_init(AVCodecContext *avctx)
 
 static uint8_t* lhe_encode_one_hop_per_pixel (LheBasicPrec *prec, const AVFrame *frame) 
 {      
-    //Hops computation. initial values for errors
-    bool small_hop = false;
-    bool last_small_hop=false;          // indicates if last hop is small
-    int predicted_luminance=0;          // predicted signal
-    int hop_1= START_HOP_1;
-    int hop_number=4;                   // pre-selected hop // 4 is NULL HOP
-    int pix=0;                          // pixel possition, from 0 to image size        
-    int original_color=0;               // original color
+    //Hops computation.
+    bool small_hop, last_small_hop;
+    int predicted_luminance, hop_1, hop_number, pix, original_color, r_max;
     
-    int r_max=PARAM_R;
-
-    int min_error;                      // error of predicted signal
-    int error;                          //computed error for each hop 
+    //Errors
+    int min_error;      // error of predicted signal
+    int error;          //computed error for each hop 
     
     //Colin computation variables
-    float hY;
-    float hYant;
-    float hYnext;
+    float hY, hYant, hYnext;
     int hop0i;
     uint8_t colin[9];
     
     //Result arrays
     const int size = frame -> height * frame -> width;
-    uint8_t *component_prediction = malloc(sizeof(uint8_t) * size);
-    uint8_t *hops = malloc(sizeof(uint8_t) * size);
+    uint8_t *component_prediction, *hops;
+    
+    small_hop = false;
+    last_small_hop=false;          // indicates if last hop is small
+    predicted_luminance=0;         // predicted signal
+    hop_1= START_HOP_1;
+    hop_number=4;                  // pre-selected hop // 4 is NULL HOP
+    pix=0;                         // pixel possition, from 0 to image size        
+    original_color=0;              // original color
+    
+    r_max=PARAM_R;                      
 
-    for (int y=0; y< frame -> height; y++)  {
-        for (int x=0; x< frame -> width; x++)  {
+    component_prediction = malloc(sizeof(uint8_t) * size);
+    hops = malloc(sizeof(uint8_t) * size);
+
+    for (int y=0; y < frame -> height; y++)  {
+        for (int x=0; x < frame -> width; x++)  {
              
             original_color = frame->data[0][pix];
 
@@ -87,7 +90,17 @@ static uint8_t* lhe_encode_one_hop_per_pixel (LheBasicPrec *prec, const AVFrame 
             }
             else if (x==0 && y==0) {  
                 predicted_luminance=original_color;//first pixel always is perfectly predicted! :-)  
-            }                       
+            }          
+            
+            if (predicted_luminance>255) 
+            {
+                predicted_luminance=255;
+            }
+            
+            if (predicted_luminance<0) 
+            {
+                predicted_luminance=0;  
+            }
             
             // CENTER ADJUSTMENT SECTION
             //===========================
@@ -218,31 +231,37 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
                              const AVFrame *frame, int *got_packet)
 {
     uint8_t * hops, *buf, original_color;
-    int ret, n_bytes, n_bytes_original_color;
+    uint32_t width, height;
+    int image_size;
+    int ret, n_bytes, n_bytes_hops;
     LheContext *s = avctx->priv_data;
     
-    const int image_size = frame -> height * frame -> width;
+    width = (uint32_t) frame->width;
+    height = (uint32_t) frame->height;  
+    image_size = frame -> height * frame -> width;
 
-    n_bytes_original_color = sizeof(uint8_t);
-    n_bytes = sizeof(uint8_t) * image_size + n_bytes_original_color;
+    n_bytes_hops = sizeof(uint8_t) * image_size;
+    n_bytes = n_bytes_hops + sizeof(original_color) 
+            + sizeof(width) + sizeof(height);
     
     original_color = frame->data[0][0];
     hops = lhe_encode_one_hop_per_pixel(&s->prec, frame); 
     
-    //ff_alloc_packet2 me está reservando n_bytes de memoria en pkt.
-    //pkt es donde tiene que ir el chorro de bits para que ffmpeg lo entienda.
+    //ff_alloc_packet2 reserves n_bytes of memory
     if ((ret = ff_alloc_packet2(avctx, pkt, n_bytes, 0)) < 0)
         return ret;
 
-    //hay que copiar original_color
     buf = pkt->data;
+    
+    //save original color 
     bytestream_put_byte(&buf, original_color);
     
-    //avanzar el puntero
-    buf = pkt->data + n_bytes_original_color;
+    //save width and height
+    bytestream_put_le32(&buf, width);
+    bytestream_put_le32(&buf, height);    
     
-    //esto me está copiando n_bytes de hops a partir de la dirección que ocupa buf
-    memcpy(buf, hops, n_bytes);
+    //copy n_bytes_hops from buf pointer
+    memcpy(buf, hops, n_bytes_hops);
 
     av_log(NULL, AV_LOG_INFO, "LHE Coding...buffer size %d \n", n_bytes);
 

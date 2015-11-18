@@ -7,7 +7,7 @@
  * LHE format definitions.
  */
 
-
+#include <stdbool.h>
 #include <stdint.h>
 #include <math.h>
 
@@ -44,7 +44,9 @@
 #define HOP_POS_4 8 // h4 
 
 typedef struct LheBasicPrec {
-    float prec_luminance[H1_RANGE][Y_COMPONENT][RATIO][NUMBER_OF_HOPS]; // precomputed luminance component [h1range][luminance][ratio][hop_index]
+    float prec_luminance[H1_RANGE][Y_COMPONENT][RATIO][NUMBER_OF_HOPS]; // precomputed luminance component
+    uint8_t image_Y[512][512];
+
 } LheBasicPrec; 
 
 /**
