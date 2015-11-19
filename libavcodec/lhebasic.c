@@ -134,7 +134,7 @@ void lhe_init_cache (LheBasicPrec *prec)
             for (int rmax=20;rmax<=40;rmax++) 
             {
                 //variable declaration
-                float max= rmax/10;// control of limits if rmax is 25 then max is 2.5f;
+                float max= rmax/10.0;// control of limits if rmax is 25 then max is 2.5f;
                 float ratio_pos;
                 float ratio_neg;
                 

@@ -191,7 +191,7 @@ static uint8_t* lhe_encode_one_hop_per_pixel (LheBasicPrec *prec, const AVFrame 
             //--------------------------------
             component_prediction[pix]=prec -> prec_luminance[hop_1][predicted_luminance][r_max][hop_number];
             hops[pix]=hop_number; 
-            if (pix<100) av_log(NULL, AV_LOG_INFO, "pix %d oc %d hop1 %d hop0 %d hop %d\n", pix, original_color, hop_1, predicted_luminance, hop_number );
+            //if (pix<100) av_log(NULL, AV_LOG_INFO, "pix %d oc %d hop1 %d hop0 %d hop %d\n", pix, original_color, hop_1, predicted_luminance, hop_number );
             //if (pix<100) av_log(NULL, AV_LOG_INFO, "HOPS[%d]= %d\n", pix, hops[pix] );
             //if (pix<100) av_log(NULL, AV_LOG_INFO, "CP[%d]= %d\n", pix, component_prediction[pix] );
 
