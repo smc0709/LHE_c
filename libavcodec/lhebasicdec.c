@@ -2,8 +2,6 @@
  * LHE Basic decoder
  */
 
-#include "libavutil/imgutils.h"
-#include "libavutil/opt.h"
 #include "bytestream.h"
 #include "internal.h"
 #include "lhebasic.h"
@@ -59,7 +57,7 @@ static void lhe_decode_one_hop_per_pixel (AVFrame *frame, LheBasicPrec *prec,
     
     uint8_t * image = (uint8_t *)frame->data[0];
  
-    av_log(NULL, AV_LOG_INFO, "Width %d Height %d", width, height);
+    av_log(NULL, AV_LOG_INFO, "Width %d Height %d \n", width, height);
 
     for (int y=0; y < height; y++)  {
         for (int x=0; x < width; x++)     {
@@ -115,14 +113,14 @@ static void lhe_decode_one_hop_per_pixel (AVFrame *frame, LheBasicPrec *prec,
                 small_hop=false;    
             }
 
-            if( (small_hop) && (last_small_hop))  {
+           if( (small_hop) && (last_small_hop))  {
                 hop_1=hop_1-1;
                 if (hop_1<MIN_HOP_1) {
                     hop_1=MIN_HOP_1;
                 } 
-                else {
-                    hop_1=MAX_HOP_1;
-                }
+                
+            } else {
+                hop_1=MAX_HOP_1;
             }
 
             //lets go for the next pixel

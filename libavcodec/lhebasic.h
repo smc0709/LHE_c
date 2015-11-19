@@ -7,6 +7,8 @@
  * LHE format definitions.
  */
 
+#include "libavutil/opt.h"
+#include "libavutil/imgutils.h"
 #include <stdbool.h>
 #include <stdint.h>
 #include <math.h>

@@ -127,7 +127,7 @@ void lhe_init_cache (LheBasicPrec *prec)
         {
             
             float percent_range=0.8f;//0.8 is the  80%
-            float pow_index = 1/3;
+            float pow_index = 1.0f/3;
             
             //this bucle allows computations for different values of rmax from 20 to 40. 
             //however, finally only one value (25) is used in LHE
@@ -155,10 +155,10 @@ void lhe_init_cache (LheBasicPrec *prec)
                 }
                 
                 //get r value for possitive hops from cache_ratio       
-                ratio_pos=cache_ratio[0][hop1][hop0_Y][rmax];
+                ratio_pos=cache_ratio[POSITIVE][hop1][hop0_Y][rmax];
 
                 //get r' value for negative hops from cache_ratio
-                ratio_neg=cache_ratio[1][hop1][hop0_Y][rmax];
+                ratio_neg=cache_ratio[NEGATIVE][hop1][hop0_Y][rmax];
 
                 // COMPUTATION OF HOPS
                 

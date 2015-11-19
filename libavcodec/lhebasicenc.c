@@ -10,8 +10,6 @@
 #include "avcodec.h"
 #include "lhebasic.h"
 #include "internal.h"
-#include "libavutil/opt.h"
-#include "libavutil/imgutils.h"
 #include "put_bits.h"
 #include "bytestream.h"
 
@@ -67,6 +65,7 @@ static uint8_t* lhe_encode_one_hop_per_pixel (LheBasicPrec *prec, const AVFrame 
         for (int x=0; x < frame -> width; x++)  {
              
             original_color = frame->data[0][pix];
+            //if (pix<100) av_log(NULL, AV_LOG_INFO, "OC[%d]= %d\n", pix, original_color );
 
             //prediction of signal (predicted_luminance) , based on pixel's coordinates 
             //----------------------------------------------------------
@@ -140,15 +139,13 @@ static uint8_t* lhe_encode_one_hop_per_pixel (LheBasicPrec *prec, const AVFrame 
 
 
             // end of center adjustment section 
-            //==================================
-            
-            
+            //==================================       
             error = 0;
             min_error = 256;
             
             //Positive hops computation
             //-------------------------
-            if (original_color-predicted_luminance>=0) 
+            if (original_color - predicted_luminance>=0) 
             {
                 for (int j=HOP_0;j<=HOP_POS_4;j++) 
                 {
@@ -175,11 +172,12 @@ static uint8_t* lhe_encode_one_hop_per_pixel (LheBasicPrec *prec, const AVFrame 
                 for (int j=HOP_0;j>=HOP_NEG_4;j--) 
                 {
                         error = prec -> prec_luminance[hop_1][predicted_luminance][r_max][j]-original_color;
-
+                        
                         if (error<0) 
                         {
                             error = -error;
                         }
+                        
                         if (error<min_error) {
                             hop_number=j;
                             min_error=error;
@@ -187,11 +185,15 @@ static uint8_t* lhe_encode_one_hop_per_pixel (LheBasicPrec *prec, const AVFrame 
                         else break;
                 }
             }
+            
 
             //assignment of final color value
             //--------------------------------
             component_prediction[pix]=prec -> prec_luminance[hop_1][predicted_luminance][r_max][hop_number];
             hops[pix]=hop_number; 
+            if (pix<100) av_log(NULL, AV_LOG_INFO, "pix %d oc %d hop1 %d hop0 %d hop %d\n", pix, original_color, hop_1, predicted_luminance, hop_number );
+            //if (pix<100) av_log(NULL, AV_LOG_INFO, "HOPS[%d]= %d\n", pix, hops[pix] );
+            //if (pix<100) av_log(NULL, AV_LOG_INFO, "CP[%d]= %d\n", pix, component_prediction[pix] );
 
             //tunning hop1 for the next hop ( "h1 adaptation")
             //------------------------------------------------
@@ -210,15 +212,15 @@ static uint8_t* lhe_encode_one_hop_per_pixel (LheBasicPrec *prec, const AVFrame 
                 if (hop_1<MIN_HOP_1) {
                     hop_1=MIN_HOP_1;
                 } 
-                else {
-                    hop_1=MAX_HOP_1;
-                }
+                
+            } else {
+                hop_1=MAX_HOP_1;
             }
 
             //lets go for the next pixel
             //--------------------------
             last_small_hop=small_hop;
-            pix++;            
+            pix++;
         }//for x
     }//for y 
     
@@ -226,6 +228,21 @@ static uint8_t* lhe_encode_one_hop_per_pixel (LheBasicPrec *prec, const AVFrame 
 }
 
 
+static void lhe_print_data(AVFrame *picture)
+{
+    int pix = 0;
+    uint8_t *p = (uint8_t *)picture->data[0];
+    uint8_t *p_end = p + (picture->linesize[0] / sizeof(uint8_t)) * picture->height;
+
+    //av_log(NULL, AV_LOG_INFO, "linesize %d size %d height %d p %p p_end %p \n", picture->linesize[0], sizeof(uint8_t), picture->height, p, p_end);
+
+    for (; p < p_end; p++) {
+        if (pix<100) av_log(NULL, AV_LOG_INFO, "P[%d] = %d \n", pix, *p);
+        pix++;
+    }
+    
+
+}
 
 static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
                              const AVFrame *frame, int *got_packet)
@@ -299,5 +316,8 @@ AVCodec ff_lhe_encoder = {
     .init           = lhe_encode_init,
     .encode2        = lhe_encode_frame,
     .close          = lhe_encode_close,
+    .pix_fmts       = (const enum AVPixelFormat[]){
+        AV_PIX_FMT_GRAY8, AV_PIX_FMT_NONE
+    },
     .priv_class     = &lhe_class,
 };
