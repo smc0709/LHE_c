@@ -42,10 +42,6 @@ static void lhe_decode_one_hop_per_pixel (AVFrame *frame, LheBasicPrec *prec,
     int min_error;      // error of predicted signal
     int error;          //computed error for each hop 
     
-    //Colin computation variables
-    uint8_t hY, hYant, hYnext, hop0i;
-    uint8_t colin[9];
-    
     small_hop           = false;
     last_small_hop      = false;        // indicates if last hop is small
     predicted_luminance = 0;            // predicted signal
@@ -97,7 +93,16 @@ static void lhe_decode_one_hop_per_pixel (AVFrame *frame, LheBasicPrec *prec,
             //assignment of component_prediction
             //This is the uncompressed image
             image[pix]= prec -> prec_luminance[hop_1][predicted_luminance][r_max][hop];
+            
+            if (MIDDLE_VALUE) 
+            {
+                image[pix]=prec -> prec_luminance_center[hop_1][predicted_luminance][r_max][hop];
 
+            } else 
+            {
+                image[pix]=prec -> prec_luminance[hop_1][predicted_luminance][r_max][hop];
+            }
+            
             //tunning hop1 for the next hop ( "h1 adaptation")
             //------------------------------------------------
             small_hop=false;

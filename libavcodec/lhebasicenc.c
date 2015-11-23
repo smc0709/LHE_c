@@ -41,10 +41,6 @@ static void lhe_encode_one_hop_per_pixel (LheBasicPrec *prec, const AVFrame *fra
     int min_error;      // error of predicted signal
     int error;          //computed error for each hop 
     
-    //Colin computation variables
-    uint8_t hY, hYant, hYnext, hop0i;
-    uint8_t colin[9];
-    
     //Result arrays
     const int height = frame -> height;
     const int width = frame -> width;
@@ -97,43 +93,6 @@ static void lhe_encode_one_hop_per_pixel (LheBasicPrec *prec, const AVFrame *fra
             {
                 predicted_luminance=0;  
             }
-            
-            // CENTER ADJUSTMENT SECTION
-            //===========================
-            // this section improves quality. In fact this section should be added to
-            // the init() function instead here. Bassically this section changes the value
-            // of luminance of hops by the intermediate value between hops frontiers.
-            //
-            // without this section, the program works fine but less quality
-            //
-            // h0--)(-----h1----center-------------)(---------h2--------center----------------)
-
-            hop0i = prec -> prec_luminance[hop_1][predicted_luminance][r_max][HOP_0];//null hop
-            
-            colin[HOP_0]=hop0i;//new null does not change 
-            colin[HOP_POS_4]=prec -> prec_luminance[hop_1][hop0i][r_max][HOP_POS_4];//hop4 (maximum possitive) does not change
-            colin[HOP_NEG_4]=prec -> prec_luminance[hop_1][hop0i][r_max][HOP_NEG_4];//hop-4 (maximum negative) does not change
-            colin[HOP_NEG_1]=prec -> prec_luminance[hop_1][hop0i][r_max][HOP_NEG_1];//hop-1 does not change
-            colin[HOP_POS_1]=prec -> prec_luminance[hop_1][hop0i][r_max][HOP_POS_1];//hop1 does not change
-
-            
-
-            for (int j=1; j<8;j++)
-            {
- 
-                if (j == HOP_0 || j == HOP_POS_1 || j == HOP_NEG_1) 
-                {
-                    colin[j] = 0; //Do not adjust h0, h1, h-1
-                }
-                else {
-                    hY = prec -> prec_luminance[hop_1][hop0i][r_max][j];
-                    hYant = prec -> prec_luminance[hop_1][hop0i][r_max][j-1];
-                    hYnext = prec -> prec_luminance[hop_1][hop0i][r_max][j+ 1];
-                    
-                    colin[j]= (int) ((hY + (hYant+hYnext)/2)/2);
-                }
-            }
-
 
             // end of center adjustment section 
             //==================================       
@@ -186,7 +145,15 @@ static void lhe_encode_one_hop_per_pixel (LheBasicPrec *prec, const AVFrame *fra
 
             //assignment of final color value
             //--------------------------------
-            component_prediction[pix]=prec -> prec_luminance[hop_1][predicted_luminance][r_max][hop_number];
+            if (MIDDLE_VALUE) 
+            {
+                component_prediction[pix]=prec -> prec_luminance_center[hop_1][predicted_luminance][r_max][hop_number];
+
+            } else 
+            {
+                component_prediction[pix]=prec -> prec_luminance[hop_1][predicted_luminance][r_max][hop_number];
+            }
+
             hops_buf[pix]=hop_number; 
 
             //tunning hop1 for the next hop ( "h1 adaptation")

@@ -13,6 +13,9 @@
 #include <stdint.h>
 #include <math.h>
 
+//Configuration 
+#define MIDDLE_VALUE false
+
 //Params for precomputation
 #define H1_RANGE 20
 #define Y_COMPONENT 256
@@ -47,6 +50,7 @@
 
 typedef struct LheBasicPrec {
     uint8_t prec_luminance[H1_RANGE][Y_COMPONENT][RATIO][NUMBER_OF_HOPS]; // precomputed luminance component
+    uint8_t prec_luminance_center [H1_RANGE][Y_COMPONENT][RATIO][NUMBER_OF_HOPS];
 } LheBasicPrec; 
 
 /**
@@ -64,6 +68,21 @@ void lhe_init_hop_color_component_value (LheBasicPrec *prec, int hop0_Y, int hop
                                                 uint8_t hop_pos_2 [H1_RANGE][Y_COMPONENT],
                                                 uint8_t hop_pos_3 [H1_RANGE][Y_COMPONENT],
                                                 uint8_t hop_pos_4 [H1_RANGE][Y_COMPONENT]);
+
+/**
+ * Calculates color component value in the middle of the interval for each hop.
+ * This method improves quality. Bassically this method init the value
+ * of luminance of hops by the intermediate value between hops frontiers.
+ *
+ * h0--)(-----h1----center-------------)(---------h2--------center----------------)
+ */
+void lhe_init_hop_center_color_component_value (LheBasicPrec *prec, int hop0_Y, int hop1, int rmax,
+                                                    uint8_t hop_neg_4 [H1_RANGE][Y_COMPONENT], 
+                                                    uint8_t hop_neg_3 [H1_RANGE][Y_COMPONENT], 
+                                                    uint8_t hop_neg_2 [H1_RANGE][Y_COMPONENT],
+                                                    uint8_t hop_pos_2 [H1_RANGE][Y_COMPONENT],
+                                                    uint8_t hop_pos_3 [H1_RANGE][Y_COMPONENT],
+                                                    uint8_t hop_pos_4 [H1_RANGE][Y_COMPONENT]);
 
 
 /**
