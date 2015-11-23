@@ -47,8 +47,6 @@
 
 typedef struct LheBasicPrec {
     float prec_luminance[H1_RANGE][Y_COMPONENT][RATIO][NUMBER_OF_HOPS]; // precomputed luminance component
-    uint8_t image_Y[512][512];
-
 } LheBasicPrec; 
 
 /**

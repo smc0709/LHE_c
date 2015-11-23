@@ -99,7 +99,6 @@ static void lhe_decode_one_hop_per_pixel (AVFrame *frame, LheBasicPrec *prec,
             //assignment of component_prediction
             //This is the uncompressed image
             image[pix]= prec -> prec_luminance[hop_1][predicted_luminance][r_max][hop];
-            //av_log(NULL, AV_LOG_INFO, "Image pix[%d]= %d \n" , pix, image[pix]);
 
             //tunning hop1 for the next hop ( "h1 adaptation")
             //------------------------------------------------
@@ -133,18 +132,6 @@ static void lhe_decode_one_hop_per_pixel (AVFrame *frame, LheBasicPrec *prec,
     
 }
 
-static void lhe_fill(AVFrame *picture, uint8_t color)
-{
-    uint8_t *p = (uint8_t *)picture->data[0];
-    uint8_t *p_end = p + (picture->linesize[0] / sizeof(uint8_t)) * picture->height;
-
-    //av_log(NULL, AV_LOG_INFO, "linesize %d size %d height %d p %p p_end %p \n", picture->linesize[0], sizeof(uint8_t), picture->height, p, p_end);
-
-    for (; p < p_end; p++)
-        *p = color;
-    
-
-}
 
 static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, AVPacket *avpkt)
 {
@@ -155,11 +142,9 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
     int i, linesize, n;
     uint8_t color = 100;
 
-    first_color = bytestream_get_byte(&lhe_data); 
     width  = bytestream_get_le32(&lhe_data);
     height = bytestream_get_le32(&lhe_data);
-    
-   // av_log(NULL, AV_LOG_INFO, "Original Color %d Width %d Height %d \n", first_color, width, height);
+    first_color = bytestream_get_byte(&lhe_data); 
 
     avctx->width  = width;
     avctx->height  = height;    

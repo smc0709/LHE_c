@@ -29,7 +29,8 @@ static av_cold int lhe_encode_init(AVCodecContext *avctx)
 
 }
 
-static uint8_t* lhe_encode_one_hop_per_pixel (LheBasicPrec *prec, const AVFrame *frame) 
+static void lhe_encode_one_hop_per_pixel (LheBasicPrec *prec, const AVFrame *frame, uint8_t *component_prediction,
+                                              uint8_t *hops_buf)
 {      
     //Hops computation.
     bool small_hop, last_small_hop;
@@ -45,8 +46,8 @@ static uint8_t* lhe_encode_one_hop_per_pixel (LheBasicPrec *prec, const AVFrame 
     uint8_t colin[9];
     
     //Result arrays
-    const int size = frame -> height * frame -> width;
-    uint8_t *component_prediction, *hops;
+    const int height = frame -> height;
+    const int width = frame -> width;
     
     small_hop = false;
     last_small_hop=false;          // indicates if last hop is small
@@ -58,30 +59,26 @@ static uint8_t* lhe_encode_one_hop_per_pixel (LheBasicPrec *prec, const AVFrame 
     
     r_max=PARAM_R;                      
 
-    component_prediction = malloc(sizeof(uint8_t) * size);
-    hops = malloc(sizeof(uint8_t) * size);
-
-    for (int y=0; y < frame -> height; y++)  {
-        for (int x=0; x < frame -> width; x++)  {
+    for (int y=0; y < height; y++)  {
+        for (int x=0; x < width; x++)  {
              
             original_color = frame->data[0][pix];
-            //if (pix<100) av_log(NULL, AV_LOG_INFO, "OC[%d]= %d\n", pix, original_color );
 
             //prediction of signal (predicted_luminance) , based on pixel's coordinates 
             //----------------------------------------------------------
-            if ((y>0) &&(x>0) && x!=frame -> width-1)
+            if ((y>0) &&(x>0) && x!=width-1)
             {
-                predicted_luminance=(4*component_prediction[pix-1]+3*component_prediction[pix+1-frame -> width])/7;     
+                predicted_luminance=(4*component_prediction[pix-1]+3*component_prediction[pix+1-width])/7;     
             } 
             else if ((x==0) && (y>0))
             {
-                predicted_luminance=component_prediction[pix-frame -> width];
+                predicted_luminance=component_prediction[pix-width];
                 last_small_hop=false;
                 hop_1=START_HOP_1;
             } 
-            else if ((x==frame -> width-1) && (y>0)) 
+            else if ((x==width-1) && (y>0)) 
             {
-                predicted_luminance=(4*component_prediction[pix-1]+2*component_prediction[pix-frame -> width])/6;                               
+                predicted_luminance=(4*component_prediction[pix-1]+2*component_prediction[pix-width])/6;                               
             } 
             else if (y==0 && x>0) 
             {
@@ -190,10 +187,7 @@ static uint8_t* lhe_encode_one_hop_per_pixel (LheBasicPrec *prec, const AVFrame 
             //assignment of final color value
             //--------------------------------
             component_prediction[pix]=prec -> prec_luminance[hop_1][predicted_luminance][r_max][hop_number];
-            hops[pix]=hop_number; 
-            //if (pix<100) av_log(NULL, AV_LOG_INFO, "pix %d oc %d hop1 %d hop0 %d hop %d\n", pix, original_color, hop_1, predicted_luminance, hop_number );
-            //if (pix<100) av_log(NULL, AV_LOG_INFO, "HOPS[%d]= %d\n", pix, hops[pix] );
-            //if (pix<100) av_log(NULL, AV_LOG_INFO, "CP[%d]= %d\n", pix, component_prediction[pix] );
+            hops_buf[pix]=hop_number; 
 
             //tunning hop1 for the next hop ( "h1 adaptation")
             //------------------------------------------------
@@ -222,9 +216,7 @@ static uint8_t* lhe_encode_one_hop_per_pixel (LheBasicPrec *prec, const AVFrame 
             last_small_hop=small_hop;
             pix++;
         }//for x
-    }//for y 
-    
-    return hops;
+    }//for y     
 }
 
 
@@ -247,39 +239,37 @@ static void lhe_print_data(AVFrame *picture)
 static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
                              const AVFrame *frame, int *got_packet)
 {
-    uint8_t * hops, *buf, original_color;
+    uint8_t *component_prediction, *buf, first_pixel_color;
     uint32_t width, height;
     int image_size;
     int ret, n_bytes, n_bytes_hops;
     LheContext *s = avctx->priv_data;
-    
+
     width = (uint32_t) frame->width;
     height = (uint32_t) frame->height;  
     image_size = frame -> height * frame -> width;
 
     n_bytes_hops = sizeof(uint8_t) * image_size;
-    n_bytes = n_bytes_hops + sizeof(original_color) 
+    n_bytes = n_bytes_hops + sizeof(first_pixel_color) 
             + sizeof(width) + sizeof(height);
-    
-    original_color = frame->data[0][0];
-    hops = lhe_encode_one_hop_per_pixel(&s->prec, frame); 
-    
+        
     //ff_alloc_packet2 reserves n_bytes of memory
     if ((ret = ff_alloc_packet2(avctx, pkt, n_bytes, 0)) < 0)
         return ret;
 
     buf = pkt->data;
     
-    //save original color 
-    bytestream_put_byte(&buf, original_color);
-    
     //save width and height
     bytestream_put_le32(&buf, width);
-    bytestream_put_le32(&buf, height);    
+    bytestream_put_le32(&buf, height);  
     
-    //copy n_bytes_hops from buf pointer
-    memcpy(buf, hops, n_bytes_hops);
-
+    //save first pixel color 
+    first_pixel_color = frame->data[0][0];
+    bytestream_put_byte(&buf, first_pixel_color);
+    
+    component_prediction = malloc(sizeof(uint8_t) * image_size);    
+    lhe_encode_one_hop_per_pixel(&s->prec, frame, component_prediction, buf); 
+         
     av_log(NULL, AV_LOG_INFO, "LHE Coding...buffer size %d \n", n_bytes);
 
     pkt->flags |= AV_PKT_FLAG_KEY;
