@@ -49,13 +49,17 @@ static void lhe_decode_one_hop_per_pixel (AVFrame *frame, LheBasicPrec *prec,
     pix                 = 0;            // pixel possition, from 0 to image size        
     r_max               = PARAM_R;        
     
+    const int pix_size = frame->linesize[0]/ height;
+
     uint8_t * image = (uint8_t *)frame->data[0];
  
-    av_log(NULL, AV_LOG_INFO, "Width %d Height %d \n", width, height);
+    av_log(NULL, AV_LOG_INFO, "Width %d Height %d Linesize %d \n", width, height, frame->linesize[0]);
 
     for (int y=0; y < height; y++)  {
         for (int x=0; x < width; x++)     {
             
+            pix = pix_size * (y * width + x);
+
             hop = bytestream_get_byte(&lhe_data);
        
             if ((y>0) &&(x>0) && x!=width-1)
@@ -127,9 +131,7 @@ static void lhe_decode_one_hop_per_pixel (AVFrame *frame, LheBasicPrec *prec,
 
             //lets go for the next pixel
             //--------------------------
-            last_small_hop=small_hop;
-            pix++;
-                 
+            last_small_hop=small_hop;                 
         }// for x
     }// for y
     

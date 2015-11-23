@@ -41,10 +41,10 @@ static void lhe_encode_one_hop_per_pixel (LheBasicPrec *prec, const AVFrame *fra
     int min_error;      // error of predicted signal
     int error;          //computed error for each hop 
     
-    //Result arrays
     const int height = frame -> height;
     const int width = frame -> width;
-    
+    const int pix_size = frame->linesize[0]/ height;
+
     small_hop = false;
     last_small_hop=false;          // indicates if last hop is small
     predicted_luminance=0;         // predicted signal
@@ -53,12 +53,13 @@ static void lhe_encode_one_hop_per_pixel (LheBasicPrec *prec, const AVFrame *fra
     pix=0;                         // pixel possition, from 0 to image size        
     original_color=0;              // original color
     
-    r_max=PARAM_R;                      
-
+    r_max=PARAM_R;     
     for (int y=0; y < height; y++)  {
         for (int x=0; x < width; x++)  {
-             
-            original_color = frame->data[0][pix];
+            
+            //av_log(NULL, AV_LOG_INFO, "Linesize %d Pix %d pix_sixe %d \n", frame->linesize[0], pix, pix_size);
+
+            original_color = frame->data[0][pix_size*pix];
 
             //prediction of signal (predicted_luminance) , based on pixel's coordinates 
             //----------------------------------------------------------
@@ -193,7 +194,7 @@ static void lhe_print_data(AVFrame *picture)
     uint8_t *p = (uint8_t *)picture->data[0];
     uint8_t *p_end = p + (picture->linesize[0] / sizeof(uint8_t)) * picture->height;
 
-    //av_log(NULL, AV_LOG_INFO, "linesize %d size %d height %d p %p p_end %p \n", picture->linesize[0], sizeof(uint8_t), picture->height, p, p_end);
+    av_log(NULL, AV_LOG_INFO, "linesize %d size %d height %d p %d p_end %d \n", picture->linesize[0], sizeof(uint8_t), picture->height, p, p_end);
 
     for (; p < p_end; p++) {
         if (pix<100) av_log(NULL, AV_LOG_INFO, "P[%d] = %d \n", pix, *p);
@@ -236,7 +237,7 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     
     component_prediction = malloc(sizeof(uint8_t) * image_size);    
     lhe_encode_one_hop_per_pixel(&s->prec, frame, component_prediction, buf); 
-         
+    //lhe_print_data(frame);   
     av_log(NULL, AV_LOG_INFO, "LHE Coding...buffer size %d \n", n_bytes);
 
     pkt->flags |= AV_PKT_FLAG_KEY;
