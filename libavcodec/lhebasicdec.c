@@ -32,20 +32,18 @@ static av_cold int lhe_decode_init(AVCodecContext *avctx)
 static void lhe_decode_one_hop_per_pixel (AVFrame *frame, LheBasicPrec *prec, 
                                           const uint8_t *lhe_data, uint8_t first_color, 
                                           uint32_t width, uint32_t height) {
-   
-    uint8_t hop;
-    
+       
     //Hops computation.
     bool small_hop, last_small_hop;
-    int predicted_luminance, hop_1, pix, r_max;
+    uint8_t hop, predicted_luminance, hop_1, r_max; 
+    int pix;
     
     //Errors
     int min_error;      // error of predicted signal
     int error;          //computed error for each hop 
     
     //Colin computation variables
-    float hY, hYant, hYnext;
-    int hop0i;
+    uint8_t hY, hYant, hYnext, hop0i;
     uint8_t colin[9];
     
     small_hop           = false;

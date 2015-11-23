@@ -34,15 +34,15 @@ static void lhe_encode_one_hop_per_pixel (LheBasicPrec *prec, const AVFrame *fra
 {      
     //Hops computation.
     bool small_hop, last_small_hop;
-    int predicted_luminance, hop_1, hop_number, pix, original_color, r_max;
+    uint8_t predicted_luminance, hop_1, hop_number, original_color, r_max;
+    int pix;
     
     //Errors
     int min_error;      // error of predicted signal
     int error;          //computed error for each hop 
     
     //Colin computation variables
-    float hY, hYant, hYnext;
-    int hop0i;
+    uint8_t hY, hYant, hYnext, hop0i;
     uint8_t colin[9];
     
     //Result arrays
@@ -126,9 +126,9 @@ static void lhe_encode_one_hop_per_pixel (LheBasicPrec *prec, const AVFrame *fra
                     colin[j] = 0; //Do not adjust h0, h1, h-1
                 }
                 else {
-                    hY = (float) prec -> prec_luminance[hop_1][hop0i][r_max][j];
-                    hYant = (float) prec -> prec_luminance[hop_1][hop0i][r_max][j-1];
-                    hYnext = (float) prec -> prec_luminance[hop_1][hop0i][r_max][j+ 1];
+                    hY = prec -> prec_luminance[hop_1][hop0i][r_max][j];
+                    hYant = prec -> prec_luminance[hop_1][hop0i][r_max][j-1];
+                    hYnext = prec -> prec_luminance[hop_1][hop0i][r_max][j+ 1];
                     
                     colin[j]= (int) ((hY + (hYant+hYnext)/2)/2);
                 }

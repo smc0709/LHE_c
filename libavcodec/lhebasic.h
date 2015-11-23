@@ -46,7 +46,7 @@
 #define HOP_POS_4 8 // h4 
 
 typedef struct LheBasicPrec {
-    float prec_luminance[H1_RANGE][Y_COMPONENT][RATIO][NUMBER_OF_HOPS]; // precomputed luminance component
+    uint8_t prec_luminance[H1_RANGE][Y_COMPONENT][RATIO][NUMBER_OF_HOPS]; // precomputed luminance component
 } LheBasicPrec; 
 
 /**
@@ -58,12 +58,12 @@ typedef struct LheBasicPrec {
  * and hi is the luminance distance from hop0_Y to hopi_Y
  */
 void lhe_init_hop_color_component_value (LheBasicPrec *prec, int hop0_Y, int hop1, int rmax,
-                                                float hop_neg_4 [H1_RANGE][Y_COMPONENT], 
-                                                float hop_neg_3 [H1_RANGE][Y_COMPONENT], 
-                                                float hop_neg_2 [H1_RANGE][Y_COMPONENT],
-                                                float hop_pos_2 [H1_RANGE][Y_COMPONENT],
-                                                float hop_pos_3 [H1_RANGE][Y_COMPONENT],
-                                                float hop_pos_4 [H1_RANGE][Y_COMPONENT]);
+                                                uint8_t hop_neg_4 [H1_RANGE][Y_COMPONENT], 
+                                                uint8_t hop_neg_3 [H1_RANGE][Y_COMPONENT], 
+                                                uint8_t hop_neg_2 [H1_RANGE][Y_COMPONENT],
+                                                uint8_t hop_pos_2 [H1_RANGE][Y_COMPONENT],
+                                                uint8_t hop_pos_3 [H1_RANGE][Y_COMPONENT],
+                                                uint8_t hop_pos_4 [H1_RANGE][Y_COMPONENT]);
 
 
 /**
