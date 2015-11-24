@@ -18,7 +18,7 @@ typedef struct LheState {
 static av_cold int lhe_decode_init(AVCodecContext *avctx)
 {
     LheState *s = avctx->priv_data;
-    avctx->pix_fmt = AV_PIX_FMT_GRAY8;
+    avctx->pix_fmt = AV_PIX_FMT_YUYV422;
 
     s->frame = av_frame_alloc();
     if (!s->frame)
@@ -58,27 +58,25 @@ static void lhe_decode_one_hop_per_pixel (AVFrame *frame, LheBasicPrec *prec,
     for (int y=0; y < height; y++)  {
         for (int x=0; x < width; x++)     {
             
-            pix = pix_size * (y * width + x);
-
             hop = bytestream_get_byte(&lhe_data);
        
             if ((y>0) &&(x>0) && x!=width-1)
             {
-                predicted_luminance=(4*image[pix-1]+3*image[pix+1-width])/7;     
+                predicted_luminance=(4*image[pix_size * (pix-1)]+3*image[pix_size * (pix+1-width)])/7;     
             } 
             else if ((x==0) && (y>0))
             {
-                predicted_luminance=image[pix-width];
+                predicted_luminance=image[pix_size * (pix-width)];
                 last_small_hop=false;
                 hop_1=START_HOP_1;
             } 
             else if ((x==width-1) && (y>0)) 
             {
-                predicted_luminance=(4*image[pix-1]+2*image[pix-width])/6;                               
+                predicted_luminance=(4*image[pix_size * (pix-1)]+2*image[pix_size * (pix-width)])/6;                               
             } 
             else if (y==0 && x>0) 
             {
-                predicted_luminance=image[x-1];
+                predicted_luminance=image[pix_size * (x-1)];
             }
             else if (x==0 && y==0) {  
                 predicted_luminance=first_color;//first pixel always is perfectly predicted! :-)  
@@ -96,15 +94,15 @@ static void lhe_decode_one_hop_per_pixel (AVFrame *frame, LheBasicPrec *prec,
             
             //assignment of component_prediction
             //This is the uncompressed image
-            image[pix]= prec -> prec_luminance[hop_1][predicted_luminance][r_max][hop];
+            image[pix_size * pix]= prec -> prec_luminance[hop_1][predicted_luminance][r_max][hop];
             
             if (MIDDLE_VALUE) 
             {
-                image[pix]=prec -> prec_luminance_center[hop_1][predicted_luminance][r_max][hop];
+                image[pix_size * pix]=prec -> prec_luminance_center[hop_1][predicted_luminance][r_max][hop];
 
             } else 
             {
-                image[pix]=prec -> prec_luminance[hop_1][predicted_luminance][r_max][hop];
+                image[pix_size * pix]=prec -> prec_luminance[hop_1][predicted_luminance][r_max][hop];
             }
             
             //tunning hop1 for the next hop ( "h1 adaptation")
@@ -131,7 +129,8 @@ static void lhe_decode_one_hop_per_pixel (AVFrame *frame, LheBasicPrec *prec,
 
             //lets go for the next pixel
             //--------------------------
-            last_small_hop=small_hop;                 
+            last_small_hop=small_hop;     
+            pix++;
         }// for x
     }// for y
     

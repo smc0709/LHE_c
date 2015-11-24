@@ -275,7 +275,7 @@ AVCodec ff_lhe_encoder = {
     .encode2        = lhe_encode_frame,
     .close          = lhe_encode_close,
     .pix_fmts       = (const enum AVPixelFormat[]){
-        AV_PIX_FMT_GRAY8, AV_PIX_FMT_NONE
+        AV_PIX_FMT_YUYV422, AV_PIX_FMT_GRAY8, AV_PIX_FMT_NONE
     },
     .priv_class     = &lhe_class,
 };
