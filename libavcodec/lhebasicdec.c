@@ -18,7 +18,7 @@ typedef struct LheState {
 static av_cold int lhe_decode_init(AVCodecContext *avctx)
 {
     LheState *s = avctx->priv_data;
-    avctx->pix_fmt = AV_PIX_FMT_YUYV422;
+    avctx->pix_fmt = AV_PIX_FMT_YUV444P;
 
     s->frame = av_frame_alloc();
     if (!s->frame)
@@ -29,9 +29,9 @@ static av_cold int lhe_decode_init(AVCodecContext *avctx)
     return 0;
 }
 
-static void lhe_decode_one_hop_per_pixel (AVFrame *frame, LheBasicPrec *prec, 
+static void lhe_decode_one_hop_per_pixel (LheBasicPrec *prec, uint8_t *image,
                                           const uint8_t *lhe_data, uint8_t first_color, 
-                                          uint32_t width, uint32_t height) {
+                                          uint32_t width, uint32_t height, int pix_size) {
        
     //Hops computation.
     bool small_hop, last_small_hop;
@@ -49,12 +49,8 @@ static void lhe_decode_one_hop_per_pixel (AVFrame *frame, LheBasicPrec *prec,
     pix                 = 0;            // pixel possition, from 0 to image size        
     r_max               = PARAM_R;        
     
-    const int pix_size = frame->linesize[0]/ height;
-
-    uint8_t * image = (uint8_t *)frame->data[0];
+    //uint8_t * image = frame->data[0];
  
-    av_log(NULL, AV_LOG_INFO, "Width %d Height %d Linesize %d \n", width, height, frame->linesize[0]);
-
     for (int y=0; y < height; y++)  {
         for (int x=0; x < width; x++)     {
             
@@ -139,27 +135,48 @@ static void lhe_decode_one_hop_per_pixel (AVFrame *frame, LheBasicPrec *prec,
 
 static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, AVPacket *avpkt)
 {
-    uint32_t first_color, width, height;
+    uint32_t width, height, image_size;
+    uint8_t *component_Y, *component_U, *component_V;
+    uint8_t first_pixel_Y, first_pixel_U, first_pixel_V;
     int ret;
+    
     LheState *s = avctx->priv_data;
     const uint8_t *lhe_data = avpkt->data;
-    int i, linesize, n;
-    uint8_t color = 100;
 
     width  = bytestream_get_le32(&lhe_data);
     height = bytestream_get_le32(&lhe_data);
-    first_color = bytestream_get_byte(&lhe_data); 
+    image_size = width * height;
+    
+    av_log(NULL, AV_LOG_INFO, "DECODING...Width %d Height %d \n", width, height);
+
+    first_pixel_Y = bytestream_get_byte(&lhe_data); 
+    first_pixel_U = bytestream_get_byte(&lhe_data); 
+    first_pixel_V = bytestream_get_byte(&lhe_data); 
 
     avctx->width  = width;
     avctx->height  = height;    
     
-    
+    //Allocates frame
     if ((ret = ff_get_buffer(avctx, s->frame, 0)) < 0)
         return ret;
 
-    lhe_decode_one_hop_per_pixel(s->frame, &s->prec, lhe_data, first_color, width, height);
+    const int pix_size = s->frame->linesize[0]/ width;
     
-    //lhe_fill(s->frame, color);
+    //Pointers to different color components
+    component_Y = s->frame->data[0];
+    component_U = s->frame->data[1];
+    component_V = s->frame->data[2];
+    
+    //Luminance
+    lhe_decode_one_hop_per_pixel(&s->prec, component_Y, lhe_data, first_pixel_Y, width, height, pix_size);
+    
+    //Chrominance U
+    lhe_data = lhe_data + image_size; 
+    lhe_decode_one_hop_per_pixel(&s->prec, component_U, lhe_data, first_pixel_U, width, height, pix_size);
+    
+    //Chrominance V
+    lhe_data = lhe_data + image_size;
+    lhe_decode_one_hop_per_pixel(&s->prec, component_V, lhe_data, first_pixel_V, width, height, pix_size);
     
     if ((ret = av_frame_ref(data, s->frame)) < 0)
         return ret;

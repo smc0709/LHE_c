@@ -29,8 +29,8 @@ static av_cold int lhe_encode_init(AVCodecContext *avctx)
 
 }
 
-static void lhe_encode_one_hop_per_pixel (LheBasicPrec *prec, const AVFrame *frame, uint8_t *component_prediction,
-                                              uint8_t *hops_buf)
+static void lhe_encode_one_hop_per_pixel (LheBasicPrec *prec, uint8_t *component_original_data, uint8_t *component_prediction,
+                                              uint8_t *hops_buf, int height, int width, int pix_size)
 {      
     //Hops computation.
     bool small_hop, last_small_hop;
@@ -40,10 +40,6 @@ static void lhe_encode_one_hop_per_pixel (LheBasicPrec *prec, const AVFrame *fra
     //Errors
     int min_error;      // error of predicted signal
     int error;          //computed error for each hop 
-    
-    const int height = frame -> height;
-    const int width = frame -> width;
-    const int pix_size = frame->linesize[0]/ height;
 
     small_hop = false;
     last_small_hop=false;          // indicates if last hop is small
@@ -59,7 +55,7 @@ static void lhe_encode_one_hop_per_pixel (LheBasicPrec *prec, const AVFrame *fra
             
             //av_log(NULL, AV_LOG_INFO, "Linesize %d Pix %d pix_sixe %d \n", frame->linesize[0], pix, pix_size);
 
-            original_color = frame->data[0][pix_size*pix];
+            original_color = component_original_data[pix_size*pix];
 
             //prediction of signal (predicted_luminance) , based on pixel's coordinates 
             //----------------------------------------------------------
@@ -207,19 +203,30 @@ static void lhe_print_data(AVFrame *picture)
 static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
                              const AVFrame *frame, int *got_packet)
 {
-    uint8_t *component_prediction, *buf, first_pixel_color;
-    uint32_t width, height;
+    uint8_t *component_Y, *component_U, *component_V;
+    uint8_t *component_prediction, *buf, first_pixel_Y, first_pixel_U, first_pixel_V;
+    int width, height;
     int image_size;
-    int ret, n_bytes, n_bytes_hops;
+    int ret, n_bytes, n_bytes_hops_Y, n_bytes_hops_U, n_bytes_hops_V;
     LheContext *s = avctx->priv_data;
 
-    width = (uint32_t) frame->width;
-    height = (uint32_t) frame->height;  
+    width = (int) frame->width;
+    height = (int) frame->height;  
     image_size = frame -> height * frame -> width;
-
-    n_bytes_hops = sizeof(uint8_t) * image_size;
-    n_bytes = n_bytes_hops + sizeof(first_pixel_color) 
-            + sizeof(width) + sizeof(height);
+    const int pix_size = frame->linesize[0]/ width;
+    
+    //Pointers to different color components
+    component_Y = frame->data[0];
+    component_U = frame->data[1];
+    component_V = frame->data[2];
+    
+    //File size
+    n_bytes_hops_Y = sizeof(uint8_t) * image_size;
+    n_bytes_hops_U = sizeof(uint8_t) * image_size;
+    n_bytes_hops_V = sizeof(uint8_t) * image_size;
+    n_bytes = n_bytes_hops_Y + n_bytes_hops_U + n_bytes_hops_V 
+              + sizeof(first_pixel_Y) + sizeof(first_pixel_U) + sizeof(first_pixel_V) 
+              + sizeof(width) + sizeof(height);
         
     //ff_alloc_packet2 reserves n_bytes of memory
     if ((ret = ff_alloc_packet2(avctx, pkt, n_bytes, 0)) < 0)
@@ -232,12 +239,27 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     bytestream_put_le32(&buf, height);  
     
     //save first pixel color 
-    first_pixel_color = frame->data[0][0];
-    bytestream_put_byte(&buf, first_pixel_color);
+    first_pixel_Y = component_Y[0];
+    first_pixel_U = component_U[0];
+    first_pixel_V = component_V[0];
+
+    bytestream_put_byte(&buf, first_pixel_Y);
+    bytestream_put_byte(&buf, first_pixel_U);
+    bytestream_put_byte(&buf, first_pixel_V);
+  
+    component_prediction = malloc(sizeof(uint8_t) * image_size);  
     
-    component_prediction = malloc(sizeof(uint8_t) * image_size);    
-    lhe_encode_one_hop_per_pixel(&s->prec, frame, component_prediction, buf); 
-    //lhe_print_data(frame);   
+    //Luminance
+    lhe_encode_one_hop_per_pixel(&s->prec, component_Y, component_prediction, buf, height, width, pix_size); 
+    
+    //Crominance U
+    buf = buf + image_size;
+    lhe_encode_one_hop_per_pixel(&s->prec, component_U, component_prediction, buf, height, width, pix_size); 
+
+    //Crominance V
+    buf = buf + image_size;
+    lhe_encode_one_hop_per_pixel(&s->prec, component_V, component_prediction, buf, height, width, pix_size);     
+    
     av_log(NULL, AV_LOG_INFO, "LHE Coding...buffer size %d \n", n_bytes);
 
     pkt->flags |= AV_PKT_FLAG_KEY;
@@ -275,7 +297,7 @@ AVCodec ff_lhe_encoder = {
     .encode2        = lhe_encode_frame,
     .close          = lhe_encode_close,
     .pix_fmts       = (const enum AVPixelFormat[]){
-        AV_PIX_FMT_YUYV422, AV_PIX_FMT_GRAY8, AV_PIX_FMT_NONE
+        AV_PIX_FMT_YUV444P, AV_PIX_FMT_GRAY8, AV_PIX_FMT_NONE
     },
     .priv_class     = &lhe_class,
 };
