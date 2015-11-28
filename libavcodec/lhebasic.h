@@ -48,6 +48,18 @@
 #define HOP_POS_3 7 // h3 
 #define HOP_POS_4 8 // h4 
 
+//File symbols
+#define SYM_HOP_O 0
+#define SYM_HOP_UP 1
+#define SYM_HOP_POS_1 2
+#define SYM_HOP_NEG_1 3
+#define SYM_HOP_POS_2 4 
+#define SYM_HOP_NEG_2 5
+#define SYM_HOP_POS_3 6
+#define SYM_HOP_NEG_3 7
+#define SYM_HOP_POS_4 8
+#define SYM_HOP_NEG_4 9
+
 typedef struct LheBasicPrec {
     uint8_t prec_luminance[H1_RANGE][Y_COMPONENT][RATIO][NUMBER_OF_HOPS]; // precomputed luminance component
     uint8_t prec_luminance_center [H1_RANGE][Y_COMPONENT][RATIO][NUMBER_OF_HOPS];

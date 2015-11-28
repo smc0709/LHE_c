@@ -29,8 +29,57 @@ static av_cold int lhe_encode_init(AVCodecContext *avctx)
 
 }
 
+static void lhe_translate_hop_into_symbol (uint8_t * symbols_hops, uint8_t *hops, int pix, int pix_size, int width) {
+    uint8_t hop, symbol;
+    bool hop_found;
+    
+    hop_found = false;  
+    hop = hops[pix];
+    
+    if (hop == HOP_0) {
+        symbol = SYM_HOP_O;
+        hop_found = true;
+    }
+    
+    if (!hop_found && pix > width && hops[pix-width]==hop) {
+        symbol = SYM_HOP_UP;
+        hop_found = true;
+    }
+
+    if (!hop_found) {
+        switch (hop) {
+            case HOP_POS_1:
+                symbol = SYM_HOP_POS_1;
+                break;
+            case HOP_NEG_1:
+                symbol = SYM_HOP_NEG_1;
+                break;
+            case HOP_POS_2:
+                symbol = SYM_HOP_POS_2;
+                break;
+            case HOP_NEG_2:
+                symbol = SYM_HOP_NEG_2;
+                break;
+            case HOP_POS_3:
+                symbol = SYM_HOP_POS_3;
+                break;
+            case HOP_NEG_3:
+                symbol = SYM_HOP_NEG_3;
+                break;
+            case HOP_POS_4:
+                symbol = SYM_HOP_POS_4;
+                break;
+            case HOP_NEG_4:
+                symbol = SYM_HOP_NEG_4;        
+                break;
+        }
+    }
+    
+    symbols_hops[pix] = symbol;
+}
+
 static void lhe_encode_one_hop_per_pixel (LheBasicPrec *prec, uint8_t *component_original_data, uint8_t *component_prediction,
-                                              uint8_t *hops_buf, int height, int width, int pix_size)
+                                          uint8_t *hops, uint8_t *symbols_buf, int height, int width, int pix_size)
 {      
     //Hops computation.
     bool small_hop, last_small_hop;
@@ -151,7 +200,8 @@ static void lhe_encode_one_hop_per_pixel (LheBasicPrec *prec, uint8_t *component
                 component_prediction[pix]=prec -> prec_luminance[hop_1][predicted_luminance][r_max][hop_number];
             }
 
-            hops_buf[pix]=hop_number; 
+            hops[pix]=hop_number; 
+            lhe_translate_hop_into_symbol(symbols_buf, hops, pix, pix_size, width);
 
             //tunning hop1 for the next hop ( "h1 adaptation")
             //------------------------------------------------
@@ -204,7 +254,7 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
                              const AVFrame *frame, int *got_packet)
 {
     uint8_t *component_Y, *component_U, *component_V;
-    uint8_t *component_prediction, *buf, first_pixel_Y, first_pixel_U, first_pixel_V;
+    uint8_t *component_prediction, *hops, *buf, first_pixel_Y, first_pixel_U, first_pixel_V;
     int width, height;
     int image_size;
     int ret, n_bytes, n_bytes_hops_Y, n_bytes_hops_U, n_bytes_hops_V;
@@ -248,17 +298,18 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     bytestream_put_byte(&buf, first_pixel_V);
   
     component_prediction = malloc(sizeof(uint8_t) * image_size);  
+    hops = malloc(sizeof(uint8_t) * image_size);
     
     //Luminance
-    lhe_encode_one_hop_per_pixel(&s->prec, component_Y, component_prediction, buf, height, width, pix_size); 
+    lhe_encode_one_hop_per_pixel(&s->prec, component_Y, component_prediction, hops, buf, height, width, pix_size); 
     
     //Crominance U
     buf = buf + image_size;
-    lhe_encode_one_hop_per_pixel(&s->prec, component_U, component_prediction, buf, height, width, pix_size); 
+    lhe_encode_one_hop_per_pixel(&s->prec, component_U, component_prediction, hops, buf, height, width, pix_size); 
 
     //Crominance V
     buf = buf + image_size;
-    lhe_encode_one_hop_per_pixel(&s->prec, component_V, component_prediction, buf, height, width, pix_size);     
+    lhe_encode_one_hop_per_pixel(&s->prec, component_V, component_prediction, hops, buf, height, width, pix_size);     
     
     av_log(NULL, AV_LOG_INFO, "LHE Coding...buffer size %d \n", n_bytes);
 
