@@ -12,6 +12,9 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <math.h>
+#include <stdio.h>
+#include <sys/time.h>
+#include "huffman.h"
 
 //Configuration 
 #define MIDDLE_VALUE false
@@ -60,10 +63,22 @@
 #define SYM_HOP_POS_4 8
 #define SYM_HOP_NEG_4 9
 
+//Huffman
+#define LHE_MAX_HUFF_SIZE 10
+#define LHE_BITS 10
+#define LHE_MAX  ((10 + LHE_BITS - 1) / LHE_BITS)
+
+static const uint8_t lhe_huff_coeff_map[] = {
+    SYM_HOP_O, SYM_HOP_UP, SYM_HOP_POS_1, SYM_HOP_NEG_1, SYM_HOP_POS_2, SYM_HOP_NEG_2,
+    SYM_HOP_POS_3, SYM_HOP_NEG_3,SYM_HOP_POS_4, SYM_HOP_NEG_4
+};
+
 typedef struct LheBasicPrec {
     uint8_t prec_luminance[H1_RANGE][Y_COMPONENT][RATIO][NUMBER_OF_HOPS]; // precomputed luminance component
     uint8_t prec_luminance_center [H1_RANGE][Y_COMPONENT][RATIO][NUMBER_OF_HOPS];
 } LheBasicPrec; 
+
+double time_diff(struct timeval x , struct timeval y);
 
 /**
  * Calculates color component value for each hop.

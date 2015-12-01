@@ -1,5 +1,16 @@
 #include "lhebasic.h"
 
+
+/**
+ * Tme diff function
+ */
+double time_diff(struct timeval x , struct timeval y)
+{ 
+    double timediff = 1000000*(y.tv_sec - x.tv_sec) + (y.tv_usec - x.tv_usec); /* in microseconds */
+     
+    return timediff;
+}
+
 /**
  * LHE Precomputation class
  * 

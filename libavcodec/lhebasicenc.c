@@ -13,7 +13,6 @@
 #include "put_bits.h"
 #include "bytestream.h"
 
-
 typedef struct LheContext {
     AVClass *class;    
     LheBasicPrec prec;
@@ -250,14 +249,63 @@ static void lhe_print_data(AVFrame *picture)
 
 }
 
+/**
+ * Comparator - our nodes should ascend by count
+ * but with preserved symbol order
+ */
+static int lhe_huff_cmp(const void *va, const void *vb)
+{
+    const Node *a = va, *b = vb;
+    return (a->count - b->count)*LHE_MAX_HUFF_SIZE + a->sym - b->sym;
+}
+
+static void lhe_build_huff_tree(AVCodecContext *avctx, uint8_t * symbols, int image_size, int pix_size)
+{
+    Node nodes[2*LHE_MAX_HUFF_SIZE];
+    VLC vlc;
+    int i, ret;
+    
+    LheContext *s = avctx->priv_data;
+    
+    //Initialize values
+    for (i=0; i<2*LHE_MAX_HUFF_SIZE; i++) 
+    {
+        nodes[i].count = 0;
+    }
+    
+    /* first compute probabilities from model */
+    for (i=0; i<image_size; i++) {
+        nodes[lhe_huff_coeff_map[symbols[i]]].count++;
+    }
+
+    /* then build the huffman tree according to probabilities */
+    if (ret = ff_huff_build_tree(avctx, &vlc, LHE_MAX_HUFF_SIZE, LHE_BITS,
+                                nodes, lhe_huff_cmp,
+                                FF_HUFFMAN_FLAG_HNODE_FIRST) < 0) 
+        return ret;
+
+     for (i=0; i<LHE_MAX_HUFF_SIZE*2; i++) 
+    {
+        av_log(NULL, AV_LOG_INFO, "nodes[%d]= %d sym %d n0 %d\n", i, nodes[i].count, nodes[i].sym, nodes[i].n0);
+
+    }
+    
+    ff_free_vlc(&vlc);
+
+}
+
 static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
                              const AVFrame *frame, int *got_packet)
 {
+
     uint8_t *component_Y, *component_U, *component_V;
-    uint8_t *component_prediction, *hops, *buf, first_pixel_Y, first_pixel_U, first_pixel_V;
+    uint8_t *component_prediction, *hops, *buf, *buf_tmp, first_pixel_Y, first_pixel_U, first_pixel_V;
     int width, height;
     int image_size;
     int ret, n_bytes, n_bytes_hops_Y, n_bytes_hops_U, n_bytes_hops_V;
+    
+    struct timeval before , after;
+
     LheContext *s = avctx->priv_data;
 
     width = (int) frame->width;
@@ -299,7 +347,9 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
   
     component_prediction = malloc(sizeof(uint8_t) * image_size);  
     hops = malloc(sizeof(uint8_t) * image_size);
-    
+
+    gettimeofday(&before , NULL);
+
     //Luminance
     lhe_encode_one_hop_per_pixel(&s->prec, component_Y, component_prediction, hops, buf, height, width, pix_size); 
     
@@ -309,9 +359,13 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
 
     //Crominance V
     buf = buf + image_size;
-    lhe_encode_one_hop_per_pixel(&s->prec, component_V, component_prediction, hops, buf, height, width, pix_size);     
+    lhe_encode_one_hop_per_pixel(&s->prec, component_V, component_prediction, hops, buf, height, width, pix_size);   
     
-    av_log(NULL, AV_LOG_INFO, "LHE Coding...buffer size %d \n", n_bytes);
+    gettimeofday(&after , NULL);
+
+    lhe_build_huff_tree(avctx, buf, image_size,pix_size);
+    
+    av_log(NULL, AV_LOG_INFO, "LHE Coding...buffer size %d CodingTime %.0lf \n", n_bytes, time_diff(before , after));
 
     pkt->flags |= AV_PKT_FLAG_KEY;
     *got_packet = 1;
