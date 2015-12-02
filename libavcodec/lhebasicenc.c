@@ -262,6 +262,8 @@ static int lhe_huff_cmp(const void *va, const void *vb)
 static void lhe_build_huff_tree(AVCodecContext *avctx, uint8_t * symbols, int image_size, int pix_size)
 {
     Node nodes[2*LHE_MAX_HUFF_SIZE];
+    int *codes [LHE_MAX_HUFF_SIZE];
+    int code, coded_symbols;
     VLC vlc;
     int i, ret;
     
@@ -284,14 +286,36 @@ static void lhe_build_huff_tree(AVCodecContext *avctx, uint8_t * symbols, int im
                                 FF_HUFFMAN_FLAG_HNODE_FIRST) < 0) 
         return ret;
 
-     for (i=0; i<LHE_MAX_HUFF_SIZE*2; i++) 
-    {
-        av_log(NULL, AV_LOG_INFO, "nodes[%d]= %d sym %d n0 %d\n", i, nodes[i].count, nodes[i].sym, nodes[i].n0);
-
+    ff_free_vlc(&vlc);
+    
+    coded_symbols = 0;
+    for (i=LHE_MAX_HUFF_SIZE*2 - 1; i>=0; i--) 
+    {   
+        if (coded_symbols == 0 && nodes[i].sym != -1)
+        {
+            code = 0;
+            coded_symbols++;
+        }
+        else if (coded_symbols==LHE_MAX_HUFF_SIZE && nodes[i].sym != -1) 
+        {
+            //Last symbol only changes last bit
+            code = code + 1;
+            coded_symbols++;
+        } 
+        else if (nodes[i].sym != -1) 
+        {
+            code = code * 10 + 10;
+            coded_symbols++;
+        }
+        
+        codes[nodes[i].sym] = code;
     }
     
-    ff_free_vlc(&vlc);
+     for (i=0; i<LHE_MAX_HUFF_SIZE; i++) 
+    {
+        av_log(NULL, AV_LOG_INFO, "huffman[%d]= %d \n", i, codes[i]);
 
+    }
 }
 
 static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
@@ -353,6 +377,8 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     //Luminance
     lhe_encode_one_hop_per_pixel(&s->prec, component_Y, component_prediction, hops, buf, height, width, pix_size); 
     
+    lhe_build_huff_tree(avctx, buf, image_size,pix_size);
+
     //Crominance U
     buf = buf + image_size;
     lhe_encode_one_hop_per_pixel(&s->prec, component_U, component_prediction, hops, buf, height, width, pix_size); 
@@ -362,8 +388,6 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     lhe_encode_one_hop_per_pixel(&s->prec, component_V, component_prediction, hops, buf, height, width, pix_size);   
     
     gettimeofday(&after , NULL);
-
-    lhe_build_huff_tree(avctx, buf, image_size,pix_size);
     
     av_log(NULL, AV_LOG_INFO, "LHE Coding...buffer size %d CodingTime %.0lf \n", n_bytes, time_diff(before , after));
 
