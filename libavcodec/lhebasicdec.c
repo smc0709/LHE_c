@@ -29,11 +29,19 @@ static av_cold int lhe_decode_init(AVCodecContext *avctx)
     return 0;
 }
 
-static uint8_t lhe_translate_symbol_into_hop (const uint8_t * lhe_data, uint8_t *hops, int pix, int pix_size, int width) {
+static void lhe_read_huffman_table (const uint8_t * lhe_data, uint8_t huffman) 
+{
+}
+
+static void lhe_read_file_symbols (const uint8_t * lhe_data, uint8_t symbols_Y, uint8_t symbols_U, uint8_t symbols_V) 
+{
+    
+}
+
+static uint8_t lhe_translate_symbol_into_hop (uint8_t * symbols, uint8_t *hops, int pix, int pix_size, int width) {
     uint8_t symbol, hop;
     
-    lhe_data+=pix;
-    symbol = bytestream_get_byte(&lhe_data);
+    symbol = symbols[pix];
 
     switch (symbol) {
         case SYM_HOP_O:
@@ -76,7 +84,7 @@ static uint8_t lhe_translate_symbol_into_hop (const uint8_t * lhe_data, uint8_t 
 }
 
 static void lhe_decode_one_hop_per_pixel (LheBasicPrec *prec, uint8_t *hops, uint8_t *image,
-                                          const uint8_t *lhe_data, uint8_t first_color, 
+                                          uint8_t *symbols, uint8_t first_color, 
                                           uint32_t width, uint32_t height, int pix_size) {
        
     //Hops computation.
@@ -99,7 +107,7 @@ static void lhe_decode_one_hop_per_pixel (LheBasicPrec *prec, uint8_t *hops, uin
     for (int y=0; y < height; y++)  {
         for (int x=0; x < width; x++)     {
             
-            hop = lhe_translate_symbol_into_hop(lhe_data, hops, pix, pix_size, width);
+            hop = lhe_translate_symbol_into_hop(symbols, hops, pix, pix_size, width);
        
             if ((y>0) &&(x>0) && x!=width-1)
             {
@@ -182,6 +190,7 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
 {
     uint32_t width, height, image_size;
     uint8_t *component_Y, *component_U, *component_V, *hops;
+    uint8_t *symbols_Y, *symbols_U, *symbols_V;
     uint8_t first_pixel_Y, first_pixel_U, first_pixel_V;
     int ret;
     
@@ -213,18 +222,24 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
     component_V = s->frame->data[2];
     
     //Hops array
+    symbols_Y = malloc(sizeof(uint8_t) * image_size);
+    symbols_U = malloc(sizeof(uint8_t) * image_size);
+    symbols_V = malloc(sizeof(uint8_t) * image_size);
+
     hops = malloc(sizeof(uint8_t) * image_size);
+    
+    lhe_read_file_symbols(lhe_data, symbols_Y, symbols_U, symbols_V);
 
     //Luminance
-    lhe_decode_one_hop_per_pixel(&s->prec, hops, component_Y, lhe_data, first_pixel_Y, width, height, pix_size);
+    lhe_decode_one_hop_per_pixel(&s->prec, hops, component_Y, symbols_Y, first_pixel_Y, width, height, pix_size);
     
     //Chrominance U
     lhe_data = lhe_data + image_size; 
-    lhe_decode_one_hop_per_pixel(&s->prec, hops, component_U, lhe_data, first_pixel_U, width, height, pix_size);
+    lhe_decode_one_hop_per_pixel(&s->prec, hops, component_U, symbols_U, first_pixel_U, width, height, pix_size);
     
     //Chrominance V
     lhe_data = lhe_data + image_size;
-    lhe_decode_one_hop_per_pixel(&s->prec, hops, component_V, lhe_data, first_pixel_V, width, height, pix_size);
+    lhe_decode_one_hop_per_pixel(&s->prec, hops, component_V, symbols_V, first_pixel_V, width, height, pix_size);
     
     if ((ret = av_frame_ref(data, s->frame)) < 0)
         return ret;
