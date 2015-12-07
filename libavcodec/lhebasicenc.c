@@ -12,6 +12,7 @@
 #include "internal.h"
 #include "put_bits.h"
 #include "bytestream.h"
+#include "cbrt_tablegen.h"
 
 typedef struct LheContext {
     AVClass *class;    
@@ -271,7 +272,8 @@ static int count_bits (int num) {
     return contador;
 }
 
-static int lhe_build_huff_tree(AVCodecContext *avctx, int *codes, uint8_t *symbols, int image_size, int pix_size)
+static int lhe_build_huff_tree(AVCodecContext *avctx, int *codes, uint8_t *symbols, 
+                               uint8_t *huffman, int image_size, int pix_size)
 {
     Node nodes[2*LHE_MAX_HUFF_SIZE];
     int code, coded_symbols, bits;
@@ -291,7 +293,7 @@ static int lhe_build_huff_tree(AVCodecContext *avctx, int *codes, uint8_t *symbo
     }
 
     /* then build the huffman tree according to probabilities */
-    if (ret = ff_huff_build_tree(avctx, &vlc, LHE_MAX_HUFF_SIZE, LHE_BITS,
+    if (ret = ff_huff_build_tree(avctx, &vlc, LHE_MAX_HUFF_SIZE, LHE_MAX_BITS,
                                 nodes, lhe_huff_cmp,
                                 FF_HUFFMAN_FLAG_HNODE_FIRST) < 0) 
         return ret;
@@ -308,7 +310,7 @@ static int lhe_build_huff_tree(AVCodecContext *avctx, int *codes, uint8_t *symbo
             {
                 code = 0;
             }
-            else if (coded_symbols == LHE_MAX_HUFF_SIZE) 
+            else if (coded_symbols == LHE_MAX_HUFF_SIZE-1) 
             {
                 //Last symbol only changes last bit
                 code = code + 1;
@@ -319,8 +321,9 @@ static int lhe_build_huff_tree(AVCodecContext *avctx, int *codes, uint8_t *symbo
             }
             
             codes[nodes[i].sym] = code;
+            huffman[coded_symbols] = nodes[i].sym;
             coded_symbols++;
-            bits+=nodes[i].count*count_bits(code);
+            bits+=nodes[i].count*count_bits(code); //bits number is symbol occurrence * symbol bits
 
         }     
     }
@@ -342,6 +345,7 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     PutBitContext pb;
     uint8_t *component_Y, *component_U, *component_V;
     uint8_t *component_prediction, *hops, *symbols_Y, *symbols_U, *symbols_V, *buf;
+    uint8_t *huffman_Y, *huffman_U, *huffman_V;
     uint8_t first_pixel_Y, first_pixel_U, first_pixel_V;
     int *codes_Y, *codes_U , *codes_V;
     int width, height;
@@ -365,6 +369,9 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
       
     component_prediction = malloc(sizeof(uint8_t) * image_size);  
     hops = malloc(sizeof(uint8_t) * image_size);
+    huffman_Y = malloc (sizeof(uint8_t) * LHE_MAX_HUFF_SIZE);
+    huffman_U = malloc (sizeof(uint8_t) * LHE_MAX_HUFF_SIZE);
+    huffman_V = malloc (sizeof(uint8_t) * LHE_MAX_HUFF_SIZE);
     symbols_Y = malloc(sizeof(uint8_t) * image_size); 
     symbols_U = malloc(sizeof(uint8_t) * image_size); 
     symbols_V = malloc(sizeof(uint8_t) * image_size); 
@@ -385,20 +392,20 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     
     gettimeofday(&after , NULL);
     
-    n_bits_hops_Y = lhe_build_huff_tree(avctx, codes_Y, symbols_Y, image_size, pix_size);
+    n_bits_hops_Y = lhe_build_huff_tree(avctx, codes_Y, symbols_Y, huffman_Y, image_size, pix_size);
     av_log(NULL, AV_LOG_INFO, "Componente_Y  %d bits %d \n", n_bits_hops_Y);
 
-    n_bits_hops_U = lhe_build_huff_tree(avctx, codes_U, symbols_U, image_size, pix_size);
+    n_bits_hops_U = lhe_build_huff_tree(avctx, codes_U, symbols_U, huffman_U, image_size, pix_size);
     av_log(NULL, AV_LOG_INFO, "Componente_U  %d bits \n", n_bits_hops_U);
 
-    n_bits_hops_V = lhe_build_huff_tree(avctx, codes_V, symbols_V, image_size, pix_size);
+    n_bits_hops_V = lhe_build_huff_tree(avctx, codes_V, symbols_V, huffman_V, image_size, pix_size);
     av_log(NULL, AV_LOG_INFO, "Componente_V  %d bits \n", n_bits_hops_V);
 
-    ret = n_bytes_components % 8;
+    ret = (n_bits_hops_Y + n_bits_hops_U + n_bits_hops_V) % 8;
     n_bytes_components = (n_bits_hops_Y + n_bits_hops_U + n_bits_hops_V + ret)/8;
 
     //File size
-    n_bytes = n_bytes_components 
+    n_bytes = n_bytes_components + sizeof (n_bytes_components)
               + sizeof(first_pixel_Y) + sizeof(first_pixel_U) + sizeof(first_pixel_V) 
               + sizeof(width) + sizeof(height);
               
@@ -421,7 +428,26 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     bytestream_put_byte(&buf, first_pixel_U);
     bytestream_put_byte(&buf, first_pixel_V);
     
-    init_put_bits(&pb, buf, n_bytes_components);
+    bytestream_put_le32(&buf, n_bytes_components);
+    
+    init_put_bits(&pb, buf, 3*LHE_HUFFMAN_TABLE_SIZE_BYTES + 24 + n_bytes_components );
+
+    for (i=0; i<LHE_MAX_HUFF_SIZE; i++)
+    {
+        put_bits(&pb, 4, huffman_Y[i]);
+    }
+    
+    for (i=0; i<LHE_MAX_HUFF_SIZE; i++)
+    {
+        put_bits(&pb, 4, huffman_U[i]);
+    }
+    
+        for (i=0; i<LHE_MAX_HUFF_SIZE; i++)
+    {
+        put_bits(&pb, 4, huffman_V[i]);
+    }
+    
+    put_bits(&pb, 24, 0);
     
     for (i=0; i<image_size; i++) 
     {

@@ -11,6 +11,7 @@ typedef struct LheState {
     AVClass *class;  
     LheBasicPrec prec;
     AVFrame * frame;
+    GetBitContext gb;
 } LheState;
 
 
@@ -29,12 +30,41 @@ static av_cold int lhe_decode_init(AVCodecContext *avctx)
     return 0;
 }
 
-static void lhe_read_huffman_table (const uint8_t * lhe_data, uint8_t huffman) 
-{
+static void lhe_read_huffman_table (const uint8_t *lhe_data, int *huffman) 
+{   
+    int i, code;
+    uint8_t symbol;
+    GetBitContext gb;
+    
+    init_get_bits(&gb, lhe_data, LHE_HUFFMAN_TABLE_SIZE_BITS);
+
+    
+    for (i=0; i< LHE_MAX_HUFF_SIZE; i++) 
+    {
+        symbol = get_bits(&gb, 4); 
+
+        if (i==0)
+        {
+            code = 0;
+        } else if (i == LHE_MAX_HUFF_SIZE-1)
+        {
+            code = code + 1;
+        } else 
+        {
+            code = code * 10 + 10;
+        }
+        
+        huffman[symbol] = code;
+        
+    }  
+    
 }
 
-static void lhe_read_file_symbols (const uint8_t * lhe_data, uint8_t symbols_Y, uint8_t symbols_U, uint8_t symbols_V) 
+static void lhe_read_file_symbols (GetBitContext gb, const uint8_t *lhe_data, uint32_t n_bytes_components, 
+                                   uint8_t symbols_Y, uint8_t symbols_U, uint8_t symbols_V) 
 {
+
+    
     
 }
 
@@ -188,13 +218,17 @@ static void lhe_decode_one_hop_per_pixel (LheBasicPrec *prec, uint8_t *hops, uin
 
 static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, AVPacket *avpkt)
 {
-    uint32_t width, height, image_size;
+    int i;
+    uint8_t *prueba;
+    uint32_t width, height, image_size, n_bytes_components;
     uint8_t *component_Y, *component_U, *component_V, *hops;
     uint8_t *symbols_Y, *symbols_U, *symbols_V;
+    int *huffman_Y, *huffman_U, *huffman_V;
     uint8_t first_pixel_Y, first_pixel_U, first_pixel_V;
     int ret;
     
     LheState *s = avctx->priv_data;
+    
     const uint8_t *lhe_data = avpkt->data;
 
     width  = bytestream_get_le32(&lhe_data);
@@ -207,6 +241,8 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
     first_pixel_U = bytestream_get_byte(&lhe_data); 
     first_pixel_V = bytestream_get_byte(&lhe_data); 
 
+    n_bytes_components = bytestream_get_le32(&lhe_data); 
+    
     avctx->width  = width;
     avctx->height  = height;    
     
@@ -221,14 +257,41 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
     component_U = s->frame->data[1];
     component_V = s->frame->data[2];
     
-    //Hops array
+    //Symbols array
     symbols_Y = malloc(sizeof(uint8_t) * image_size);
     symbols_U = malloc(sizeof(uint8_t) * image_size);
     symbols_V = malloc(sizeof(uint8_t) * image_size);
 
-    hops = malloc(sizeof(uint8_t) * image_size);
+    //Huffman array 
+    huffman_Y = malloc(sizeof(int) * LHE_MAX_HUFF_SIZE);
+    huffman_U = malloc(sizeof(int) * LHE_MAX_HUFF_SIZE);
+    huffman_V = malloc(sizeof(int) * LHE_MAX_HUFF_SIZE);
     
-    lhe_read_file_symbols(lhe_data, symbols_Y, symbols_U, symbols_V);
+    hops = malloc(sizeof(uint8_t) * image_size);
+        
+    lhe_read_huffman_table(lhe_data, huffman_Y);
+    lhe_data += LHE_HUFFMAN_TABLE_SIZE_BYTES;
+    lhe_read_huffman_table(lhe_data, huffman_U);
+    lhe_data += LHE_HUFFMAN_TABLE_SIZE_BYTES;
+    lhe_read_huffman_table(lhe_data, huffman_V);
+    lhe_data += LHE_HUFFMAN_TABLE_SIZE_BYTES;
+
+    for (i=0; i<LHE_MAX_HUFF_SIZE; i++) {
+        av_log(NULL, AV_LOG_INFO, "huffman_Y[%d] = %d \n",i, huffman_Y[i]);
+    }
+    
+    for (i=0; i<LHE_MAX_HUFF_SIZE; i++) {
+        av_log(NULL, AV_LOG_INFO, "huffman_U[%d] = %d \n",i, huffman_U[i]);
+    }
+
+    for (i=0; i<LHE_MAX_HUFF_SIZE; i++) {
+        av_log(NULL, AV_LOG_INFO, "huffman_V[%d] = %d \n", i, huffman_V[i]);
+    }
+    
+    av_log(NULL, AV_LOG_INFO, "DECODING...Width %d Height %d \n", width, height);
+
+
+    //lhe_read_file_symbols(s->gb, lhe_data, n_bytes_components, symbols_Y, symbols_U, symbols_V);
 
     //Luminance
     lhe_decode_one_hop_per_pixel(&s->prec, hops, component_Y, symbols_Y, first_pixel_Y, width, height, pix_size);
