@@ -5,8 +5,6 @@
 #include "bytestream.h"
 #include "internal.h"
 #include "lhebasic.h"
-#include "cbrt_tablegen.h"
-#include <../../opt/intel/intel-opencl-1.2-5.0.0.43/opencl-1.2-sdk-5.0.0.43/include/CL/cl_platform.h>
 
 typedef struct LheState {
     AVClass *class;  
@@ -58,43 +56,51 @@ static void lhe_read_huffman_table (LheState *s, int *huffman)
     
 }
 
-static uint8_t lhe_translate_huffman_into_symbol (int huffman_symbol) 
+static uint8_t lhe_translate_huffman_into_symbol (int huffman_symbol, int *huffman) 
 {
     uint8_t symbol;
     
-    switch (huffman_symbol)
+    if (huffman_symbol == huffman[SYM_HOP_O])
     {
-        case HUFFMAN_0:
-            symbol = SYM_HOP_O;
-            break;
-        case HUFFMAN_1:
-            symbol = SYM_HOP_UP;
-            break;
-        case HUFFMAN_2:
-            symbol = SYM_HOP_POS_1;
-            break;
-        case HUFFMAN_3:
-            symbol = SYM_HOP_NEG_1;
-            break;
-        case HUFFMAN_4:
-            symbol = SYM_HOP_POS_2;
-            break;
-        case HUFFMAN_5:
-            symbol = SYM_HOP_NEG_2;
-            break;
-        case HUFFMAN_6:
-            symbol = SYM_HOP_POS_3;
-            break;
-        case HUFFMAN_7:
-            symbol = SYM_HOP_NEG_3;
-            break;
-        case HUFFMAN_8:
-            symbol = SYM_HOP_POS_4;
-            break;
-        case HUFFMAN_9:
-            symbol = SYM_HOP_NEG_4;
-            break;
+        symbol = SYM_HOP_O;
+    } 
+    else if (huffman_symbol == huffman[SYM_HOP_UP])
+    {
+        symbol = SYM_HOP_UP;
+    } 
+    else if (huffman_symbol == huffman[SYM_HOP_POS_1])
+    {
+        symbol = SYM_HOP_POS_1;
+    } 
+    else if (huffman_symbol == huffman[SYM_HOP_NEG_1])
+    {
+        symbol = SYM_HOP_NEG_1;
+    } 
+    else if (huffman_symbol == huffman[SYM_HOP_POS_2])
+    {
+        symbol = SYM_HOP_POS_2;
     }
+    else if (huffman_symbol == huffman[SYM_HOP_NEG_2])
+    {
+        symbol = SYM_HOP_NEG_2;
+    }
+    else if (huffman_symbol == huffman[SYM_HOP_POS_3])
+    {
+        symbol = SYM_HOP_POS_3;
+    }
+    else if (huffman_symbol == huffman[SYM_HOP_NEG_3])
+    {
+        symbol = SYM_HOP_NEG_3;
+    } 
+    else if (huffman_symbol == huffman[SYM_HOP_POS_4])
+    {
+        symbol = SYM_HOP_POS_4;
+    } 
+    else if (huffman_symbol == huffman[SYM_HOP_NEG_4])
+    {
+        symbol = SYM_HOP_NEG_4;       
+    }
+    
     
     return symbol;
     
@@ -116,7 +122,7 @@ static void lhe_read_file_symbols (LheState *s, uint32_t image_size, int *huffma
         
         if (bit == 1 && count_bits(huffman_symbol) == LHE_MAX_BITS-1) 
         {
-            symbols[decoded_symbols] = lhe_translate_huffman_into_symbol(huffman_symbol*10 + 1);
+            symbols[decoded_symbols] = lhe_translate_huffman_into_symbol(huffman_symbol*10 + 1, huffman);
             huffman_symbol = 0;
             decoded_symbols++;
         }
@@ -125,10 +131,11 @@ static void lhe_read_file_symbols (LheState *s, uint32_t image_size, int *huffma
             huffman_symbol = huffman_symbol * 10 + 1;
         } else 
         {
-            symbols[decoded_symbols] = lhe_translate_huffman_into_symbol(huffman_symbol*10);
+            symbols[decoded_symbols] = lhe_translate_huffman_into_symbol(huffman_symbol*10, huffman);
             huffman_symbol = 0;
             decoded_symbols++;
         }
+        
     }  
 }
 

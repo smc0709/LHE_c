@@ -70,16 +70,6 @@
 #define LHE_HUFFMAN_NODE_BITS 4
 #define LHE_HUFFMAN_TABLE_OFFSET 2
 #define LHE_MAX_BITS 9
-#define HUFFMAN_0 0
-#define HUFFMAN_1 10
-#define HUFFMAN_2 110
-#define HUFFMAN_3 1110
-#define HUFFMAN_4 11110
-#define HUFFMAN_5 111110
-#define HUFFMAN_6 1111110
-#define HUFFMAN_7 11111110
-#define HUFFMAN_8 111111110
-#define HUFFMAN_9 111111111
 
 static const uint8_t lhe_huff_coeff_map[] = {
     SYM_HOP_O, SYM_HOP_UP, SYM_HOP_POS_1, SYM_HOP_NEG_1, SYM_HOP_POS_2, SYM_HOP_NEG_2,

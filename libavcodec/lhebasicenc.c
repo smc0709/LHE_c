@@ -77,6 +77,7 @@ static void lhe_translate_hop_into_symbol (uint8_t * symbols_hops, uint8_t *hops
     }
     
     symbols_hops[pix] = symbol;
+    
 }
 
 static void lhe_encode_one_hop_per_pixel (LheBasicPrec *prec, uint8_t *component_original_data, uint8_t *component_prediction,
