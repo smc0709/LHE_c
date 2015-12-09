@@ -17,6 +17,7 @@
 typedef struct LheContext {
     AVClass *class;    
     LheBasicPrec prec;
+    PutBitContext pb;
 } LheContext;
 
 static av_cold int lhe_encode_init(AVCodecContext *avctx)
@@ -260,18 +261,6 @@ static int lhe_huff_cmp(const void *va, const void *vb)
     return (a->count - b->count)*LHE_MAX_HUFF_SIZE + a->sym - b->sym;
 }
 
-static int count_bits (int num) {
-    int contador=1;
- 
-    while(num/10>0)
-    {
-        num=num/10;
-        contador++;
-    }
-
-    return contador;
-}
-
 static int lhe_build_huff_tree(AVCodecContext *avctx, int *codes, uint8_t *symbols, 
                                uint8_t *huffman, int image_size, int pix_size)
 {
@@ -339,14 +328,41 @@ static int lhe_build_huff_tree(AVCodecContext *avctx, int *codes, uint8_t *symbo
     return bits;
 }
 
+static void lhe_put_bits (LheContext *s, int bits) 
+{
+    int i, count;
+    uint8_t *bit;
+    int original_bits;
+    
+    
+    original_bits = bits;
+    count = count_bits(bits);
+    bit = malloc(sizeof(uint8_t) * count);    
+    
+    i = count-1;
+    while (i>=0)
+    {
+        bit[i] = bits % 10;
+        bits = bits / 10;
+        i--;
+    }
+    
+    for (i=0; i<count; i++) 
+    {
+        put_bits(&s->pb, 1, bit[i]);
+    }
+    
+    av_freep(&bit);
+}
+
 static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
                              const AVFrame *frame, int *got_packet)
 {
-    PutBitContext pb;
     uint8_t *component_Y, *component_U, *component_V;
     uint8_t *component_prediction, *hops, *symbols_Y, *symbols_U, *symbols_V, *buf;
     uint8_t *huffman_Y, *huffman_U, *huffman_V;
     uint8_t first_pixel_Y, first_pixel_U, first_pixel_V;
+    uint8_t file_offset;
     int *codes_Y, *codes_U , *codes_V;
     int width, height;
     int image_size;
@@ -403,12 +419,17 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
 
     ret = (n_bits_hops_Y + n_bits_hops_U + n_bits_hops_V) % 8;
     n_bytes_components = (n_bits_hops_Y + n_bits_hops_U + n_bits_hops_V + ret)/8;
-
+    
     //File size
-    n_bytes = n_bytes_components + sizeof (n_bytes_components)
-              + sizeof(first_pixel_Y) + sizeof(first_pixel_U) + sizeof(first_pixel_V) 
-              + sizeof(width) + sizeof(height);
+    n_bytes = sizeof(width) + sizeof(height) //width and height
+              + sizeof(first_pixel_Y) + sizeof(first_pixel_U) + sizeof(first_pixel_V) //first pixel value
+              + sizeof (n_bytes) + 
+              + 3 * LHE_HUFFMAN_TABLE_SIZE_BYTES + //huffman trees
+              + n_bytes_components; //components
               
+    file_offset = ((n_bytes * 8) + LHE_HUFFMAN_TABLE_OFFSET) % 32;
+    n_bytes = ((n_bytes * 8) + file_offset)/8;
+    
     //ff_alloc_packet2 reserves n_bytes of memory
     if ((ret = ff_alloc_packet2(avctx, pkt, n_bytes, 0)) < 0)
         return ret;
@@ -428,45 +449,47 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     bytestream_put_byte(&buf, first_pixel_U);
     bytestream_put_byte(&buf, first_pixel_V);
     
-    bytestream_put_le32(&buf, n_bytes_components);
+    bytestream_put_le32(&buf, n_bytes);
     
-    init_put_bits(&pb, buf, 3*LHE_HUFFMAN_TABLE_SIZE_BYTES + 24 + n_bytes_components );
+    init_put_bits(&s->pb, buf, 3*LHE_HUFFMAN_TABLE_SIZE_BYTES + n_bytes_components );
 
     for (i=0; i<LHE_MAX_HUFF_SIZE; i++)
     {
-        put_bits(&pb, 4, huffman_Y[i]);
+        put_bits(&s->pb, LHE_HUFFMAN_NODE_BITS, huffman_Y[i]);
     }
     
     for (i=0; i<LHE_MAX_HUFF_SIZE; i++)
     {
-        put_bits(&pb, 4, huffman_U[i]);
+        put_bits(&s->pb, LHE_HUFFMAN_NODE_BITS, huffman_U[i]);
     }
     
         for (i=0; i<LHE_MAX_HUFF_SIZE; i++)
     {
-        put_bits(&pb, 4, huffman_V[i]);
+        put_bits(&s->pb, LHE_HUFFMAN_NODE_BITS, huffman_V[i]);
     }
     
-    put_bits(&pb, 24, 0);
-    
+    put_bits(&s->pb, LHE_HUFFMAN_TABLE_OFFSET, 0);
+
     for (i=0; i<image_size; i++) 
     {
         bits = codes_Y[symbols_Y[i]];
-        put_bits(&pb, count_bits(bits), bits);
+        lhe_put_bits(s , bits);
     }
     
     for (i=0; i<image_size; i++) 
     {
         bits = codes_U[symbols_U[i]];
-        put_bits(&pb, count_bits(bits), bits);
+        lhe_put_bits(s , bits);
     }
     
     for (i=0; i<image_size; i++) 
     {
         bits = codes_V[symbols_V[i]];
-        put_bits(&pb, count_bits(bits), bits);
+        lhe_put_bits(s , bits);
     }
     
+    put_bits(&s->pb, file_offset, 0);
+      
     av_log(NULL, AV_LOG_INFO, "LHE Coding...buffer size %d CodingTime %.0lf \n", n_bytes, time_diff(before , after));
 
     pkt->flags |= AV_PKT_FLAG_KEY;

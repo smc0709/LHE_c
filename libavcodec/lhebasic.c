@@ -2,6 +2,21 @@
 
 
 /**
+ * Count bits function
+ */
+int count_bits (int num) {
+    int contador=1;
+ 
+    while(num/10>0)
+    {
+        num=num/10;
+        contador++;
+    }
+
+    return contador;
+}
+
+/**
  * Tme diff function
  */
 double time_diff(struct timeval x , struct timeval y)

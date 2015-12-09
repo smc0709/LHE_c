@@ -6,6 +6,7 @@
 #include "internal.h"
 #include "lhebasic.h"
 #include "cbrt_tablegen.h"
+#include <../../opt/intel/intel-opencl-1.2-5.0.0.43/opencl-1.2-sdk-5.0.0.43/include/CL/cl_platform.h>
 
 typedef struct LheState {
     AVClass *class;  
@@ -30,18 +31,15 @@ static av_cold int lhe_decode_init(AVCodecContext *avctx)
     return 0;
 }
 
-static void lhe_read_huffman_table (const uint8_t *lhe_data, int *huffman) 
+static void lhe_read_huffman_table (LheState *s, int *huffman) 
 {   
     int i, code;
-    uint8_t symbol;
-    GetBitContext gb;
-    
-    init_get_bits(&gb, lhe_data, LHE_HUFFMAN_TABLE_SIZE_BITS);
+    uint8_t symbol;    
 
     
     for (i=0; i< LHE_MAX_HUFF_SIZE; i++) 
     {
-        symbol = get_bits(&gb, 4); 
+        symbol = get_bits(&s->gb, LHE_HUFFMAN_NODE_BITS); 
 
         if (i==0)
         {
@@ -60,12 +58,78 @@ static void lhe_read_huffman_table (const uint8_t *lhe_data, int *huffman)
     
 }
 
-static void lhe_read_file_symbols (GetBitContext gb, const uint8_t *lhe_data, uint32_t n_bytes_components, 
-                                   uint8_t symbols_Y, uint8_t symbols_U, uint8_t symbols_V) 
+static uint8_t lhe_translate_huffman_into_symbol (int huffman_symbol) 
 {
+    uint8_t symbol;
+    
+    switch (huffman_symbol)
+    {
+        case HUFFMAN_0:
+            symbol = SYM_HOP_O;
+            break;
+        case HUFFMAN_1:
+            symbol = SYM_HOP_UP;
+            break;
+        case HUFFMAN_2:
+            symbol = SYM_HOP_POS_1;
+            break;
+        case HUFFMAN_3:
+            symbol = SYM_HOP_NEG_1;
+            break;
+        case HUFFMAN_4:
+            symbol = SYM_HOP_POS_2;
+            break;
+        case HUFFMAN_5:
+            symbol = SYM_HOP_NEG_2;
+            break;
+        case HUFFMAN_6:
+            symbol = SYM_HOP_POS_3;
+            break;
+        case HUFFMAN_7:
+            symbol = SYM_HOP_NEG_3;
+            break;
+        case HUFFMAN_8:
+            symbol = SYM_HOP_POS_4;
+            break;
+        case HUFFMAN_9:
+            symbol = SYM_HOP_NEG_4;
+            break;
+    }
+    
+    return symbol;
+    
+}
 
+static void lhe_read_file_symbols (LheState *s, uint32_t image_size, int *huffman, uint8_t *symbols) 
+{
+    uint8_t bit;
+    int i, huffman_symbol;
+    uint32_t decoded_symbols;
     
+    decoded_symbols = 0;
+    huffman_symbol = 0;
     
+    while (decoded_symbols<image_size) {
+        
+        bit = get_bits(&s->gb, 1); 
+                 
+        
+        if (bit == 1 && count_bits(huffman_symbol) == LHE_MAX_BITS-1) 
+        {
+            symbols[decoded_symbols] = lhe_translate_huffman_into_symbol(huffman_symbol*10 + 1);
+            huffman_symbol = 0;
+            decoded_symbols++;
+        }
+        else if (bit == 1) 
+        {
+            huffman_symbol = huffman_symbol * 10 + 1;
+        } else 
+        {
+            symbols[decoded_symbols] = lhe_translate_huffman_into_symbol(huffman_symbol*10);
+            huffman_symbol = 0;
+            decoded_symbols++;
+        }
+    }  
 }
 
 static uint8_t lhe_translate_symbol_into_hop (uint8_t * symbols, uint8_t *hops, int pix, int pix_size, int width) {
@@ -219,8 +283,7 @@ static void lhe_decode_one_hop_per_pixel (LheBasicPrec *prec, uint8_t *hops, uin
 static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, AVPacket *avpkt)
 {
     int i;
-    uint8_t *prueba;
-    uint32_t width, height, image_size, n_bytes_components;
+    uint32_t width, height, image_size, n_bytes;
     uint8_t *component_Y, *component_U, *component_V, *hops;
     uint8_t *symbols_Y, *symbols_U, *symbols_V;
     int *huffman_Y, *huffman_U, *huffman_V;
@@ -241,7 +304,7 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
     first_pixel_U = bytestream_get_byte(&lhe_data); 
     first_pixel_V = bytestream_get_byte(&lhe_data); 
 
-    n_bytes_components = bytestream_get_le32(&lhe_data); 
+    n_bytes = bytestream_get_le32(&lhe_data); 
     
     avctx->width  = width;
     avctx->height  = height;    
@@ -269,12 +332,17 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
     
     hops = malloc(sizeof(uint8_t) * image_size);
         
-    lhe_read_huffman_table(lhe_data, huffman_Y);
-    lhe_data += LHE_HUFFMAN_TABLE_SIZE_BYTES;
-    lhe_read_huffman_table(lhe_data, huffman_U);
-    lhe_data += LHE_HUFFMAN_TABLE_SIZE_BYTES;
-    lhe_read_huffman_table(lhe_data, huffman_V);
-    lhe_data += LHE_HUFFMAN_TABLE_SIZE_BYTES;
+    n_bytes = n_bytes - 
+            (sizeof(width) + sizeof(height) //width and height
+            + sizeof(first_pixel_Y) + sizeof(first_pixel_U) + sizeof(first_pixel_V) //first pixel value
+            + sizeof (n_bytes));
+            
+    init_get_bits(&s->gb, lhe_data, n_bytes * 8);
+
+    lhe_read_huffman_table(s, huffman_Y);
+    lhe_read_huffman_table(s, huffman_U);
+    lhe_read_huffman_table(s, huffman_V);
+    get_bits(&s->gb, LHE_HUFFMAN_TABLE_OFFSET); 
 
     for (i=0; i<LHE_MAX_HUFF_SIZE; i++) {
         av_log(NULL, AV_LOG_INFO, "huffman_Y[%d] = %d \n",i, huffman_Y[i]);
@@ -288,20 +356,17 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
         av_log(NULL, AV_LOG_INFO, "huffman_V[%d] = %d \n", i, huffman_V[i]);
     }
     
-    av_log(NULL, AV_LOG_INFO, "DECODING...Width %d Height %d \n", width, height);
-
-
-    //lhe_read_file_symbols(s->gb, lhe_data, n_bytes_components, symbols_Y, symbols_U, symbols_V);
+    lhe_read_file_symbols(s, image_size, huffman_Y, symbols_Y);
+    lhe_read_file_symbols(s, image_size, huffman_U, symbols_U);
+    lhe_read_file_symbols(s, image_size, huffman_V, symbols_V);
 
     //Luminance
     lhe_decode_one_hop_per_pixel(&s->prec, hops, component_Y, symbols_Y, first_pixel_Y, width, height, pix_size);
     
     //Chrominance U
-    lhe_data = lhe_data + image_size; 
     lhe_decode_one_hop_per_pixel(&s->prec, hops, component_U, symbols_U, first_pixel_U, width, height, pix_size);
     
     //Chrominance V
-    lhe_data = lhe_data + image_size;
     lhe_decode_one_hop_per_pixel(&s->prec, hops, component_V, symbols_V, first_pixel_V, width, height, pix_size);
     
     if ((ret = av_frame_ref(data, s->frame)) < 0)
