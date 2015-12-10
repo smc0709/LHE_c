@@ -52,6 +52,7 @@
 #define HOP_POS_4 8 // h4 
 
 //File symbols
+#define NO_SYMBOL 20
 #define SYM_HOP_O 0
 #define SYM_HOP_UP 1
 #define SYM_HOP_POS_1 2

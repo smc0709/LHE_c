@@ -47,7 +47,7 @@ static void lhe_read_huffman_table (LheState *s, int *huffman)
             code = code + 1;
         } else 
         {
-            code = code * 10 + 10;
+            code |= 1<<i;
         }
         
         huffman[symbol] = code;
@@ -59,6 +59,8 @@ static void lhe_read_huffman_table (LheState *s, int *huffman)
 static uint8_t lhe_translate_huffman_into_symbol (int huffman_symbol, int *huffman) 
 {
     uint8_t symbol;
+    
+    symbol = NO_SYMBOL;
     
     if (huffman_symbol == huffman[SYM_HOP_O])
     {
@@ -108,35 +110,34 @@ static uint8_t lhe_translate_huffman_into_symbol (int huffman_symbol, int *huffm
 
 static void lhe_read_file_symbols (LheState *s, uint32_t image_size, int *huffman, uint8_t *symbols) 
 {
-    uint8_t bit;
+    uint8_t bit, symbol;
     int i, huffman_symbol;
     uint32_t decoded_symbols;
     
     decoded_symbols = 0;
     huffman_symbol = 0;
+    bit = 1;
     
     while (decoded_symbols<image_size) {
         
-        bit = get_bits(&s->gb, 1); 
-                 
+        huffman_symbol = (huffman_symbol<<1) | get_bits(&s->gb, 1); 
+        symbol = lhe_translate_huffman_into_symbol(huffman_symbol, huffman);        
+        if (decoded_symbols>image_size-100)         av_log(NULL, AV_LOG_INFO, "huffman_symbol[%d]= %d  \n", decoded_symbols, huffman_symbol);
         
-        if (bit == 1 && count_bits(huffman_symbol) == LHE_MAX_BITS-1) 
+        if (symbol != NO_SYMBOL) 
         {
-            symbols[decoded_symbols] = lhe_translate_huffman_into_symbol(huffman_symbol*10 + 1, huffman);
-            huffman_symbol = 0;
+            symbols[decoded_symbols] = symbol;
             decoded_symbols++;
-        }
-        else if (bit == 1) 
-        {
-            huffman_symbol = huffman_symbol * 10 + 1;
-        } else 
-        {
-            symbols[decoded_symbols] = lhe_translate_huffman_into_symbol(huffman_symbol*10, huffman);
             huffman_symbol = 0;
-            decoded_symbols++;
-        }
-        
-    }  
+        } 
+    }
+    
+    
+    for (i=0; i<100; i++)
+    {
+//        av_log(NULL, AV_LOG_INFO, "symbols[ %d]= %d \n", i, symbols[i]);
+
+    }
 }
 
 static uint8_t lhe_translate_symbol_into_hop (uint8_t * symbols, uint8_t *hops, int pix, int pix_size, int width) {
