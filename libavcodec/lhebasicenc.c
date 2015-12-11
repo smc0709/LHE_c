@@ -307,7 +307,7 @@ static int lhe_build_huff_tree(AVCodecContext *avctx, int *codes, uint8_t *symbo
             {
                 //Last symbol only changes last bit
                 code = code + 1;
-                huffman_length[nodes[i].sym] = LHE_MAX_HUFF_SIZE;
+                huffman_length[nodes[i].sym] = coded_symbols;
             }
             else
             {
@@ -436,7 +436,7 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
               + 3 * LHE_HUFFMAN_TABLE_SIZE_BYTES + //huffman trees
               + n_bytes_components; //components
               
-    file_offset = ((n_bytes * 8) + LHE_HUFFMAN_TABLE_OFFSET) % 32;
+    file_offset = (n_bytes * 8) % 32;
     n_bytes = ((n_bytes * 8) + file_offset)/8;
     
     //ff_alloc_packet2 reserves n_bytes of memory
@@ -477,15 +477,11 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
         put_bits(&s->pb, LHE_HUFFMAN_NODE_BITS, huffman_V[i]);
     }
     
-    put_bits(&s->pb, LHE_HUFFMAN_TABLE_OFFSET, 0);
-
     for (i=0; i<image_size; i++) 
     {
         bits = codes_Y[symbols_Y[i]];
         
         put_bits(&s->pb, huffman_length_Y[symbols_Y[i]] , bits);
-        if (i>image_size-100)         
-            av_log(NULL, AV_LOG_INFO, "symbols[%d]= %d code %d \n", i, symbols_Y[i], bits);
     }
     
     for (i=0; i<image_size; i++) 

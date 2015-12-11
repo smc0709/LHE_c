@@ -69,7 +69,6 @@
 #define LHE_HUFFMAN_TABLE_SIZE_BITS LHE_MAX_HUFF_SIZE * 4
 #define LHE_HUFFMAN_TABLE_SIZE_BYTES  LHE_HUFFMAN_TABLE_SIZE_BITS/ 8 //size in bytes
 #define LHE_HUFFMAN_NODE_BITS 4
-#define LHE_HUFFMAN_TABLE_OFFSET 2
 #define LHE_MAX_BITS 9
 
 static const uint8_t lhe_huff_coeff_map[] = {

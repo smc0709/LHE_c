@@ -122,7 +122,6 @@ static void lhe_read_file_symbols (LheState *s, uint32_t image_size, int *huffma
         
         huffman_symbol = (huffman_symbol<<1) | get_bits(&s->gb, 1); 
         symbol = lhe_translate_huffman_into_symbol(huffman_symbol, huffman);        
-        if (decoded_symbols>image_size-100)         av_log(NULL, AV_LOG_INFO, "huffman_symbol[%d]= %d  \n", decoded_symbols, huffman_symbol);
         
         if (symbol != NO_SYMBOL) 
         {
@@ -130,13 +129,6 @@ static void lhe_read_file_symbols (LheState *s, uint32_t image_size, int *huffma
             decoded_symbols++;
             huffman_symbol = 0;
         } 
-    }
-    
-    
-    for (i=0; i<100; i++)
-    {
-//        av_log(NULL, AV_LOG_INFO, "symbols[ %d]= %d \n", i, symbols[i]);
-
     }
 }
 
@@ -350,7 +342,6 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
     lhe_read_huffman_table(s, huffman_Y);
     lhe_read_huffman_table(s, huffman_U);
     lhe_read_huffman_table(s, huffman_V);
-    get_bits(&s->gb, LHE_HUFFMAN_TABLE_OFFSET); 
 
     for (i=0; i<LHE_MAX_HUFF_SIZE; i++) {
         av_log(NULL, AV_LOG_INFO, "huffman_Y[%d] = %d \n",i, huffman_Y[i]);
