@@ -37,16 +37,19 @@ static void lhe_translate_hop_into_symbol (uint8_t * symbols_hops, uint8_t *hops
     hop_found = false;  
     hop = hops[pix];
     
+    //First, check if hop is HOP_O
     if (hop == HOP_0) {
         symbol = SYM_HOP_O;
         hop_found = true;
     }
     
+    //Second, check if hop is HOP_UP
     if (!hop_found && pix > width && hops[pix-width]==hop) {
         symbol = SYM_HOP_UP;
         hop_found = true;
     }
 
+    //Third, look for the right hop
     if (!hop_found) {
         switch (hop) {
             case HOP_POS_1:
@@ -104,8 +107,6 @@ static void lhe_encode_one_hop_per_pixel (LheBasicPrec *prec, uint8_t *component
     for (int y=0; y < height; y++)  {
         for (int x=0; x < width; x++)  {
             
-            //av_log(NULL, AV_LOG_INFO, "Linesize %d Pix %d pix_sixe %d \n", frame->linesize[0], pix, pix_size);
-
             original_color = component_original_data[pix_size*pix];
 
             //prediction of signal (predicted_luminance) , based on pixel's coordinates 
@@ -235,23 +236,6 @@ static void lhe_encode_one_hop_per_pixel (LheBasicPrec *prec, uint8_t *component
     }//for y     
 }
 
-
-static void lhe_print_data(AVFrame *picture)
-{
-    int pix = 0;
-    uint8_t *p = (uint8_t *)picture->data[0];
-    uint8_t *p_end = p + (picture->linesize[0] / sizeof(uint8_t)) * picture->height;
-
-    av_log(NULL, AV_LOG_INFO, "linesize %d size %d height %d p %d p_end %d \n", picture->linesize[0], sizeof(uint8_t), picture->height, p, p_end);
-
-    for (; p < p_end; p++) {
-        if (pix<100) av_log(NULL, AV_LOG_INFO, "P[%d] = %d \n", pix, *p);
-        pix++;
-    }
-    
-
-}
-
 /**
  * Comparator - our nodes should ascend by count
  * but with preserved symbol order
@@ -278,12 +262,12 @@ static int lhe_build_huff_tree(AVCodecContext *avctx, int *codes, uint8_t *symbo
         nodes[i].count = 0;
     }
     
-    /* first compute probabilities from model */
+    //First compute probabilities from model
     for (i=0; i<image_size; i++) {
         nodes[lhe_huff_coeff_map[symbols[i]]].count++;
     }
 
-    /* then build the huffman tree according to probabilities */
+    //Then build the huffman tree according to probabilities
     if (ret = ff_huff_build_tree(avctx, &vlc, LHE_MAX_HUFF_SIZE, LHE_MAX_BITS,
                                 nodes, lhe_huff_cmp,
                                 FF_HUFFMAN_FLAG_HNODE_FIRST) < 0) 
@@ -320,112 +304,41 @@ static int lhe_build_huff_tree(AVCodecContext *avctx, int *codes, uint8_t *symbo
             coded_symbols++;
 
         }     
-    }
-    
-     
-     for (i=0; i<LHE_MAX_HUFF_SIZE; i++) 
-    {
-        av_log(NULL, AV_LOG_INFO, "huffman[%d]= %d length %d \n", i, codes[i], huffman_length[i] );
-
-    }
-   
+    }  
     
     return bits;
 }
 
-static void lhe_put_bits (LheContext *s, int bits) 
-{
-    int i, count;
-    uint8_t *bit;
-    int original_bits;
-    
-    
-    original_bits = bits;
-    count = count_bits(bits);
-    bit = malloc(sizeof(uint8_t) * count);    
-    
-    i = count-1;
-    while (i>=0)
-    {
-        bit[i] = bits % 10;
-        bits = bits / 10;
-        i--;
-    }
-    
-    for (i=0; i<count; i++) 
-    {
-        put_bits(&s->pb, 1, bit[i]);
-    }
-    
-    av_freep(&bit);
-}
-
-static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
-                             const AVFrame *frame, int *got_packet)
-{
-    uint8_t *component_Y, *component_U, *component_V;
-    uint8_t *component_prediction, *hops, *symbols_Y, *symbols_U, *symbols_V, *buf;
-    uint8_t *huffman_Y, *huffman_U, *huffman_V;
-    uint8_t *huffman_length_Y, *huffman_length_U, *huffman_length_V;
-    uint8_t first_pixel_Y, first_pixel_U, first_pixel_V;
+static int lhe_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt, 
+                               int image_size, int pix_size, int width, int height,
+                               uint8_t first_pixel_Y, uint8_t first_pixel_U, uint8_t first_pixel_V,
+                               uint8_t *symbols_Y, uint8_t *symbols_U, uint8_t *symbols_V) {
+  
+    uint8_t *buf;
     uint8_t file_offset;
-    int *codes_Y, *codes_U , *codes_V;
-    int width, height;
-    int image_size;
-    int bits, n_bytes, n_bytes_components, n_bits_hops_Y , n_bits_hops_U, n_bits_hops_V;
-    int ret, i; 
+    uint8_t *huffman_table_Y, *huffman_table_U, *huffman_table_V;
+    uint8_t *huffman_length_Y, *huffman_length_U, *huffman_length_V;
+    int *huffman_codes_Y, *huffman_codes_U , *huffman_codes_V;
+    int bits, n_bits_hops_Y , n_bits_hops_U, n_bits_hops_V, n_bytes, n_bytes_components;
+    int i,ret;
 
-    struct timeval before , after;
-
-    LheContext *s = avctx->priv_data;
-
-    width = (int) frame->width;
-    height = (int) frame->height;  
-    image_size = frame -> height * frame -> width;
-    const int pix_size = frame->linesize[0]/ width;
     
-    //Pointers to different color components
-    component_Y = frame->data[0];
-    component_U = frame->data[1];
-    component_V = frame->data[2];
-      
-    component_prediction = malloc(sizeof(uint8_t) * image_size);  
-    hops = malloc(sizeof(uint8_t) * image_size);
-    huffman_Y = malloc (sizeof(uint8_t) * LHE_MAX_HUFF_SIZE);
-    huffman_U = malloc (sizeof(uint8_t) * LHE_MAX_HUFF_SIZE);
-    huffman_V = malloc (sizeof(uint8_t) * LHE_MAX_HUFF_SIZE);
+    LheContext *s = avctx->priv_data;
+    
+    huffman_table_Y = malloc (sizeof(uint8_t) * LHE_MAX_HUFF_SIZE);
+    huffman_table_U = malloc (sizeof(uint8_t) * LHE_MAX_HUFF_SIZE);
+    huffman_table_V = malloc (sizeof(uint8_t) * LHE_MAX_HUFF_SIZE);
     huffman_length_Y = malloc (sizeof(uint8_t) * LHE_MAX_HUFF_SIZE);
     huffman_length_U = malloc (sizeof(uint8_t) * LHE_MAX_HUFF_SIZE);
     huffman_length_V = malloc (sizeof(uint8_t) * LHE_MAX_HUFF_SIZE);
-    symbols_Y = malloc(sizeof(uint8_t) * image_size); 
-    symbols_U = malloc(sizeof(uint8_t) * image_size); 
-    symbols_V = malloc(sizeof(uint8_t) * image_size); 
-    codes_Y = malloc (sizeof(int) * LHE_MAX_HUFF_SIZE);
-    codes_U = malloc (sizeof(int) * LHE_MAX_HUFF_SIZE);
-    codes_V = malloc (sizeof(int) * LHE_MAX_HUFF_SIZE);
+    huffman_codes_Y = malloc (sizeof(int) * LHE_MAX_HUFF_SIZE);
+    huffman_codes_U = malloc (sizeof(int) * LHE_MAX_HUFF_SIZE);
+    huffman_codes_V = malloc (sizeof(int) * LHE_MAX_HUFF_SIZE);
 
-    gettimeofday(&before , NULL);
-
-    //Luminance
-    lhe_encode_one_hop_per_pixel(&s->prec, component_Y, component_prediction, hops, symbols_Y, height, width, pix_size); 
-
-    //Crominance U
-    lhe_encode_one_hop_per_pixel(&s->prec, component_U, component_prediction, hops, symbols_U, height, width, pix_size); 
-
-    //Crominance V
-    lhe_encode_one_hop_per_pixel(&s->prec, component_V, component_prediction, hops, symbols_V, height, width, pix_size);   
+    n_bits_hops_Y = lhe_build_huff_tree(avctx, huffman_codes_Y, symbols_Y, huffman_table_Y, huffman_length_Y, image_size, pix_size);
+    n_bits_hops_U = lhe_build_huff_tree(avctx, huffman_codes_U, symbols_U, huffman_table_U, huffman_length_U, image_size, pix_size);
+    n_bits_hops_V = lhe_build_huff_tree(avctx, huffman_codes_V, symbols_V, huffman_table_V, huffman_length_V, image_size, pix_size);
     
-    gettimeofday(&after , NULL);
-    
-    n_bits_hops_Y = lhe_build_huff_tree(avctx, codes_Y, symbols_Y, huffman_Y, huffman_length_Y, image_size, pix_size);
-    av_log(NULL, AV_LOG_INFO, "Componente_Y  %d bits %d \n", n_bits_hops_Y);
-
-    n_bits_hops_U = lhe_build_huff_tree(avctx, codes_U, symbols_U, huffman_U, huffman_length_U, image_size, pix_size);
-    av_log(NULL, AV_LOG_INFO, "Componente_U  %d bits \n", n_bits_hops_U);
-
-    n_bits_hops_V = lhe_build_huff_tree(avctx, codes_V, symbols_V, huffman_V, huffman_length_V, image_size, pix_size);
-    av_log(NULL, AV_LOG_INFO, "Componente_V  %d bits \n", n_bits_hops_V);
-
     ret = (n_bits_hops_Y + n_bits_hops_U + n_bits_hops_V) % 8;
     n_bytes_components = (n_bits_hops_Y + n_bits_hops_U + n_bits_hops_V + ret)/8;
     
@@ -444,61 +357,105 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
         return ret;
 
     buf = pkt->data;    
-                
+        
     //save width and height
     bytestream_put_le32(&buf, width);
     bytestream_put_le32(&buf, height);  
-    
-    //save first pixel color 
-    first_pixel_Y = component_Y[0];
-    first_pixel_U = component_U[0];
-    first_pixel_V = component_V[0];
 
     bytestream_put_byte(&buf, first_pixel_Y);
     bytestream_put_byte(&buf, first_pixel_U);
     bytestream_put_byte(&buf, first_pixel_V);
-    
-    bytestream_put_le32(&buf, n_bytes);
-    
+        
     init_put_bits(&s->pb, buf, 3*LHE_HUFFMAN_TABLE_SIZE_BYTES + n_bytes_components );
 
+    //Write Huffman tables
     for (i=0; i<LHE_MAX_HUFF_SIZE; i++)
     {
-        put_bits(&s->pb, LHE_HUFFMAN_NODE_BITS, huffman_Y[i]);
+        put_bits(&s->pb, LHE_HUFFMAN_NODE_BITS, huffman_table_Y[i]);
     }
     
     for (i=0; i<LHE_MAX_HUFF_SIZE; i++)
     {
-        put_bits(&s->pb, LHE_HUFFMAN_NODE_BITS, huffman_U[i]);
+        put_bits(&s->pb, LHE_HUFFMAN_NODE_BITS, huffman_table_U[i]);
     }
     
         for (i=0; i<LHE_MAX_HUFF_SIZE; i++)
     {
-        put_bits(&s->pb, LHE_HUFFMAN_NODE_BITS, huffman_V[i]);
+        put_bits(&s->pb, LHE_HUFFMAN_NODE_BITS, huffman_table_V[i]);
     }
     
+    //Write image
     for (i=0; i<image_size; i++) 
     {
-        bits = codes_Y[symbols_Y[i]];
+        bits = huffman_codes_Y[symbols_Y[i]];
         
         put_bits(&s->pb, huffman_length_Y[symbols_Y[i]] , bits);
     }
     
     for (i=0; i<image_size; i++) 
     {        
-        bits = codes_U[symbols_U[i]];
+        bits = huffman_codes_U[symbols_U[i]];
         put_bits(&s->pb, huffman_length_U[symbols_U[i]] , bits);
         
     }
     
     for (i=0; i<image_size; i++) 
     {
-        bits = codes_V[symbols_V[i]];
+        bits = huffman_codes_V[symbols_V[i]];
         put_bits(&s->pb, huffman_length_V[symbols_V[i]] , bits);
     }
     
     put_bits(&s->pb, file_offset, 0);
+    
+    return n_bytes;
+}
+
+static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
+                             const AVFrame *frame, int *got_packet)
+{
+    uint8_t *component_Y, *component_U, *component_V;
+    uint8_t *component_prediction, *hops, *symbols_Y, *symbols_U, *symbols_V;
+    int width, height;
+    int image_size;
+    int ret, i, n_bytes; 
+
+    struct timeval before , after;
+
+    LheContext *s = avctx->priv_data;
+
+    width = (int) frame->width;
+    height = (int) frame->height;  
+    image_size = frame -> height * frame -> width;
+    const int pix_size = frame->linesize[0]/ width;
+    
+    //Pointers to different color components
+    component_Y = frame->data[0];
+    component_U = frame->data[1];
+    component_V = frame->data[2];
       
+    component_prediction = malloc(sizeof(uint8_t) * image_size);  
+    hops = malloc(sizeof(uint8_t) * image_size);
+    symbols_Y = malloc(sizeof(uint8_t) * image_size); 
+    symbols_U = malloc(sizeof(uint8_t) * image_size); 
+    symbols_V = malloc(sizeof(uint8_t) * image_size); 
+
+    gettimeofday(&before , NULL);
+
+    //Luminance
+    lhe_encode_one_hop_per_pixel(&s->prec, component_Y, component_prediction, hops, symbols_Y, height, width, pix_size); 
+
+    //Crominance U
+    lhe_encode_one_hop_per_pixel(&s->prec, component_U, component_prediction, hops, symbols_U, height, width, pix_size); 
+
+    //Crominance V
+    lhe_encode_one_hop_per_pixel(&s->prec, component_V, component_prediction, hops, symbols_V, height, width, pix_size);   
+    
+    gettimeofday(&after , NULL);  
+      
+    n_bytes = lhe_write_lhe_file(avctx, pkt,image_size,  pix_size,  width,  height,
+                                 component_Y[0],component_U[0],component_V[0], 
+                                 symbols_Y, symbols_U, symbols_V);
+    
     av_log(NULL, AV_LOG_INFO, "LHE Coding...buffer size %d CodingTime %.0lf \n", n_bytes, time_diff(before , after));
 
     pkt->flags |= AV_PKT_FLAG_KEY;

@@ -283,7 +283,7 @@ static void lhe_decode_one_hop_per_pixel (LheBasicPrec *prec, uint8_t *hops, uin
 static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, AVPacket *avpkt)
 {
     int i;
-    uint32_t width, height, image_size, n_bytes;
+    uint32_t width, height, image_size;
     uint8_t *component_Y, *component_U, *component_V, *hops;
     uint8_t *symbols_Y, *symbols_U, *symbols_V;
     int *huffman_Y, *huffman_U, *huffman_V;
@@ -298,13 +298,9 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
     height = bytestream_get_le32(&lhe_data);
     image_size = width * height;
     
-    av_log(NULL, AV_LOG_INFO, "DECODING...Width %d Height %d \n", width, height);
-
     first_pixel_Y = bytestream_get_byte(&lhe_data); 
     first_pixel_U = bytestream_get_byte(&lhe_data); 
     first_pixel_V = bytestream_get_byte(&lhe_data); 
-
-    n_bytes = bytestream_get_le32(&lhe_data); 
     
     avctx->width  = width;
     avctx->height  = height;    
@@ -330,30 +326,13 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
     huffman_U = malloc(sizeof(int) * LHE_MAX_HUFF_SIZE);
     huffman_V = malloc(sizeof(int) * LHE_MAX_HUFF_SIZE);
     
-    hops = malloc(sizeof(uint8_t) * image_size);
-        
-    n_bytes = n_bytes - 
-            (sizeof(width) + sizeof(height) //width and height
-            + sizeof(first_pixel_Y) + sizeof(first_pixel_U) + sizeof(first_pixel_V) //first pixel value
-            + sizeof (n_bytes));
+    hops = malloc(sizeof(uint8_t) * image_size);      
             
-    init_get_bits(&s->gb, lhe_data, n_bytes * 8);
+    init_get_bits(&s->gb, lhe_data, avpkt->size * 8);
 
     lhe_read_huffman_table(s, huffman_Y);
     lhe_read_huffman_table(s, huffman_U);
     lhe_read_huffman_table(s, huffman_V);
-
-    for (i=0; i<LHE_MAX_HUFF_SIZE; i++) {
-        av_log(NULL, AV_LOG_INFO, "huffman_Y[%d] = %d \n",i, huffman_Y[i]);
-    }
-    
-    for (i=0; i<LHE_MAX_HUFF_SIZE; i++) {
-        av_log(NULL, AV_LOG_INFO, "huffman_U[%d] = %d \n",i, huffman_U[i]);
-    }
-
-    for (i=0; i<LHE_MAX_HUFF_SIZE; i++) {
-        av_log(NULL, AV_LOG_INFO, "huffman_V[%d] = %d \n", i, huffman_V[i]);
-    }
     
     lhe_read_file_symbols(s, image_size, huffman_Y, symbols_Y);
     lhe_read_file_symbols(s, image_size, huffman_U, symbols_U);
@@ -368,6 +347,8 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
     //Chrominance V
     lhe_decode_one_hop_per_pixel(&s->prec, hops, component_V, symbols_V, first_pixel_V, width, height, pix_size);
     
+    av_log(NULL, AV_LOG_INFO, "DECODING...Width %d Height %d \n", width, height);
+
     if ((ret = av_frame_ref(data, s->frame)) < 0)
         return ret;
     
