@@ -21,8 +21,10 @@
 
 //Params for precomputation
 #define H1_RANGE 20
-#define Y_COMPONENT 256
-#define RATIO 50
+#define Y_MAX_COMPONENT 256
+#define R_MIN 20
+#define R_MAX 40
+#define RATIO R_MAX
 #define NUMBER_OF_HOPS 9
 #define SIGN 2
     
@@ -77,13 +79,14 @@ static const uint8_t lhe_huff_coeff_map[] = {
 };
 
 typedef struct LheBasicPrec {
-    uint8_t prec_luminance[H1_RANGE][Y_COMPONENT][RATIO][NUMBER_OF_HOPS]; // precomputed luminance component
-    uint8_t prec_luminance_center [H1_RANGE][Y_COMPONENT][RATIO][NUMBER_OF_HOPS];
+    uint8_t prec_luminance[H1_RANGE][Y_MAX_COMPONENT][RATIO][NUMBER_OF_HOPS]; // precomputed luminance component
+    uint8_t best_hop [Y_MAX_COMPONENT][H1_RANGE][Y_MAX_COMPONENT][RATIO]; //original color- h1 - prediction - r
 } LheBasicPrec; 
 
 double time_diff(struct timeval x , struct timeval y);
 int count_bits (int num);
 
+void lhe_init_best_hop (LheBasicPrec* prec, int hop0_Y, int hop_1, int r_max);
 /**
  * Calculates color component value for each hop.
  * Final color component ( luminance or chrominance) depends on hop1
@@ -93,12 +96,12 @@ int count_bits (int num);
  * and hi is the luminance distance from hop0_Y to hopi_Y
  */
 void lhe_init_hop_color_component_value (LheBasicPrec *prec, int hop0_Y, int hop1, int rmax,
-                                                uint8_t hop_neg_4 [H1_RANGE][Y_COMPONENT], 
-                                                uint8_t hop_neg_3 [H1_RANGE][Y_COMPONENT], 
-                                                uint8_t hop_neg_2 [H1_RANGE][Y_COMPONENT],
-                                                uint8_t hop_pos_2 [H1_RANGE][Y_COMPONENT],
-                                                uint8_t hop_pos_3 [H1_RANGE][Y_COMPONENT],
-                                                uint8_t hop_pos_4 [H1_RANGE][Y_COMPONENT]);
+                                                uint8_t hop_neg_4 [H1_RANGE][Y_MAX_COMPONENT], 
+                                                uint8_t hop_neg_3 [H1_RANGE][Y_MAX_COMPONENT], 
+                                                uint8_t hop_neg_2 [H1_RANGE][Y_MAX_COMPONENT],
+                                                uint8_t hop_pos_2 [H1_RANGE][Y_MAX_COMPONENT],
+                                                uint8_t hop_pos_3 [H1_RANGE][Y_MAX_COMPONENT],
+                                                uint8_t hop_pos_4 [H1_RANGE][Y_MAX_COMPONENT]);
 
 /**
  * Calculates color component value in the middle of the interval for each hop.
@@ -108,12 +111,12 @@ void lhe_init_hop_color_component_value (LheBasicPrec *prec, int hop0_Y, int hop
  * h0--)(-----h1----center-------------)(---------h2--------center----------------)
  */
 void lhe_init_hop_center_color_component_value (LheBasicPrec *prec, int hop0_Y, int hop1, int rmax,
-                                                    uint8_t hop_neg_4 [H1_RANGE][Y_COMPONENT], 
-                                                    uint8_t hop_neg_3 [H1_RANGE][Y_COMPONENT], 
-                                                    uint8_t hop_neg_2 [H1_RANGE][Y_COMPONENT],
-                                                    uint8_t hop_pos_2 [H1_RANGE][Y_COMPONENT],
-                                                    uint8_t hop_pos_3 [H1_RANGE][Y_COMPONENT],
-                                                    uint8_t hop_pos_4 [H1_RANGE][Y_COMPONENT]);
+                                                    uint8_t hop_neg_4 [H1_RANGE][Y_MAX_COMPONENT], 
+                                                    uint8_t hop_neg_3 [H1_RANGE][Y_MAX_COMPONENT], 
+                                                    uint8_t hop_neg_2 [H1_RANGE][Y_MAX_COMPONENT],
+                                                    uint8_t hop_pos_2 [H1_RANGE][Y_MAX_COMPONENT],
+                                                    uint8_t hop_pos_3 [H1_RANGE][Y_MAX_COMPONENT],
+                                                    uint8_t hop_pos_4 [H1_RANGE][Y_MAX_COMPONENT]);
 
 
 /**

@@ -143,72 +143,14 @@ static void lhe_encode_one_hop_per_pixel (LheBasicPrec *prec, uint8_t *component
                 predicted_luminance=0;  
             }
 
-            // end of center adjustment section 
-            //==================================       
-            error = 0;
-            min_error = 256;
-            
-            //Positive hops computation
-            //-------------------------
-            if (original_color - predicted_luminance>=0) 
-            {
-                for (int j=HOP_0;j<=HOP_POS_4;j++) 
-                {
-                        error= original_color - prec -> prec_luminance[hop_1][predicted_luminance][r_max][j];
-                        
-                        if (error<0) {
-                            error=-error;
-                        }
-                        
-                        if (error<min_error) 
-                        {
-                            hop_number=j;
-                            min_error=error;
-                            
-                        }
-                        else break;
-                }
-            }
-            
-            //Negative hops computation
-            //-------------------------
-            else 
-            {
-                for (int j=HOP_0;j>=HOP_NEG_4;j--) 
-                {
-                        error = prec -> prec_luminance[hop_1][predicted_luminance][r_max][j]-original_color;
-                        
-                        if (error<0) 
-                        {
-                            error = -error;
-                        }
-                        
-                        if (error<min_error) {
-                            hop_number=j;
-                            min_error=error;
-                        }
-                        else break;
-                }
-            }
-            
-
-            //assignment of final color value
-            //--------------------------------
-            if (MIDDLE_VALUE) 
-            {
-                component_prediction[pix]=prec -> prec_luminance_center[hop_1][predicted_luminance][r_max][hop_number];
-
-            } else 
-            {
-                component_prediction[pix]=prec -> prec_luminance[hop_1][predicted_luminance][r_max][hop_number];
-            }
-
-            hops[pix]=hop_number; 
+            hop_number = prec->best_hop[original_color][hop_1][predicted_luminance][r_max]; 
+            hops[pix]= hop_number;
             lhe_translate_hop_into_symbol(symbols_buf, hops, pix, pix_size, width);
+            component_prediction[pix]=prec -> prec_luminance[hop_1][predicted_luminance][r_max][hop_number];
+
 
             //tunning hop1 for the next hop ( "h1 adaptation")
             //------------------------------------------------
-            small_hop=false;
             if (hop_number<=HOP_POS_1 && hop_number>=HOP_NEG_1) 
             {
                 small_hop=true;// 4 is in the center, 4 is null hop

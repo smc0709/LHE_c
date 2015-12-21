@@ -239,15 +239,6 @@ static void lhe_decode_one_hop_per_pixel (LheBasicPrec *prec, uint8_t *hops, uin
             //This is the uncompressed image
             image[pix_size * pix]= prec -> prec_luminance[hop_1][predicted_luminance][r_max][hop];
             
-            if (MIDDLE_VALUE) 
-            {
-                image[pix_size * pix]=prec -> prec_luminance_center[hop_1][predicted_luminance][r_max][hop];
-
-            } else 
-            {
-                image[pix_size * pix]=prec -> prec_luminance[hop_1][predicted_luminance][r_max][hop];
-            }
-            
             //tunning hop1 for the next hop ( "h1 adaptation")
             //------------------------------------------------
             small_hop=false;
