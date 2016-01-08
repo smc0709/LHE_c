@@ -27,11 +27,19 @@ double time_diff(struct timeval x , struct timeval y)
 }
 
 /**
- * LHE Precomputation class
+ * LHE Precomputation 
  * 
  * Precomputation methods for both LHE encoder and decoder .
  */
-void lhe_init_hop_center_color_component_value (LheBasicPrec *prec, int hop0_Y, int hop1, int rmax,
+
+/**
+ * Calculates color component value in the middle of the interval for each hop.
+ * This method improves quality. Bassically this method init the value
+ * of luminance of hops by the intermediate value between hops frontiers.
+ *
+ * h0--)(-----h1----center-------------)(---------h2--------center----------------)
+ */
+static void lhe_init_hop_center_color_component_value (LheBasicPrec *prec, int hop0_Y, int hop1, int rmax,
                                                     uint8_t hop_neg_4 [H1_RANGE][Y_MAX_COMPONENT], 
                                                     uint8_t hop_neg_3 [H1_RANGE][Y_MAX_COMPONENT], 
                                                     uint8_t hop_neg_2 [H1_RANGE][Y_MAX_COMPONENT],
@@ -94,8 +102,15 @@ void lhe_init_hop_center_color_component_value (LheBasicPrec *prec, int hop0_Y, 
     }  
 }
     
-
-void lhe_init_hop_color_component_value (LheBasicPrec *prec, int hop0_Y, int hop1, int rmax,
+/**
+ * Calculates color component value for each hop.
+ * Final color component ( luminance or chrominance) depends on hop1
+ * Color component for negative hops is calculated as: hopi_Y = hop0_Y - hi
+ * Color component for positive hops is calculated as: hopi_Y = hop0_Y + hi
+ * where hop0_Y is hop0 component color value 
+ * and hi is the luminance distance from hop0_Y to hopi_Y
+ */
+static void lhe_init_hop_color_component_value (LheBasicPrec *prec, int hop0_Y, int hop1, int rmax,
                                                 uint8_t hop_neg_4 [H1_RANGE][Y_MAX_COMPONENT], 
                                                 uint8_t hop_neg_3 [H1_RANGE][Y_MAX_COMPONENT], 
                                                 uint8_t hop_neg_2 [H1_RANGE][Y_MAX_COMPONENT],
@@ -187,7 +202,7 @@ void lhe_init_hop_color_component_value (LheBasicPrec *prec, int hop0_Y, int hop
     }             
 }
 
-void lhe_init_best_hop(LheBasicPrec* prec, int hop0_Y, int hop_1, int r_max)
+static void lhe_init_best_hop(LheBasicPrec* prec, int hop0_Y, int hop_1, int r_max)
 {
 
     int j,original_color, error, min_error;
@@ -243,6 +258,33 @@ void lhe_init_best_hop(LheBasicPrec* prec, int hop0_Y, int hop_1, int r_max)
                 else 
                 {
                     break;
+                }
+            }
+        }
+    }
+}
+
+static void lhe_init_h1_adaptation (LheBasicPrec* prec) 
+{
+    uint8_t hop_prev, hop, x, hop_1; 
+    
+    for (hop_1=1; hop_1<H1_RANGE; hop_1++) 
+    {
+         for (hop_prev=0; hop_prev<NUMBER_OF_HOPS; hop_prev++)
+            {
+                for (hop = 0; hop<NUMBER_OF_HOPS; hop++) 
+                {
+           
+                if(hop<=HOP_POS_1 && hop>=HOP_NEG_1 && hop_prev<=HOP_POS_1 && hop_prev>=HOP_NEG_1)  {
+
+                    prec->h1_adaptation[hop_1][hop_prev][hop] = hop_1 - 1;
+                    
+                    if (hop_1<MIN_HOP_1) {
+                        prec->h1_adaptation[hop_1][hop_prev][hop] = MIN_HOP_1;
+                    } 
+                    
+                } else {
+                    prec->h1_adaptation[hop_1][hop_prev][hop] = MAX_HOP_1;
                 }
             }
         }
@@ -332,4 +374,7 @@ void lhe_init_cache (LheBasicPrec *prec)
             }
         }
     }
+    
+    //h1 adaptation cache
+    lhe_init_h1_adaptation (prec);
 }

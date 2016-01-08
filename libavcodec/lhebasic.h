@@ -81,42 +81,11 @@ static const uint8_t lhe_huff_coeff_map[] = {
 typedef struct LheBasicPrec {
     uint8_t prec_luminance[H1_RANGE][Y_MAX_COMPONENT][RATIO][NUMBER_OF_HOPS]; // precomputed luminance component
     uint8_t best_hop [Y_MAX_COMPONENT][H1_RANGE][Y_MAX_COMPONENT][RATIO]; //original color- h1 - prediction - r
+    uint8_t h1_adaptation [H1_RANGE][NUMBER_OF_HOPS][NUMBER_OF_HOPS]; //h1 adaptation cache
 } LheBasicPrec; 
 
 double time_diff(struct timeval x , struct timeval y);
 int count_bits (int num);
-
-void lhe_init_best_hop (LheBasicPrec* prec, int hop0_Y, int hop_1, int r_max);
-/**
- * Calculates color component value for each hop.
- * Final color component ( luminance or chrominance) depends on hop1
- * Color component for negative hops is calculated as: hopi_Y = hop0_Y - hi
- * Color component for positive hops is calculated as: hopi_Y = hop0_Y + hi
- * where hop0_Y is hop0 component color value 
- * and hi is the luminance distance from hop0_Y to hopi_Y
- */
-void lhe_init_hop_color_component_value (LheBasicPrec *prec, int hop0_Y, int hop1, int rmax,
-                                                uint8_t hop_neg_4 [H1_RANGE][Y_MAX_COMPONENT], 
-                                                uint8_t hop_neg_3 [H1_RANGE][Y_MAX_COMPONENT], 
-                                                uint8_t hop_neg_2 [H1_RANGE][Y_MAX_COMPONENT],
-                                                uint8_t hop_pos_2 [H1_RANGE][Y_MAX_COMPONENT],
-                                                uint8_t hop_pos_3 [H1_RANGE][Y_MAX_COMPONENT],
-                                                uint8_t hop_pos_4 [H1_RANGE][Y_MAX_COMPONENT]);
-
-/**
- * Calculates color component value in the middle of the interval for each hop.
- * This method improves quality. Bassically this method init the value
- * of luminance of hops by the intermediate value between hops frontiers.
- *
- * h0--)(-----h1----center-------------)(---------h2--------center----------------)
- */
-void lhe_init_hop_center_color_component_value (LheBasicPrec *prec, int hop0_Y, int hop1, int rmax,
-                                                    uint8_t hop_neg_4 [H1_RANGE][Y_MAX_COMPONENT], 
-                                                    uint8_t hop_neg_3 [H1_RANGE][Y_MAX_COMPONENT], 
-                                                    uint8_t hop_neg_2 [H1_RANGE][Y_MAX_COMPONENT],
-                                                    uint8_t hop_pos_2 [H1_RANGE][Y_MAX_COMPONENT],
-                                                    uint8_t hop_pos_3 [H1_RANGE][Y_MAX_COMPONENT],
-                                                    uint8_t hop_pos_4 [H1_RANGE][Y_MAX_COMPONENT]);
 
 
 /**
