@@ -237,7 +237,7 @@ static void lhe_decode_one_hop_per_pixel (LheBasicPrec *prec, uint8_t *hops, uin
             
             //assignment of component_prediction
             //This is the uncompressed image
-            image[pix_size * pix]= prec -> prec_luminance[hop_1][predicted_luminance][r_max][hop];
+            image[pix_size * pix]= prec -> prec_luminance[predicted_luminance][r_max][hop_1][hop];
             
             //tunning hop1 for the next hop ( "h1 adaptation")
             //------------------------------------------------

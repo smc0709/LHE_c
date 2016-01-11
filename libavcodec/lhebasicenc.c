@@ -139,7 +139,7 @@ static void lhe_encode_one_hop_per_pixel (LheBasicPrec *prec, uint8_t *component
             
             hop_number = prec->best_hop[r_max][hop_1][predicted_luminance][original_color]; 
             hops[pix]= hop_number;
-            component_prediction[pix]=prec -> prec_luminance[hop_1][predicted_luminance][r_max][hop_number];
+            component_prediction[pix]=prec -> prec_luminance[predicted_luminance][r_max][hop_1][hop_number];
 
 
             //tunning hop1 for the next hop ( "h1 adaptation")
