@@ -80,7 +80,7 @@ static const uint8_t lhe_huff_coeff_map[] = {
 
 typedef struct LheBasicPrec {
     uint8_t prec_luminance[H1_RANGE][Y_MAX_COMPONENT][RATIO][NUMBER_OF_HOPS]; // precomputed luminance component
-    uint8_t best_hop [Y_MAX_COMPONENT][H1_RANGE][Y_MAX_COMPONENT][RATIO]; //original color- h1 - prediction - r
+    uint8_t best_hop [RATIO][H1_RANGE][Y_MAX_COMPONENT][Y_MAX_COMPONENT]; //ratio - h1- prediction - original color
     uint8_t h1_adaptation [H1_RANGE][NUMBER_OF_HOPS][NUMBER_OF_HOPS]; //h1 adaptation cache
 } LheBasicPrec; 
 

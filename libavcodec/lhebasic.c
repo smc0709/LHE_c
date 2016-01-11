@@ -227,7 +227,7 @@ static void lhe_init_best_hop(LheBasicPrec* prec, int hop0_Y, int hop_1, int r_m
 
                 if (error<min_error) 
                 {
-                    prec->best_hop[original_color][hop_1][hop0_Y][r_max]=j;
+                    prec->best_hop[r_max][hop_1][hop0_Y][original_color]=j;
                     min_error=error;
                     
                 }
@@ -252,7 +252,7 @@ static void lhe_init_best_hop(LheBasicPrec* prec, int hop0_Y, int hop_1, int r_m
                 }
 
                 if (error<min_error) {
-                    prec->best_hop[original_color][hop_1][hop0_Y][r_max]=j;
+                    prec->best_hop[r_max][hop_1][hop0_Y][original_color]=j;
                     min_error=error;
                 }
                 else 
