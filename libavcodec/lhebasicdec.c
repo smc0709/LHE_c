@@ -354,6 +354,8 @@ static av_cold int lhe_decode_close(AVCodecContext *avctx)
     LheState *s = avctx->priv_data;
 
     av_freep(&s->prec.prec_luminance);
+    av_freep(&s->prec.best_hop);
+    
     av_frame_free(&s->frame);
 
     return 0;

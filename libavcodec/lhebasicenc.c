@@ -412,6 +412,7 @@ static int lhe_encode_close(AVCodecContext *avctx)
     LheContext *s = avctx->priv_data;
 
     av_freep(&s->prec.prec_luminance);
+    av_freep(&s->prec.best_hop);
 
     return 0;
 
