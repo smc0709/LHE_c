@@ -12,6 +12,7 @@
 #include "internal.h"
 #include "put_bits.h"
 #include "bytestream.h"
+#include "siprdata.h"
 
 typedef struct LheContext {
     AVClass *class;    
@@ -137,7 +138,7 @@ static void lhe_encode_one_hop_per_pixel (LheBasicPrec *prec, uint8_t *component
                 predicted_luminance=original_color;//first pixel always is perfectly predicted! :-)  
             }          
             
-            hop_number = prec->best_hop[r_max][hop_1][predicted_luminance][original_color]; 
+            hop_number = prec->best_hop[r_max][hop_1][original_color][predicted_luminance]; 
             hops[pix]= hop_number;
             component_prediction[pix]=prec -> prec_luminance[predicted_luminance][r_max][hop_1][hop_number];
 

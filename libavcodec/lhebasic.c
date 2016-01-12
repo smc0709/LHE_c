@@ -111,17 +111,17 @@ static void lhe_init_hop_center_color_component_value (LheBasicPrec *prec, int h
  * and hi is the luminance distance from hop0_Y to hopi_Y
  */
 static void lhe_init_hop_color_component_value (LheBasicPrec *prec, int hop0_Y, int hop1, int rmax,
-                                                uint8_t hop_neg_4 [H1_RANGE][Y_MAX_COMPONENT], 
-                                                uint8_t hop_neg_3 [H1_RANGE][Y_MAX_COMPONENT], 
-                                                uint8_t hop_neg_2 [H1_RANGE][Y_MAX_COMPONENT],
-                                                uint8_t hop_pos_2 [H1_RANGE][Y_MAX_COMPONENT],
-                                                uint8_t hop_pos_3 [H1_RANGE][Y_MAX_COMPONENT],
-                                                uint8_t hop_pos_4 [H1_RANGE][Y_MAX_COMPONENT])
+                                                uint8_t hop_neg_4 [Y_MAX_COMPONENT][H1_RANGE], 
+                                                uint8_t hop_neg_3 [Y_MAX_COMPONENT][H1_RANGE], 
+                                                uint8_t hop_neg_2 [Y_MAX_COMPONENT][H1_RANGE],
+                                                uint8_t hop_pos_2 [Y_MAX_COMPONENT][H1_RANGE],
+                                                uint8_t hop_pos_3 [Y_MAX_COMPONENT][H1_RANGE],
+                                                uint8_t hop_pos_4 [Y_MAX_COMPONENT][H1_RANGE])
 {
     //From most negative hop (pccr[hop1][hop0_Y][HOP_NEG_4]) to most possitive hop (pccr[hop1][hop0_Y][HOP_POS_4])
     
     //HOP -4
-    prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_NEG_4]= hop0_Y  - (uint8_t) hop_neg_4[hop1][hop0_Y] ; 
+    prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_NEG_4]= hop0_Y  - (uint8_t) hop_neg_4[hop0_Y][hop1] ; 
     
     if (prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_NEG_4]<=MIN_COMPONENT_VALUE) 
     { 
@@ -129,7 +129,7 @@ static void lhe_init_hop_color_component_value (LheBasicPrec *prec, int hop0_Y, 
     }
 
     //HOP-3
-    prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_NEG_3]= hop0_Y  - (uint8_t) hop_neg_3[hop1][hop0_Y]; 
+    prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_NEG_3]= hop0_Y  - (uint8_t) hop_neg_3[hop0_Y][hop1]; 
 
     if (prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_NEG_3] <= MIN_COMPONENT_VALUE) 
     {
@@ -138,7 +138,7 @@ static void lhe_init_hop_color_component_value (LheBasicPrec *prec, int hop0_Y, 
     }
 
     //HOP-2
-    prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_NEG_2]= hop0_Y  - (uint8_t) hop_neg_2[hop1][hop0_Y]; 
+    prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_NEG_2]= hop0_Y  - (uint8_t) hop_neg_2[hop0_Y][hop1]; 
 
     if (prec-> prec_luminance [hop0_Y][rmax][hop1][HOP_NEG_2] <= MIN_COMPONENT_VALUE) 
     { 
@@ -176,7 +176,7 @@ static void lhe_init_hop_color_component_value (LheBasicPrec *prec, int hop0_Y, 
     }
 
     //HOP2
-    prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_POS_2]= hop0_Y  + (uint8_t) hop_pos_2[hop1][hop0_Y]; 
+    prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_POS_2]= hop0_Y  + (uint8_t) hop_pos_2[hop0_Y][hop1]; 
 
     if (prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_POS_2]>MAX_COMPONENT_VALUE) 
     {
@@ -185,7 +185,7 @@ static void lhe_init_hop_color_component_value (LheBasicPrec *prec, int hop0_Y, 
     }
 
     //HOP3
-    prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_POS_3]= hop0_Y  + (uint8_t) hop_pos_3[hop1][hop0_Y]; 
+    prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_POS_3]= hop0_Y  + (uint8_t) hop_pos_3[hop0_Y][hop1]; 
 
     if (prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_POS_3]>MAX_COMPONENT_VALUE) 
     {
@@ -194,7 +194,7 @@ static void lhe_init_hop_color_component_value (LheBasicPrec *prec, int hop0_Y, 
     }
 
     //HOP4
-    prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_POS_4]= hop0_Y  + (uint8_t) hop_pos_4[hop1][hop0_Y]; 
+    prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_POS_4]= hop0_Y  + (uint8_t) hop_pos_4[hop0_Y][hop1]; 
 
     if (prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_POS_4]>MAX_COMPONENT_VALUE) 
     {
@@ -227,7 +227,7 @@ static void lhe_init_best_hop(LheBasicPrec* prec, int hop0_Y, int hop_1, int r_m
 
                 if (error<min_error) 
                 {
-                    prec->best_hop[r_max][hop_1][hop0_Y][original_color]=j;
+                    prec->best_hop[r_max][hop_1][original_color][hop0_Y]=j;
                     min_error=error;
                     
                 }
@@ -252,7 +252,7 @@ static void lhe_init_best_hop(LheBasicPrec* prec, int hop0_Y, int hop_1, int r_m
                 }
 
                 if (error<min_error) {
-                    prec->best_hop[r_max][hop_1][hop0_Y][original_color]=j;
+                    prec->best_hop[r_max][hop_1][original_color][hop0_Y]=j;
                     min_error=error;
                 }
                 else 
@@ -297,70 +297,69 @@ static void lhe_init_h1_adaptation (LheBasicPrec* prec)
 void lhe_init_cache (LheBasicPrec *prec) 
 { 
     
-    float cache_ratio[SIGN][H1_RANGE][Y_MAX_COMPONENT][RATIO]; //pow functions
+    float cache_ratio[Y_MAX_COMPONENT][RATIO][H1_RANGE][SIGN]; //pow functions
 
     //NEGATIVE HOPS
-    uint8_t hop_neg_4 [H1_RANGE][Y_MAX_COMPONENT]; // h-4 value 
-    uint8_t hop_neg_3 [H1_RANGE][Y_MAX_COMPONENT]; // h-3 value 
-    uint8_t hop_neg_2 [H1_RANGE][Y_MAX_COMPONENT]; // h-2 value 
+    uint8_t hop_neg_4 [Y_MAX_COMPONENT][H1_RANGE]; // h-4 value 
+    uint8_t hop_neg_3 [Y_MAX_COMPONENT][H1_RANGE]; // h-3 value 
+    uint8_t hop_neg_2 [Y_MAX_COMPONENT][H1_RANGE]; // h-2 value 
     
     //POSITIVE HOPS
-    uint8_t hop_pos_2 [H1_RANGE][Y_MAX_COMPONENT]; // h2 value 
-    uint8_t hop_pos_3 [H1_RANGE][Y_MAX_COMPONENT]; // h3 value 
-    uint8_t hop_pos_4 [H1_RANGE][Y_MAX_COMPONENT]; // h4 value
+    uint8_t hop_pos_2 [Y_MAX_COMPONENT][H1_RANGE]; // h2 value 
+    uint8_t hop_pos_3 [Y_MAX_COMPONENT][H1_RANGE]; // h3 value 
+    uint8_t hop_pos_4 [Y_MAX_COMPONENT][H1_RANGE]; // h4 value
     
     const float percent_range=0.8f;//0.8 is the  80%
     const float pow_index = 1.0f/3;
     float ratio_pos;
     float ratio_neg;
-    
+
     //hop0_Y is hop0 component color value
     for (int hop0_Y = 0; hop0_Y<Y_MAX_COMPONENT; hop0_Y++)
     {
-        //hop1 is the distance from hop0_Y to next hop (positive or negative)
-        for (int hop1 = 1; hop1<H1_RANGE; hop1++) 
+        //this bucle allows computations for different values of rmax from 20 to 40. 
+        //however, finally only one value (25) is used in LHE
+        for (int rmax=R_MIN; rmax<R_MAX ;rmax++) 
         {
-            //this bucle allows computations for different values of rmax from 20 to 40. 
-            //however, finally only one value (25) is used in LHE
-            for (int rmax=R_MIN; rmax<R_MAX ;rmax++) 
+            //hop1 is the distance from hop0_Y to next hop (positive or negative)
+            for (int hop1 = 1; hop1<H1_RANGE; hop1++) 
             {
                 //variable declaration
                 float max= rmax/10.0;// control of limits if rmax is 25 then max is 2.5f;
-                
-                
+                              
                 // r values for possitive hops  
-                cache_ratio[POSITIVE][hop1][hop0_Y][rmax]=(float)pow(percent_range*(255-hop0_Y)/(hop1), pow_index);
+                cache_ratio[hop0_Y][rmax][hop1][POSITIVE]=(float)pow(percent_range*(255-hop0_Y)/(hop1), pow_index);
 
-                if (cache_ratio[POSITIVE][hop1][hop0_Y][rmax]>max) 
+                if (cache_ratio[hop0_Y][rmax][hop1][POSITIVE]>max) 
                 {
-                    cache_ratio[POSITIVE][hop1][hop0_Y][rmax]=max;
+                    cache_ratio[hop0_Y][rmax][hop1][POSITIVE]=max;
                 }
                 
                 // r' values for negative hops
-                cache_ratio[NEGATIVE][hop1][hop0_Y][rmax]=(float)pow(percent_range*(hop0_Y)/(hop1), pow_index);
+                cache_ratio[hop0_Y][rmax][hop1][NEGATIVE]=(float)pow(percent_range*(hop0_Y)/(hop1), pow_index);
 
-                if (cache_ratio[NEGATIVE][hop1][hop0_Y][rmax]>max) 
+                if (cache_ratio[hop0_Y][rmax][hop1][NEGATIVE]>max) 
                 {
-                    cache_ratio[NEGATIVE][hop1][hop0_Y][rmax]=max;
+                    cache_ratio[hop0_Y][rmax][hop1][NEGATIVE]=max;
                 }
                 
                 //get r value for possitive hops from cache_ratio       
-                ratio_pos=cache_ratio[POSITIVE][hop1][hop0_Y][rmax];
+                ratio_pos=cache_ratio[hop0_Y][rmax][hop1][POSITIVE];
 
                 //get r' value for negative hops from cache_ratio
-                ratio_neg=cache_ratio[NEGATIVE][hop1][hop0_Y][rmax];
+                ratio_neg=cache_ratio[hop0_Y][rmax][hop1][NEGATIVE];
 
                 // COMPUTATION OF HOPS
                 
                 //  Possitive hops luminance
-                hop_pos_2[hop1][hop0_Y] = hop1*ratio_pos;
-                hop_pos_3[hop1][hop0_Y] = hop_pos_2[hop1][hop0_Y]*ratio_pos;
-                hop_pos_4[hop1][hop0_Y] = hop_pos_3[hop1][hop0_Y]*ratio_pos;
+                hop_pos_2[hop0_Y][hop1] = hop1*ratio_pos;
+                hop_pos_3[hop0_Y][hop1] = hop_pos_2[hop0_Y][hop1]*ratio_pos;
+                hop_pos_4[hop0_Y][hop1] = hop_pos_3[hop0_Y][hop1]*ratio_pos;
 
                 //Negative hops luminance                        
-                hop_neg_2[hop1][hop0_Y] = hop1*ratio_neg;
-                hop_neg_3[hop1][hop0_Y] = hop_neg_2[hop1][hop0_Y]*ratio_neg;
-                hop_neg_4[hop1][hop0_Y] = hop_neg_3[hop1][hop0_Y]*ratio_neg;
+                hop_neg_2[hop0_Y][hop1] = hop1*ratio_neg;
+                hop_neg_3[hop0_Y][hop1] = hop_neg_2[hop0_Y][hop1]*ratio_neg;
+                hop_neg_4[hop0_Y][hop1] = hop_neg_3[hop0_Y][hop1]*ratio_neg;
 
                 lhe_init_hop_color_component_value (prec, hop0_Y, hop1, rmax, hop_neg_4, hop_neg_3, 
                                                     hop_neg_2, hop_pos_2, hop_pos_3, hop_pos_4);
