@@ -18,7 +18,7 @@ typedef struct LheState {
 static av_cold int lhe_decode_init(AVCodecContext *avctx)
 {
     LheState *s = avctx->priv_data;
-    avctx->pix_fmt = AV_PIX_FMT_YUV444P;
+    avctx->pix_fmt = AV_PIX_FMT_YUV422P;
 
     s->frame = av_frame_alloc();
     if (!s->frame)
@@ -132,7 +132,7 @@ static void lhe_read_file_symbols (LheState *s, uint32_t image_size, int *huffma
     }
 }
 
-static uint8_t lhe_translate_symbol_into_hop (uint8_t * symbols, uint8_t *hops, int pix, int pix_size, int width) {
+static void lhe_translate_symbol_into_hop (uint8_t * symbols, uint8_t *hops, int pix, int pix_size, int width) {
     uint8_t symbol, hop;
     
     symbol = symbols[pix];
@@ -172,14 +172,23 @@ static uint8_t lhe_translate_symbol_into_hop (uint8_t * symbols, uint8_t *hops, 
             break;
     }
     
-    hops[pix] = hop;
-    
-    return hop;
+    hops[pix] = hop;   
+
+    //av_log(NULL, AV_LOG_INFO, "AQUÍ 3 %d \n", pix);
+
+}
+
+static void lhe_translate_symbols_into_hops (uint8_t * symbols, uint8_t *hops, int pix_size, int width, int image_size) {
+    int pix;
+    for (pix=0; pix<image_size; pix++) 
+    {
+        lhe_translate_symbol_into_hop(symbols, hops, pix, pix_size, width);
+    }
 }
 
 static void lhe_decode_one_hop_per_pixel (LheBasicPrec *prec, uint8_t *hops, uint8_t *image,
-                                          uint8_t *symbols, uint8_t first_color, 
-                                          uint32_t width, uint32_t height, int pix_size) {
+                                          uint8_t first_color, uint32_t width, uint32_t height, 
+                                          int pix_size) {
        
     //Hops computation.
     bool small_hop, last_small_hop;
@@ -201,7 +210,7 @@ static void lhe_decode_one_hop_per_pixel (LheBasicPrec *prec, uint8_t *hops, uin
     for (int y=0; y < height; y++)  {
         for (int x=0; x < width; x++)     {
             
-            hop = lhe_translate_symbol_into_hop(symbols, hops, pix, pix_size, width);
+            hop = hops[pix];
        
             if ((y>0) &&(x>0) && x!=width-1)
             {
@@ -224,16 +233,6 @@ static void lhe_decode_one_hop_per_pixel (LheBasicPrec *prec, uint8_t *hops, uin
             else if (x==0 && y==0) {  
                 predicted_luminance=first_color;//first pixel always is perfectly predicted! :-)  
             }   
-            
-            if (predicted_luminance>255) 
-            {
-                predicted_luminance=255;
-            }
-            
-            if (predicted_luminance<0) 
-            {
-                predicted_luminance=0;  
-            }
             
             //assignment of component_prediction
             //This is the uncompressed image
@@ -274,33 +273,37 @@ static void lhe_decode_one_hop_per_pixel (LheBasicPrec *prec, uint8_t *hops, uin
 static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, AVPacket *avpkt)
 {
     int i;
-    uint32_t width, height, image_size;
-    uint8_t *component_Y, *component_U, *component_V, *hops;
+    uint32_t width_Y, width_UV, height_Y, height_UV, image_size_Y, image_size_UV;
+    uint8_t *component_Y, *component_U, *component_V, *hops_Y, *hops_UV;
     uint8_t *symbols_Y, *symbols_U, *symbols_V;
     int *huffman_Y, *huffman_U, *huffman_V;
     uint8_t first_pixel_Y, first_pixel_U, first_pixel_V;
     int ret;
-    
+        
     LheState *s = avctx->priv_data;
     
     const uint8_t *lhe_data = avpkt->data;
 
-    width  = bytestream_get_le32(&lhe_data);
-    height = bytestream_get_le32(&lhe_data);
-    image_size = width * height;
+    width_Y  = bytestream_get_le32(&lhe_data);
+    height_Y = bytestream_get_le32(&lhe_data);
+    image_size_Y = width_Y * height_Y;
+
+    width_UV = width_Y /CHROMA_FACTOR_WIDTH;
+    height_UV = height_Y/CHROMA_FACTOR_HEIGHT;
+    image_size_UV = image_size_Y/CHROMA_FACTOR_SIZE;
     
     first_pixel_Y = bytestream_get_byte(&lhe_data); 
     first_pixel_U = bytestream_get_byte(&lhe_data); 
     first_pixel_V = bytestream_get_byte(&lhe_data); 
     
-    avctx->width  = width;
-    avctx->height  = height;    
+    avctx->width  = width_Y;
+    avctx->height  = height_Y;    
     
     //Allocates frame
     if ((ret = ff_get_buffer(avctx, s->frame, 0)) < 0)
         return ret;
 
-    const int pix_size = s->frame->linesize[0]/ width;
+    const int pix_size = s->frame->linesize[0]/ width_Y;
     
     //Pointers to different color components
     component_Y = s->frame->data[0];
@@ -308,37 +311,41 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
     component_V = s->frame->data[2];
     
     //Symbols array
-    symbols_Y = malloc(sizeof(uint8_t) * image_size);
-    symbols_U = malloc(sizeof(uint8_t) * image_size);
-    symbols_V = malloc(sizeof(uint8_t) * image_size);
+    symbols_Y = malloc(sizeof(uint8_t) * image_size_Y);
+    symbols_U = malloc(sizeof(uint8_t) * image_size_UV);
+    symbols_V = malloc(sizeof(uint8_t) * image_size_UV);
 
     //Huffman array 
     huffman_Y = malloc(sizeof(int) * LHE_MAX_HUFF_SIZE);
     huffman_U = malloc(sizeof(int) * LHE_MAX_HUFF_SIZE);
     huffman_V = malloc(sizeof(int) * LHE_MAX_HUFF_SIZE);
     
-    hops = malloc(sizeof(uint8_t) * image_size);      
-            
+    hops_Y = malloc(sizeof(uint8_t) * image_size_Y);      
+    hops_UV = malloc(sizeof(uint8_t) * image_size_UV);      
+           
     init_get_bits(&s->gb, lhe_data, avpkt->size * 8);
 
     lhe_read_huffman_table(s, huffman_Y);
     lhe_read_huffman_table(s, huffman_U);
     lhe_read_huffman_table(s, huffman_V);
     
-    lhe_read_file_symbols(s, image_size, huffman_Y, symbols_Y);
-    lhe_read_file_symbols(s, image_size, huffman_U, symbols_U);
-    lhe_read_file_symbols(s, image_size, huffman_V, symbols_V);
+    lhe_read_file_symbols(s, image_size_Y, huffman_Y, symbols_Y);
+    lhe_read_file_symbols(s, image_size_UV, huffman_U, symbols_U);
+    lhe_read_file_symbols(s, image_size_UV, huffman_V, symbols_V);
 
     //Luminance
-    lhe_decode_one_hop_per_pixel(&s->prec, hops, component_Y, symbols_Y, first_pixel_Y, width, height, pix_size);
+    lhe_translate_symbols_into_hops(symbols_Y, hops_Y, pix_size, width_Y, image_size_Y);
+    lhe_decode_one_hop_per_pixel(&s->prec, hops_Y, component_Y, first_pixel_Y, width_Y, height_Y, pix_size);
     
     //Chrominance U
-    lhe_decode_one_hop_per_pixel(&s->prec, hops, component_U, symbols_U, first_pixel_U, width, height, pix_size);
+    lhe_translate_symbols_into_hops(symbols_U, hops_UV, pix_size, width_UV, image_size_UV);
+    lhe_decode_one_hop_per_pixel(&s->prec, hops_UV, component_U, first_pixel_U, width_UV, height_UV, pix_size);
     
     //Chrominance V
-    lhe_decode_one_hop_per_pixel(&s->prec, hops, component_V, symbols_V, first_pixel_V, width, height, pix_size);
+    lhe_translate_symbols_into_hops(symbols_V, hops_UV, pix_size, width_UV, image_size_UV);
+    lhe_decode_one_hop_per_pixel(&s->prec, hops_UV, component_V, first_pixel_V, width_UV, height_UV, pix_size);
     
-    av_log(NULL, AV_LOG_INFO, "DECODING...Width %d Height %d \n", width, height);
+    av_log(NULL, AV_LOG_INFO, "DECODING...Width %d Height %d \n", width_Y, height_Y);
 
     if ((ret = av_frame_ref(data, s->frame)) < 0)
         return ret;

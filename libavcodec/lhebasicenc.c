@@ -246,7 +246,8 @@ static int lhe_build_huff_tree(AVCodecContext *avctx, int *codes, uint8_t *symbo
 }
 
 static int lhe_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt, 
-                               int image_size, int pix_size, int width, int height,
+                               int image_size_Y, int pix_size, int width_Y, int height_Y,
+                               int image_size_UV, int width_UV, int height_UV,
                                uint8_t first_pixel_Y, uint8_t first_pixel_U, uint8_t first_pixel_V,
                                uint8_t *hops_Y, uint8_t *hops_U, uint8_t *hops_V) {
   
@@ -261,9 +262,9 @@ static int lhe_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
 
     LheContext *s = avctx->priv_data;
     
-    symbols_Y = malloc(sizeof(uint8_t) * image_size); 
-    symbols_U = malloc(sizeof(uint8_t) * image_size); 
-    symbols_V = malloc(sizeof(uint8_t) * image_size); 
+    symbols_Y = malloc(sizeof(uint8_t) * image_size_Y); 
+    symbols_U = malloc(sizeof(uint8_t) * image_size_UV); 
+    symbols_V = malloc(sizeof(uint8_t) * image_size_UV); 
     huffman_table_Y = malloc (sizeof(uint8_t) * LHE_MAX_HUFF_SIZE);
     huffman_table_U = malloc (sizeof(uint8_t) * LHE_MAX_HUFF_SIZE);
     huffman_table_V = malloc (sizeof(uint8_t) * LHE_MAX_HUFF_SIZE);
@@ -275,20 +276,20 @@ static int lhe_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
     huffman_codes_V = malloc (sizeof(int) * LHE_MAX_HUFF_SIZE);
     
     //Translate hops into symbols
-    lhe_translate_hops_into_symbols(symbols_Y, hops_Y, pix_size, width, image_size);
-    lhe_translate_hops_into_symbols(symbols_U, hops_U, pix_size, width, image_size);
-    lhe_translate_hops_into_symbols(symbols_V, hops_V, pix_size, width, image_size);
+    lhe_translate_hops_into_symbols(symbols_Y, hops_Y, pix_size, width_Y, image_size_Y);
+    lhe_translate_hops_into_symbols(symbols_U, hops_U, pix_size, width_UV, image_size_UV);
+    lhe_translate_hops_into_symbols(symbols_V, hops_V, pix_size, width_UV, image_size_UV);
 
     //Calculate bits
-    n_bits_hops_Y = lhe_build_huff_tree(avctx, huffman_codes_Y, symbols_Y, huffman_table_Y, huffman_length_Y, image_size, pix_size);
-    n_bits_hops_U = lhe_build_huff_tree(avctx, huffman_codes_U, symbols_U, huffman_table_U, huffman_length_U, image_size, pix_size);
-    n_bits_hops_V = lhe_build_huff_tree(avctx, huffman_codes_V, symbols_V, huffman_table_V, huffman_length_V, image_size, pix_size);
+    n_bits_hops_Y = lhe_build_huff_tree(avctx, huffman_codes_Y, symbols_Y, huffman_table_Y, huffman_length_Y, image_size_Y, pix_size);
+    n_bits_hops_U = lhe_build_huff_tree(avctx, huffman_codes_U, symbols_U, huffman_table_U, huffman_length_U, image_size_UV, pix_size);
+    n_bits_hops_V = lhe_build_huff_tree(avctx, huffman_codes_V, symbols_V, huffman_table_V, huffman_length_V, image_size_UV, pix_size);
     
     ret = (n_bits_hops_Y + n_bits_hops_U + n_bits_hops_V) % 8;
     n_bytes_components = (n_bits_hops_Y + n_bits_hops_U + n_bits_hops_V + ret)/8;
     
     //File size
-    n_bytes = sizeof(width) + sizeof(height) //width and height
+    n_bytes = sizeof(width_Y) + sizeof(height_Y) //width and height
               + sizeof(first_pixel_Y) + sizeof(first_pixel_U) + sizeof(first_pixel_V) //first pixel value
               + sizeof (n_bytes) + 
               + 3 * LHE_HUFFMAN_TABLE_SIZE_BYTES + //huffman trees
@@ -304,8 +305,8 @@ static int lhe_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
     buf = pkt->data;    
         
     //save width and height
-    bytestream_put_le32(&buf, width);
-    bytestream_put_le32(&buf, height);  
+    bytestream_put_le32(&buf, width_Y);
+    bytestream_put_le32(&buf, height_Y);  
 
     bytestream_put_byte(&buf, first_pixel_Y);
     bytestream_put_byte(&buf, first_pixel_U);
@@ -330,21 +331,21 @@ static int lhe_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
     }
     
     //Write image
-    for (i=0; i<image_size; i++) 
+    for (i=0; i<image_size_Y; i++) 
     {
         bits = huffman_codes_Y[symbols_Y[i]];
         
         put_bits(&s->pb, huffman_length_Y[symbols_Y[i]] , bits);
     }
     
-    for (i=0; i<image_size; i++) 
+    for (i=0; i<image_size_UV; i++) 
     {        
         bits = huffman_codes_U[symbols_U[i]];
         put_bits(&s->pb, huffman_length_U[symbols_U[i]] , bits);
         
     }
     
-    for (i=0; i<image_size; i++) 
+    for (i=0; i<image_size_UV; i++) 
     {
         bits = huffman_codes_V[symbols_V[i]];
         put_bits(&s->pb, huffman_length_V[symbols_V[i]] , bits);
@@ -359,42 +360,49 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
                              const AVFrame *frame, int *got_packet)
 {
     uint8_t *component_Y, *component_U, *component_V;
-    uint8_t *component_prediction, *hops_Y, *hops_U, *hops_V;
-    int width, height, image_size, pix_size, n_bytes; 
+    uint8_t *component_prediction_Y, *component_prediction_UV, *hops_Y, *hops_U, *hops_V;
+    int width_Y, width_UV, height_Y, height_UV, image_size_Y, image_size_UV, pix_size, n_bytes; 
 
     struct timeval before , after;
-
+    
     LheContext *s = avctx->priv_data;
 
-    width = (int) frame->width;
-    height = (int) frame->height;  
-    image_size = frame -> height * frame -> width;
-    pix_size = frame->linesize[0]/ width;
+    width_Y = (int) frame->width;
+    height_Y = (int) frame->height; 
+    image_size_Y = frame -> height * frame -> width;
+
+    height_UV = height_Y/CHROMA_FACTOR_HEIGHT;
+    width_UV = width_Y/CHROMA_FACTOR_WIDTH;
+    image_size_UV = image_size_Y/CHROMA_FACTOR_SIZE;
+    
+    pix_size = frame->linesize[0]/ width_Y;
 
     //Pointers to different color components
     component_Y = frame->data[0];
     component_U = frame->data[1];
     component_V = frame->data[2];
       
-    component_prediction = malloc(sizeof(uint8_t) * image_size);  
-    hops_Y = malloc(sizeof(uint8_t) * image_size);
-    hops_U = malloc(sizeof(uint8_t) * image_size);
-    hops_V = malloc(sizeof(uint8_t) * image_size);
+    component_prediction_Y = malloc(sizeof(uint8_t) * image_size_Y);  
+    component_prediction_UV = malloc(sizeof(uint8_t) * image_size_UV);  
+    hops_Y = malloc(sizeof(uint8_t) * image_size_Y);
+    hops_U = malloc(sizeof(uint8_t) * image_size_UV);
+    hops_V = malloc(sizeof(uint8_t) * image_size_UV);
 
     gettimeofday(&before , NULL);
 
     //Luminance
-    lhe_encode_one_hop_per_pixel(&s->prec, component_Y, component_prediction, hops_Y, height, width, pix_size); 
+    lhe_encode_one_hop_per_pixel(&s->prec, component_Y, component_prediction_Y, hops_Y, height_Y, width_Y, pix_size); 
 
     //Crominance U
-    lhe_encode_one_hop_per_pixel(&s->prec, component_U, component_prediction, hops_U, height, width, pix_size); 
+    lhe_encode_one_hop_per_pixel(&s->prec, component_U, component_prediction_UV, hops_U, height_UV, width_UV, pix_size); 
 
     //Crominance V
-    lhe_encode_one_hop_per_pixel(&s->prec, component_V, component_prediction, hops_V, height, width, pix_size);   
+    lhe_encode_one_hop_per_pixel(&s->prec, component_V, component_prediction_UV, hops_V, height_UV, width_UV, pix_size);   
     
     gettimeofday(&after , NULL);  
       
-    n_bytes = lhe_write_lhe_file(avctx, pkt,image_size,  pix_size,  width,  height,
+    n_bytes = lhe_write_lhe_file(avctx, pkt,image_size_Y,  pix_size,  width_Y,  height_Y,
+                                 image_size_UV,  width_UV,  height_UV,
                                  component_Y[0],component_U[0],component_V[0], 
                                  hops_Y, hops_U, hops_V);
     
@@ -436,7 +444,7 @@ AVCodec ff_lhe_encoder = {
     .encode2        = lhe_encode_frame,
     .close          = lhe_encode_close,
     .pix_fmts       = (const enum AVPixelFormat[]){
-        AV_PIX_FMT_YUV444P, AV_PIX_FMT_GRAY8, AV_PIX_FMT_NONE
+        AV_PIX_FMT_YUV422P, AV_PIX_FMT_GRAY8, AV_PIX_FMT_NONE
     },
     .priv_class     = &lhe_class,
 };
