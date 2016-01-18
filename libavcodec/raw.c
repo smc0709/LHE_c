@@ -53,6 +53,7 @@ const PixelFormatTag ff_raw_pix_fmt_tags[] = {
     { AV_PIX_FMT_YUYV422, MKTAG('V', '4', '2', '2') },
     { AV_PIX_FMT_YUYV422, MKTAG('V', 'Y', 'U', 'Y') },
     { AV_PIX_FMT_YUYV422, MKTAG('Y', 'U', 'N', 'V') },
+    { AV_PIX_FMT_YUYV422, MKTAG('Y', 'U', 'Y', 'V') },
     { AV_PIX_FMT_YVYU422, MKTAG('Y', 'V', 'Y', 'U') }, /* Philips */
     { AV_PIX_FMT_UYVY422, MKTAG('U', 'Y', 'V', 'Y') },
     { AV_PIX_FMT_UYVY422, MKTAG('H', 'D', 'Y', 'C') },
@@ -254,13 +255,13 @@ const PixelFormatTag avpriv_pix_fmt_bps_avi[] = {
 };
 
 const PixelFormatTag avpriv_pix_fmt_bps_mov[] = {
-    { AV_PIX_FMT_MONOWHITE, 1 },
+    { AV_PIX_FMT_PAL8,      1 },
     { AV_PIX_FMT_PAL8,      2 },
     { AV_PIX_FMT_PAL8,      4 },
     { AV_PIX_FMT_PAL8,      8 },
     { AV_PIX_FMT_RGB555BE, 16 },
     { AV_PIX_FMT_RGB24,    24 },
     { AV_PIX_FMT_ARGB,     32 },
-    { AV_PIX_FMT_MONOWHITE,33 },
+    { AV_PIX_FMT_PAL8,     33 },
     { AV_PIX_FMT_NONE,      0 },
 };

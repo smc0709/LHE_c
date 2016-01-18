@@ -1,8 +1,4 @@
 /*
- * Header file for hardcoded AAC SBR windows
- *
- * Copyright (c) 2014 Reimar Döffinger <Reimar.Doeffinger@gmx.de>
- *
  * This file is part of FFmpeg.
  *
  * FFmpeg is free software; you can redistribute it and/or
@@ -20,23 +16,20 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include <stdlib.h>
-#include "libavutil/internal.h"
-#include "libavutil/common.h"
-#undef CONFIG_HARDCODED_TABLES
-#define CONFIG_HARDCODED_TABLES 0
-#define USE_FIXED 1
-#include "aacsbr_fixed_tablegen.h"
-#include "tableprint.h"
+#include "config.h"
 
-int main(void)
+#include "libavutil/attributes.h"
+#include "libavutil/cpu.h"
+#include "libavutil/fixed_dsp.h"
+#include "cpu.h"
+
+void ff_butterflies_fixed_sse2(int *src0, int *src1, int len);
+
+av_cold void ff_fixed_dsp_init_x86(AVFixedDSPContext *fdsp)
 {
-    aacsbr_tableinit();
+    int cpu_flags = av_get_cpu_flags();
 
-    write_fileheader();
-
-    WRITE_ARRAY_ALIGNED("static const", 32, int32_t, sbr_qmf_window_ds);
-    WRITE_ARRAY_ALIGNED("static const", 32, int32_t, sbr_qmf_window_us);
-
-    return 0;
+    if (EXTERNAL_SSE2(cpu_flags)) {
+        fdsp->butterflies_fixed = ff_butterflies_fixed_sse2;
+    }
 }

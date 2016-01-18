@@ -1,7 +1,5 @@
 /*
- * Header file for hardcoded AAC tables
- *
- * Copyright (c) 2010 Alex Converse <alex.converse@gmail.com>
+ * Copyright (c) 2015 Janne Grunau <janne-libav@jannau.net>
  *
  * This file is part of FFmpeg.
  *
@@ -20,19 +18,27 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#ifndef AVCODEC_AAC_TABLEGEN_DECL_H
-#define AVCODEC_AAC_TABLEGEN_DECL_H
+#ifndef AVUTIL_AARCH64_TIMER_H
+#define AVUTIL_AARCH64_TIMER_H
 
-#define POW_SF2_ZERO    200    ///< ff_aac_pow2sf_tab index corresponding to pow(2, 0);
+#include <stdint.h>
+#include "config.h"
 
-#if CONFIG_HARDCODED_TABLES
-#define ff_aac_tableinit()
-extern const float ff_aac_pow2sf_tab[428];
-extern const float ff_aac_pow34sf_tab[428];
-#else
-void ff_aac_tableinit(void);
-extern       float ff_aac_pow2sf_tab[428];
-extern       float ff_aac_pow34sf_tab[428];
-#endif /* CONFIG_HARDCODED_TABLES */
+#if HAVE_INLINE_ASM
 
-#endif /* AVCODEC_AAC_TABLEGEN_DECL_H */
+#define AV_READ_TIME read_time
+
+static inline uint64_t read_time(void)
+{
+    uint64_t cycle_counter;
+    __asm__ volatile(
+        "isb                   \t\n"
+        "mrs %0, pmccntr_el0       "
+        : "=r"(cycle_counter) :: "memory" );
+
+    return cycle_counter;
+}
+
+#endif /* HAVE_INLINE_ASM */
+
+#endif /* AVUTIL_AARCH64_TIMER_H */
