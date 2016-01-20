@@ -27,6 +27,7 @@
 #include "config.h"
 #include "avcodec.h"
 #include "version.h"
+#include "opencl_allkernels.h"
 
 #define REGISTER_HWACCEL(X, x)                                          \
     {                                                                   \
@@ -663,4 +664,5 @@ void avcodec_register_all(void)
     REGISTER_BSF(NOISE,                 noise);
     REGISTER_BSF(REMOVE_EXTRADATA,      remove_extradata);
     REGISTER_BSF(TEXT2MOVSUB,           text2movsub);
+    ff_opencl_register_codec_kernel_code_all();
 }

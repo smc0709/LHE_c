@@ -31,6 +31,7 @@ OBJS = allcodecs.o                                                      \
        dv_profile.o                                                     \
        imgconvert.o                                                     \
        mathtables.o                                                     \
+       opencl_allkernels.o                                              \
        options.o                                                        \
        parser.o                                                         \
        profiles.o                                                       \
@@ -338,8 +339,8 @@ OBJS-$(CONFIG_JV_DECODER)              += jvdec.o
 OBJS-$(CONFIG_KGV1_DECODER)            += kgv1dec.o
 OBJS-$(CONFIG_KMVC_DECODER)            += kmvc.o
 OBJS-$(CONFIG_LAGARITH_DECODER)        += lagarith.o lagarithrac.o
-OBJS-$(CONFIG_LHE_DECODER)             += lhebasic.o lhebasicdec.o
-OBJS-$(CONFIG_LHE_ENCODER)             += lhebasic.o lhebasicenc.o
+OBJS-$(CONFIG_LHE_DECODER)             += lhebasic.o lhebasicdec.o 
+OBJS-$(CONFIG_LHE_ENCODER)             += lhebasic.o lhebasicenc.o lhebasic_opencl.o
 OBJS-$(CONFIG_LJPEG_ENCODER)           += ljpegenc.o mjpegenc_common.o
 OBJS-$(CONFIG_LOCO_DECODER)            += loco.o
 OBJS-$(CONFIG_MACE3_DECODER)           += mace.o

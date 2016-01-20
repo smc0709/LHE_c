@@ -2,8 +2,6 @@
  * LHE Basic decoder
  */
 
-#include "bytestream.h"
-#include "internal.h"
 #include "lhebasic.h"
 
 typedef struct LheState {

@@ -15,6 +15,13 @@
 #include <stdio.h>
 #include <sys/time.h>
 #include "huffman.h"
+#include "internal.h"
+#include "bytestream.h"
+
+//OpenCL
+#if CONFIG_OPENCL
+#include "lhebasic_opencl.h"
+#endif
 
 //Configuration 
 #define MIDDLE_VALUE false

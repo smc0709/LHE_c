@@ -7,17 +7,18 @@
  * LHE Basic encoder
  */
 
-#include "avcodec.h"
 #include "lhebasic.h"
-#include "internal.h"
+#include "avcodec.h"
 #include "put_bits.h"
-#include "bytestream.h"
 #include "siprdata.h"
 
 typedef struct LheContext {
     AVClass *class;    
     LheBasicPrec prec;
     PutBitContext pb;
+    #if CONFIG_OPENCL
+    LheOpenclContext opencl_ctx;
+    #endif
 } LheContext;
 
 static av_cold int lhe_encode_init(AVCodecContext *avctx)
@@ -171,6 +172,7 @@ static void lhe_encode_one_hop_per_pixel (LheBasicPrec *prec, uint8_t *component
         }//for x
     }//for y     
 }
+
 
 /**
  * Comparator - our nodes should ascend by count
@@ -356,6 +358,120 @@ static int lhe_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
     return n_bytes;
 }
 
+static int opencl_devices()
+{
+
+        //Step1: Getting platforms and choose an available one.
+        cl_uint numPlatforms;   //the NO. of platforms
+        cl_platform_id platform = NULL; //the chosen platform
+        cl_int  status = clGetPlatformIDs(0, NULL, &numPlatforms);
+        if (status != CL_SUCCESS)
+        {
+            av_log(NULL, AV_LOG_ERROR,"Error: Getting platforms! \n");
+            return 1;
+        }
+
+        //For clarity, choose the first available platform. 
+        if(numPlatforms > 0)
+        {
+                cl_platform_id* platforms = (cl_platform_id* )malloc(numPlatforms* sizeof(cl_platform_id));
+                status = clGetPlatformIDs(numPlatforms, platforms, NULL);
+                platform = platforms[0];
+                free(platforms);
+        }
+
+        //Step 2:Query the platform and choose the first GPU device if has one.Otherwise use the CPU as device.
+        cl_uint                         numDevices = 0;
+        cl_device_id        *devices;
+        status = clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, 0, NULL, &numDevices);    
+        if (numDevices == 0)    //no GPU available.
+        {
+            av_log(NULL, AV_LOG_ERROR,"No GPU device available. \n");
+            av_log(NULL, AV_LOG_ERROR,"Choose CPU as default device. \n");
+            status = clGetDeviceIDs(platform, CL_DEVICE_TYPE_CPU, 0, NULL, &numDevices);    
+            devices = (cl_device_id*)malloc(numDevices * sizeof(cl_device_id));
+            status = clGetDeviceIDs(platform, CL_DEVICE_TYPE_CPU, numDevices, devices, NULL);
+        }
+        else
+        {
+            devices = (cl_device_id*)malloc(numDevices * sizeof(cl_device_id));
+            status = clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, numDevices, devices, NULL);
+        }
+        
+        
+
+        /*Step 3: Create context.*/
+        cl_context context = clCreateContext(NULL,1, devices,NULL,NULL,NULL);
+        
+        /*Step 4: Creating command queue associate with the context.*/
+        cl_command_queue commandQueue = clCreateCommandQueue(context, devices[0], 0, NULL);
+
+     /*
+        //Step 5: Create program object 
+        const char *filename = "HelloWorld_Kernel.cl";
+        string sourceStr;
+        status = convertToString(filename, sourceStr);
+        const char *source = sourceStr.c_str();
+        size_t sourceSize[] = {strlen(source)};
+        cl_program program = clCreateProgramWithSource(context, 1, &source, sourceSize, NULL);
+        
+        //Step 6: Build program. 
+        status=clBuildProgram(program, 1,devices,NULL,NULL,NULL);
+
+        //Step 7: Initial input,output for the host and create memory objects for the kernel
+        const char* input = "GdkknVnqkc";
+        size_t strlength = strlen(input);
+        cout << "input string:" << endl;
+        cout << input << endl;
+        char *output = (char*) malloc(strlength + 1);
+
+        cl_mem inputBuffer = clCreateBuffer(context, CL_MEM_READ_ONLY|CL_MEM_COPY_HOST_PTR, (strlength + 1) * sizeof(char),(void *) input, NULL);
+        cl_mem outputBuffer = clCreateBuffer(context, CL_MEM_WRITE_ONLY , (strlength + 1) * sizeof(char), NULL, NULL);
+
+        //Step 8: Create kernel object 
+        cl_kernel kernel = clCreateKernel(program,"helloworld", NULL);
+
+        //Step 9: Sets Kernel arguments.
+        status = clSetKernelArg(kernel, 0, sizeof(cl_mem), (void *)&inputBuffer);
+        status = clSetKernelArg(kernel, 1, sizeof(cl_mem), (void *)&outputBuffer);
+        
+        //Step 10: Running the kernel.
+        size_t global_work_size[1] = {strlength};
+        status = clEnqueueNDRangeKernel(commandQueue, kernel, 1, NULL, global_work_size, NULL, 0, NULL, NULL);
+
+        //Step 11: Read the cout put back to host memory.
+        status = clEnqueueReadBuffer(commandQueue, outputBuffer, CL_TRUE, 0, strlength * sizeof(char), output, 0, NULL, NULL);
+        
+        output[strlength] = '\0';       //Add the terminal character to the end of output.
+        cout << "\noutput string:" << endl;
+        cout << output << endl;
+
+        //Step 12: Clean the resources.
+        status = clReleaseKernel(kernel);                               //Release kernel.
+        status = clReleaseProgram(program);                             //Release the program object.
+        status = clReleaseMemObject(inputBuffer);               //Release mem object.
+        status = clReleaseMemObject(outputBuffer);
+        status = clReleaseCommandQueue(commandQueue);   //Release  Command queue.
+        status = clReleaseContext(context);                             //Release context.
+
+        
+      
+        if (output != NULL)
+        {
+                free(output);
+                output = NULL;
+        }
+*/
+        if (devices != NULL)
+        {
+                free(devices);
+                devices = NULL;
+        }
+
+        av_log(NULL, AV_LOG_ERROR,"Passed! Num devices: %d \n", numDevices);
+        return 0;
+}
+
 static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
                              const AVFrame *frame, int *got_packet)
 {
@@ -363,6 +479,8 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     uint8_t *component_prediction_Y, *component_prediction_UV, *hops_Y, *hops_U, *hops_V;
     int width_Y, width_UV, height_Y, height_UV, image_size_Y, image_size_UV, pix_size, n_bytes; 
 
+    int status;
+    
     struct timeval before , after;
     
     LheContext *s = avctx->priv_data;
@@ -389,23 +507,27 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     hops_V = malloc(sizeof(uint8_t) * image_size_UV);
 
     gettimeofday(&before , NULL);
-
-    //Luminance
-    lhe_encode_one_hop_per_pixel(&s->prec, component_Y, component_prediction_Y, hops_Y, height_Y, width_Y, pix_size); 
-
-    //Crominance U
-    lhe_encode_one_hop_per_pixel(&s->prec, component_U, component_prediction_UV, hops_U, height_UV, width_UV, pix_size); 
-
-    //Crominance V
-    lhe_encode_one_hop_per_pixel(&s->prec, component_V, component_prediction_UV, hops_V, height_UV, width_UV, pix_size);   
     
-    gettimeofday(&after , NULL);  
+    if (CONFIG_OPENCL) {
+        ff_opencl_lhebasic_init(&s->opencl_ctx);
+    } else {
+        //Luminance
+        lhe_encode_one_hop_per_pixel(&s->prec, component_Y, component_prediction_Y, hops_Y, height_Y, width_Y, pix_size); 
+
+        //Crominance U
+        lhe_encode_one_hop_per_pixel(&s->prec, component_U, component_prediction_UV, hops_U, height_UV, width_UV, pix_size); 
+
+        //Crominance V
+        lhe_encode_one_hop_per_pixel(&s->prec, component_V, component_prediction_UV, hops_V, height_UV, width_UV, pix_size);   
+        
+        gettimeofday(&after , NULL);  
+    }
       
     n_bytes = lhe_write_lhe_file(avctx, pkt,image_size_Y,  pix_size,  width_Y,  height_Y,
                                  image_size_UV,  width_UV,  height_UV,
                                  component_Y[0],component_U[0],component_V[0], 
                                  hops_Y, hops_U, hops_V);
-    
+
     av_log(NULL, AV_LOG_INFO, "LHE Coding...buffer size %d CodingTime %.0lf \n", n_bytes, time_diff(before , after));
 
     pkt->flags |= AV_PKT_FLAG_KEY;
