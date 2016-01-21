@@ -10,18 +10,14 @@ typedef struct {
     cl_command_queue command_queue;
     cl_program program;
     cl_kernel kernel_encode;
-    int in_plane_size[8];
-    int out_plane_size[8];
     cl_mem a;
     cl_mem b;
     cl_mem c;
-    size_t cl_inbuf_size;
-    size_t cl_outbuf_size;
 } LheOpenclContext;
 
-
-int ff_opencl_lhebasic_init(LheOpenclContext *lhe_opencl);
-int ff_opencl_encode(LheOpenclContext *locc,int width, int height);
+void ff_opencl_info (void);
+int ff_opencl_lhebasic_init(LheOpenclContext *locc);
+int ff_opencl_lhebasic_encode(LheOpenclContext *locc,int width, int height);
 
 #endif /* AVCODEC_LHE_OPENCL_H */
 

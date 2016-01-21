@@ -8,11 +8,11 @@
 const char *ff_kernel_lhe_opencl = AV_OPENCL_KERNEL(
 
 
-    kernel void lhebasic_encode (global float *a, global float *b, global float *c)
-    {
+    kernel void lhebasic_encode (global uint8 *a, global uint8 *b, global uint8 *c)
+    {   
         unsigned int i = get_global_id(0);
-        c[i] = a[i] + b[i];
         
+        c[i] = a[i]+b[i];        
     }
 );
 
