@@ -74,13 +74,13 @@ int ff_opencl_lhebasic_encode(LheOpenclContext *locc,
     uint8_t *output;
     cl_int status;
     
+    image_size = 64;
+    ret=0;
+
     size_t local_work_size_1d[1] = {32}; 
     size_t global_work_size_1d[1] = {(size_t)image_size};
     FFOpenclParam param_encode = {0};
 
-    
-    image_size = 64;
-    ret=0;
     
     output = malloc(sizeof(uint8_t) * image_size);
     
