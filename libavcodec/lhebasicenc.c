@@ -145,9 +145,9 @@ static void lhe_encode_one_hop_per_pixel (LheBasicPrec *prec, uint8_t *component
                 predicted_luminance=original_color;//first pixel always is perfectly predicted! :-)  
             }          
             
-            hop_number = prec->best_hop[r_max][hop_1][original_color][predicted_luminance]; 
+            hop_number = prec->best_hop[INDEX_BEST_HOP(r_max,hop_1,original_color,predicted_luminance)]; 
             hops[pix]= hop_number;
-            component_prediction[pix]=prec -> prec_luminance[predicted_luminance][r_max][hop_1][hop_number];
+            component_prediction[pix]=prec -> prec_luminance[INDEX_PREC_LUMINANCE(predicted_luminance,r_max,hop_1,hop_number)];
 
 
             //tunning hop1 for the next hop ( "h1 adaptation")
@@ -404,7 +404,7 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     if (CONFIG_OPENCL) {
         
         ff_opencl_lhebasic_encode(&s->opencl_ctx, width_Y, height_Y);
-                        gettimeofday(&after , NULL);  
+                        //gettimeofday(&after , NULL);  
 
     } else {
 

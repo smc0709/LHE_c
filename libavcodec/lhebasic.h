@@ -18,6 +18,16 @@
 #include "internal.h"
 #include "bytestream.h"
 
+//Linearlized caches
+#define INDEX_PREC_LUMINANCE(hop0_Y, rmax, hop_1, hop)          \
+         RATIO*H1_RANGE*NUMBER_OF_HOPS*hop0_Y + H1_RANGE*NUMBER_OF_HOPS*rmax + NUMBER_OF_HOPS*hop_1 + hop
+            
+#define INDEX_BEST_HOP(ratio, hop_1, original_color, hop0_Y)    \
+         H1_RANGE*Y_MAX_COMPONENT*Y_MAX_COMPONENT*ratio + Y_MAX_COMPONENT*Y_MAX_COMPONENT*hop_1 + Y_MAX_COMPONENT*original_color + hop0_Y
+            
+#define INDEX_H1_ADAPTATION(hop_1,hop_prev,hop)                 \
+         NUMBER_OF_HOPS*NUMBER_OF_HOPS*hop_1 + NUMBER_OF_HOPS*hop_prev + hop
+            
 //OpenCL
 #if CONFIG_OPENCL
 #include "lhebasic_opencl.h"
@@ -89,9 +99,9 @@ static const uint8_t lhe_huff_coeff_map[] = {
 };
 
 typedef struct LheBasicPrec {
-    uint8_t prec_luminance[Y_MAX_COMPONENT][RATIO][H1_RANGE][NUMBER_OF_HOPS]; // precomputed luminance component
-    uint8_t best_hop [RATIO][H1_RANGE][Y_MAX_COMPONENT][Y_MAX_COMPONENT]; //ratio - h1 - original color - prediction
-    uint8_t h1_adaptation [H1_RANGE][NUMBER_OF_HOPS][NUMBER_OF_HOPS]; //h1 adaptation cache
+    uint8_t prec_luminance[Y_MAX_COMPONENT*RATIO*H1_RANGE*NUMBER_OF_HOPS]; // precomputed luminance component
+    uint8_t best_hop [RATIO*H1_RANGE*Y_MAX_COMPONENT*Y_MAX_COMPONENT]; //ratio - h1 - original color - prediction
+    uint8_t h1_adaptation [H1_RANGE*NUMBER_OF_HOPS*NUMBER_OF_HOPS]; //h1 adaptation cache
 } LheBasicPrec; 
 
 double time_diff(struct timeval x , struct timeval y);
