@@ -30,7 +30,7 @@ static av_cold int lhe_encode_init(AVCodecContext *avctx)
     if (CONFIG_OPENCL) 
     {
         ff_opencl_info();
-        ff_opencl_lhebasic_init(&s->opencl_ctx);
+        ff_opencl_lhebasic_init(&s->prec, &s->opencl_ctx);
     }
 
     return 0;
@@ -402,9 +402,19 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     gettimeofday(&before , NULL);
     
     if (CONFIG_OPENCL) {
+        ff_opencl_lhebasic_encode(&s->opencl_ctx, component_Y,
+                                  component_prediction_Y,  hops_Y,
+                                  width_Y, height_Y, 64, 64, pix_size);
         
-        ff_opencl_lhebasic_encode(&s->opencl_ctx, width_Y, height_Y);
-                        //gettimeofday(&after , NULL);  
+        /*
+        ff_opencl_lhebasic_encode(&s->opencl_ctx, component_U,
+                                  component_prediction_UV,  hops_U,
+                                  width_UV, height_UV, 64, 64, pix_size);
+        
+        ff_opencl_lhebasic_encode(&s->opencl_ctx, component_V,
+                                  component_prediction_UV,  hops_V,
+                                  width_UV, height_UV, 64, 64, pix_size);
+                                  */
 
     } else {
 

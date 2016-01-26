@@ -17,20 +17,12 @@
 #include "huffman.h"
 #include "internal.h"
 #include "bytestream.h"
-
-//Linearlized caches
-#define INDEX_PREC_LUMINANCE(hop0_Y, rmax, hop_1, hop)          \
-         RATIO*H1_RANGE*NUMBER_OF_HOPS*hop0_Y + H1_RANGE*NUMBER_OF_HOPS*rmax + NUMBER_OF_HOPS*hop_1 + hop
-            
-#define INDEX_BEST_HOP(ratio, hop_1, original_color, hop0_Y)    \
-         H1_RANGE*Y_MAX_COMPONENT*Y_MAX_COMPONENT*ratio + Y_MAX_COMPONENT*Y_MAX_COMPONENT*hop_1 + Y_MAX_COMPONENT*original_color + hop0_Y
-            
-#define INDEX_H1_ADAPTATION(hop_1,hop_prev,hop)                 \
-         NUMBER_OF_HOPS*NUMBER_OF_HOPS*hop_1 + NUMBER_OF_HOPS*hop_prev + hop
             
 //OpenCL
 #if CONFIG_OPENCL
 #include "lhebasic_opencl.h"
+#else
+#include "lhebasic_prec.h"
 #endif
 
 //Configuration 
@@ -38,15 +30,6 @@
 #define CHROMA_FACTOR_SIZE 2
 #define CHROMA_FACTOR_WIDTH 2
 #define CHROMA_FACTOR_HEIGHT 1
-
-//Params for precomputation
-#define H1_RANGE 20
-#define Y_MAX_COMPONENT 256
-#define R_MIN 20
-#define R_MAX 40
-#define RATIO R_MAX
-#define NUMBER_OF_HOPS 9
-#define SIGN 2
     
 //Param definitions
 #define POSITIVE 0
@@ -98,11 +81,6 @@ static const uint8_t lhe_huff_coeff_map[] = {
     SYM_HOP_POS_3, SYM_HOP_NEG_3,SYM_HOP_POS_4, SYM_HOP_NEG_4
 };
 
-typedef struct LheBasicPrec {
-    uint8_t prec_luminance[Y_MAX_COMPONENT*RATIO*H1_RANGE*NUMBER_OF_HOPS]; // precomputed luminance component
-    uint8_t best_hop [RATIO*H1_RANGE*Y_MAX_COMPONENT*Y_MAX_COMPONENT]; //ratio - h1 - original color - prediction
-    uint8_t h1_adaptation [H1_RANGE*NUMBER_OF_HOPS*NUMBER_OF_HOPS]; //h1 adaptation cache
-} LheBasicPrec; 
 
 double time_diff(struct timeval x , struct timeval y);
 int count_bits (int num);
