@@ -34,11 +34,8 @@ const char *ff_kernel_lhe_opencl = AV_OPENCL_KERNEL(
         xini = i*block_width;
         xfin = xini + block_width;
         
-        yini = i*block_height;
-        yfin = yfin + block_height;
-        
-        c[j*image_width + i] = a [j*image_width + i] + b[j*image_width + i];
-        
+        yini = j*block_height;
+        yfin = yini + block_height;        
 
         small_hop = false;
         last_small_hop=false;          // indicates if last hop is small
@@ -85,7 +82,7 @@ const char *ff_kernel_lhe_opencl = AV_OPENCL_KERNEL(
             
                 index = 20*256*256*r_max + 256*256*hop_1 + 256*original_color + predicted_luminance;
                 hop_number = best_hop[index]; 
-                hops[pix]= a[pix] + b[pix];
+                hops[pix]= hop_number;
                 index = 40*20*9*predicted_luminance + 20*9*r_max + 9*hop_1 + hop_number;                
                 component_prediction[pix]= prec_luminance[index];
 

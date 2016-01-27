@@ -220,10 +220,11 @@ int ff_opencl_lhebasic_encode(LheOpenclContext *locc,
     
     clFinish(locc -> command_queue);
     
+    /*
     for (int k=0; k<100; k++) {
-            av_log(NULL, AV_LOG_ERROR, "c[%d]= %d\n", k, c[k]);
             av_log(NULL, AV_LOG_ERROR, "hop[%d]= %d\n", k, hops[k]);
     }
+    */
     
     return ret;
 }
