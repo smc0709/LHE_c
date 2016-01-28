@@ -61,54 +61,6 @@ static int ff_opencl_lhe_create_image_buffers (LheOpenclContext *locc,
                                                int image_size)
 {    
     int ret = 0;
-    uint8_t *a, *b;
-    
-    a = av_malloc(sizeof(uint8_t) * image_size);
-    b = av_malloc(sizeof(uint8_t) * image_size);
-
-    
-    for (int i=0; i<image_size; i++) 
-    {
-        a[i] = 2;
-        b[i] = 1;
-    }
-    
-    ret = av_opencl_buffer_create(&locc->a,
-                                  sizeof(uint8_t) * image_size ,
-                                  CL_MEM_READ_ONLY, NULL );
-    if (ret < 0)
-        return ret;
-    
-    ret = clEnqueueWriteBuffer(locc->command_queue, 
-                               locc->a, CL_TRUE, 0, 
-                               sizeof(uint8_t) * image_size, a, 
-                               0, NULL, NULL);
-    
-    if (ret<0)
-        return ret;
-
-    
-    ret = av_opencl_buffer_create(&locc->b,
-                                  sizeof(uint8_t) * image_size ,
-                                  CL_MEM_READ_ONLY, NULL );
-    if (ret < 0)
-        return ret;
-    
-    ret = clEnqueueWriteBuffer(locc->command_queue, 
-                               locc->b, CL_TRUE, 0, 
-                               sizeof(uint8_t) * image_size, b, 
-                               0, NULL, NULL);
-    
-    if (ret<0)
-        return ret;
-    
-
-     ret = av_opencl_buffer_create(&locc->c,
-                                  sizeof(uint8_t) * image_size ,
-                                  CL_MEM_WRITE_ONLY, NULL);
-    if (ret < 0)
-        return ret;
-    
     
     ret = av_opencl_buffer_create(&locc->component_original_data,
                                   sizeof(uint8_t) * image_size ,
@@ -150,15 +102,12 @@ int ff_opencl_lhebasic_encode(LheOpenclContext *locc,
     int ret, image_size;
     int num_blocks_width, num_blocks_height;
     cl_int status;
-    uint8_t *c;
         
     ret=0;
     num_blocks_width = image_width/block_width;
     num_blocks_height = image_height/block_height;
     image_size = image_width * image_height;
-    
-    c = av_malloc(sizeof(uint8_t) * image_size);
-    
+        
     size_t local_work_size_2d[2] = {num_blocks_width, num_blocks_height}; 
     size_t global_work_size_2d[2] = {(size_t)num_blocks_width, (size_t) num_blocks_height};
     FFOpenclParam param_encode = {0};
@@ -179,9 +128,6 @@ int ff_opencl_lhebasic_encode(LheOpenclContext *locc,
                                       FF_OPENCL_PARAM_INFO(block_width),
                                       FF_OPENCL_PARAM_INFO(block_height),
                                       FF_OPENCL_PARAM_INFO(pix_size),
-                                      FF_OPENCL_PARAM_INFO (locc->a),
-                                      FF_OPENCL_PARAM_INFO (locc->b),
-                                      FF_OPENCL_PARAM_INFO (locc->c),
                                       NULL);
     if (ret < 0)
         return ret;
@@ -208,15 +154,6 @@ int ff_opencl_lhebasic_encode(LheOpenclContext *locc,
         return AVERROR_EXTERNAL;
     }
     
-    status = clEnqueueReadBuffer(locc -> command_queue, locc -> c, CL_TRUE, 0,
-                                 sizeof(uint8_t)*image_size, c, 0, 
-                                 NULL, NULL);
-    
-    
-     if (status != CL_SUCCESS) {
-        av_log(NULL, AV_LOG_ERROR, "OpenCL read buffer error ocurred: %s\n", av_opencl_errstr(status));
-        return AVERROR_EXTERNAL;
-    }
     
     clFinish(locc -> command_queue);
     

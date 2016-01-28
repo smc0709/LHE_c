@@ -14,11 +14,7 @@ const char *ff_kernel_lhe_opencl = AV_OPENCL_KERNEL(
                                  global uchar *hops, 
                                  int image_width, int image_height, 
                                  int block_width, int block_height,
-                                 int pix_size,
-                                 global uchar *a,
-                                 global uchar *b,
-                                 global uchar *c
-                                )
+                                 int pix_size)
     {
         unsigned int i,j;
         unsigned int xini, xfin, yini, yfin;
@@ -82,6 +78,7 @@ const char *ff_kernel_lhe_opencl = AV_OPENCL_KERNEL(
             
                 index = 20*256*256*r_max + 256*256*hop_1 + 256*original_color + predicted_luminance;
                 hop_number = best_hop[index]; 
+                
                 hops[pix]= hop_number;
                 index = 40*20*9*predicted_luminance + 20*9*r_max + 9*hop_1 + hop_number;                
                 component_prediction[pix]= prec_luminance[index];
