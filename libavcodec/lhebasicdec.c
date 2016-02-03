@@ -287,9 +287,9 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
     height_Y = bytestream_get_le32(&lhe_data);
     image_size_Y = width_Y * height_Y;
 
-    width_UV = width_Y /CHROMA_FACTOR_WIDTH;
-    height_UV = height_Y/CHROMA_FACTOR_HEIGHT;
-    image_size_UV = image_size_Y/CHROMA_FACTOR_SIZE;
+    width_UV = (width_Y - 1)/CHROMA_FACTOR_WIDTH + 1;
+    height_UV = (height_Y - 1)/CHROMA_FACTOR_HEIGHT + 1;
+    image_size_UV = width_UV * height_UV;
     
     first_pixel_Y = bytestream_get_byte(&lhe_data); 
     first_pixel_U = bytestream_get_byte(&lhe_data); 

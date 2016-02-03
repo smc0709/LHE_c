@@ -372,9 +372,9 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     height_Y =  frame->height; 
     image_size_Y = width_Y * height_Y;
 
-    height_UV = height_Y/CHROMA_FACTOR_HEIGHT;
-    width_UV = width_Y/CHROMA_FACTOR_WIDTH;
-    image_size_UV = image_size_Y/CHROMA_FACTOR_SIZE;
+    width_UV = (width_Y - 1)/CHROMA_FACTOR_WIDTH + 1;
+    height_UV = (height_Y - 1)/CHROMA_FACTOR_HEIGHT + 1;
+    image_size_UV = width_UV * height_UV;
     
     //Pointers to different color components
     component_Y = frame->data[0];

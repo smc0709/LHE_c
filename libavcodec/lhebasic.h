@@ -18,7 +18,6 @@
 
 //Configuration 
 #define MIDDLE_VALUE false
-#define CHROMA_FACTOR_SIZE 2
 #define CHROMA_FACTOR_WIDTH 2
 #define CHROMA_FACTOR_HEIGHT 1
 
