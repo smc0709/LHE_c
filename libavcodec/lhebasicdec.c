@@ -132,7 +132,7 @@ static void lhe_read_file_symbols (LheState *s, uint32_t image_size, int *huffma
     }
 }
 
-static void lhe_translate_symbol_into_hop (uint8_t * symbols, uint8_t *hops, int pix, int pix_size, int width) {
+static void lhe_translate_symbol_into_hop (uint8_t * symbols, uint8_t *hops, int pix, int width) {
     uint8_t symbol, hop;
     
     symbol = symbols[pix];
@@ -143,7 +143,7 @@ static void lhe_translate_symbol_into_hop (uint8_t * symbols, uint8_t *hops, int
             break;
         case SYM_HOP_UP:
             if (pix > width) {
-                hop = hops [pix_size * (pix-width)];
+                hop = hops [pix-width];
             }
             break;
         case SYM_HOP_POS_1:
@@ -174,21 +174,19 @@ static void lhe_translate_symbol_into_hop (uint8_t * symbols, uint8_t *hops, int
     
     hops[pix] = hop;   
 
-    //av_log(NULL, AV_LOG_INFO, "AQUÍ 3 %d \n", pix);
-
 }
 
-static void lhe_translate_symbols_into_hops (uint8_t * symbols, uint8_t *hops, int pix_size, int width, int image_size) {
+static void lhe_translate_symbols_into_hops (uint8_t * symbols, uint8_t *hops, int width, int image_size) {
     int pix;
     for (pix=0; pix<image_size; pix++) 
     {
-        lhe_translate_symbol_into_hop(symbols, hops, pix, pix_size, width);
+        lhe_translate_symbol_into_hop(symbols, hops, pix, width);
     }
 }
 
 static void lhe_decode_one_hop_per_pixel (LheBasicPrec *prec, uint8_t *hops, uint8_t *image,
                                           uint8_t first_color, uint32_t width, uint32_t height, 
-                                          int pix_size) {
+                                          int linesize) {
        
     //Hops computation.
     bool small_hop, last_small_hop;
@@ -210,25 +208,27 @@ static void lhe_decode_one_hop_per_pixel (LheBasicPrec *prec, uint8_t *hops, uin
     for (int y=0; y < height; y++)  {
         for (int x=0; x < width; x++)     {
             
-            hop = hops[pix];
+            hop = hops[y*width + x]; 
+
+            pix = y*linesize + x; 
        
             if ((y>0) &&(x>0) && x!=width-1)
             {
-                predicted_luminance=(4*image[pix_size * (pix-1)]+3*image[pix_size * (pix+1-width)])/7;     
+                predicted_luminance=(4*image[pix-1]+3*image[pix+1-linesize])/7;     
             } 
             else if ((x==0) && (y>0))
             {
-                predicted_luminance=image[pix_size * (pix-width)];
+                predicted_luminance=image[pix-linesize];
                 last_small_hop=false;
                 hop_1=START_HOP_1;
             } 
             else if ((x==width-1) && (y>0)) 
             {
-                predicted_luminance=(4*image[pix_size * (pix-1)]+2*image[pix_size * (pix-width)])/6;                               
+                predicted_luminance=(4*image[pix-1]+2*image[pix-linesize])/6;                               
             } 
             else if (y==0 && x>0) 
             {
-                predicted_luminance=image[pix_size * (x-1)];
+                predicted_luminance=image[x-1];
             }
             else if (x==0 && y==0) {  
                 predicted_luminance=first_color;//first pixel always is perfectly predicted! :-)  
@@ -236,7 +236,7 @@ static void lhe_decode_one_hop_per_pixel (LheBasicPrec *prec, uint8_t *hops, uin
             
             //assignment of component_prediction
             //This is the uncompressed image
-            image[pix_size * pix]= prec -> prec_luminance[predicted_luminance][r_max][hop_1][hop];
+            image[pix]= prec -> prec_luminance[predicted_luminance][r_max][hop_1][hop];
             
             //tunning hop1 for the next hop ( "h1 adaptation")
             //------------------------------------------------
@@ -263,7 +263,6 @@ static void lhe_decode_one_hop_per_pixel (LheBasicPrec *prec, uint8_t *hops, uin
             //lets go for the next pixel
             //--------------------------
             last_small_hop=small_hop;     
-            pix++;
         }// for x
     }// for y
     
@@ -302,8 +301,6 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
     //Allocates frame
     if ((ret = ff_get_buffer(avctx, s->frame, 0)) < 0)
         return ret;
-
-    const int pix_size = s->frame->linesize[0]/ width_Y;
     
     //Pointers to different color components
     component_Y = s->frame->data[0];
@@ -334,16 +331,16 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
     lhe_read_file_symbols(s, image_size_UV, huffman_V, symbols_V);
 
     //Luminance
-    lhe_translate_symbols_into_hops(symbols_Y, hops_Y, pix_size, width_Y, image_size_Y);
-    lhe_decode_one_hop_per_pixel(&s->prec, hops_Y, component_Y, first_pixel_Y, width_Y, height_Y, pix_size);
+    lhe_translate_symbols_into_hops(symbols_Y, hops_Y, width_Y, image_size_Y);
+    lhe_decode_one_hop_per_pixel(&s->prec, hops_Y, component_Y, first_pixel_Y, width_Y, height_Y, s->frame->linesize[0]);
     
     //Chrominance U
-    lhe_translate_symbols_into_hops(symbols_U, hops_UV, pix_size, width_UV, image_size_UV);
-    lhe_decode_one_hop_per_pixel(&s->prec, hops_UV, component_U, first_pixel_U, width_UV, height_UV, pix_size);
+    lhe_translate_symbols_into_hops(symbols_U, hops_UV, width_UV, image_size_UV);
+    lhe_decode_one_hop_per_pixel(&s->prec, hops_UV, component_U, first_pixel_U, width_UV, height_UV, s->frame->linesize[1]);
     
     //Chrominance V
-    lhe_translate_symbols_into_hops(symbols_V, hops_UV, pix_size, width_UV, image_size_UV);
-    lhe_decode_one_hop_per_pixel(&s->prec, hops_UV, component_V, first_pixel_V, width_UV, height_UV, pix_size);
+    lhe_translate_symbols_into_hops(symbols_V, hops_UV, width_UV, image_size_UV);
+    lhe_decode_one_hop_per_pixel(&s->prec, hops_UV, component_V, first_pixel_V, width_UV, height_UV, s->frame->linesize[2]);
     
     av_log(NULL, AV_LOG_INFO, "DECODING...Width %d Height %d \n", width_Y, height_Y);
 
