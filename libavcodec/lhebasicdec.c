@@ -184,6 +184,111 @@ static void lhe_translate_symbols_into_hops (uint8_t * symbols, uint8_t *hops, i
     }
 }
 
+
+static void lhe_decode_one_hop_per_pixel_block (LheBasicPrec *prec, uint8_t *hops, uint8_t *image,
+                                                uint32_t width, uint32_t height, int linesize,
+                                                uint8_t *first_color_block, int total_blocks_width,
+                                                int block_x, int block_y,
+                                                int block_width, int block_height) 
+{
+       
+    //Hops computation.
+    int xini, xfin, yini, yfin;
+    bool small_hop, last_small_hop;
+    uint8_t hop, predicted_luminance, hop_1, r_max; 
+    int pix, num_block;
+    
+    //Errors
+    int min_error;      // error of predicted signal
+    int error;          //computed error for each hop 
+    
+    num_block = block_y * total_blocks_width + block_x;
+    
+    xini = block_x * block_width;
+    xfin = xini + block_width;
+    if (xfin>width) 
+    {
+        xfin = width;
+    }
+    yini = block_y * block_height;
+    yfin = yini + block_height;
+    if (yfin>height)
+    {
+        yfin = height;
+    }
+    
+    small_hop           = false;
+    last_small_hop      = false;        // indicates if last hop is small
+    predicted_luminance = 0;            // predicted signal
+    hop_1               = START_HOP_1;
+    pix                 = 0;            // pixel possition, from 0 to image size        
+    r_max               = PARAM_R;        
+    
+ 
+    for (int y=yini; y < yfin; y++)  {
+        for (int x=xini; x < xfin; x++)     {
+            
+            hop = hops[y*width + x]; 
+
+            pix = y*linesize + x; 
+       
+            
+            if ((y>yini) &&(x>xini) && x!=xfin-1)
+            {
+                predicted_luminance=(4*image[pix-1]+3*image[pix+1-linesize])/7;     
+            } 
+            else if ((x==xini) && (y>yini))
+            {
+                predicted_luminance=image[pix-linesize];
+                last_small_hop=false;
+                hop_1=START_HOP_1;
+            } 
+            else if ((x==xfin-1) && (y>yini)) 
+            {
+                predicted_luminance=(4*image[pix-1]+2*image[pix-linesize])/6;                               
+            } 
+            else if (y==yini && x>xini) 
+            {
+                predicted_luminance=image[pix-1];
+            }
+            else if (x==xini && y==yini) {  
+                predicted_luminance=first_color_block[num_block];//first pixel always is perfectly predicted! :-)  
+            }   
+            
+            //assignment of component_prediction
+            //This is the uncompressed image
+            image[pix]= prec -> prec_luminance[predicted_luminance][r_max][hop_1][hop];
+            
+            //tunning hop1 for the next hop ( "h1 adaptation")
+            //------------------------------------------------
+            small_hop=false;
+            if (hop<=HOP_POS_1 && hop>=HOP_NEG_1) 
+            {
+                small_hop=true;// 4 is in the center, 4 is null hop
+            }
+            else 
+            {
+                small_hop=false;    
+            }
+
+           if( (small_hop) && (last_small_hop))  {
+                hop_1=hop_1-1;
+                if (hop_1<MIN_HOP_1) {
+                    hop_1=MIN_HOP_1;
+                } 
+                
+            } else {
+                hop_1=MAX_HOP_1;
+            }
+
+            //lets go for the next pixel
+            //--------------------------
+            last_small_hop=small_hop;     
+        }// for x
+    }// for y
+    
+}
+
 static void lhe_decode_one_hop_per_pixel (LheBasicPrec *prec, uint8_t *hops, uint8_t *image,
                                           uint8_t first_color, uint32_t width, uint32_t height, 
                                           int linesize) {
@@ -228,7 +333,7 @@ static void lhe_decode_one_hop_per_pixel (LheBasicPrec *prec, uint8_t *hops, uin
             } 
             else if (y==0 && x>0) 
             {
-                predicted_luminance=image[x-1];
+                predicted_luminance=image[pix-1];
             }
             else if (x==0 && y==0) {  
                 predicted_luminance=first_color;//first pixel always is perfectly predicted! :-)  
@@ -268,16 +373,69 @@ static void lhe_decode_one_hop_per_pixel (LheBasicPrec *prec, uint8_t *hops, uin
     
 }
 
+static void lhe_decode_frame_sequential (LheBasicPrec *prec, 
+                                         uint8_t *component_Y, uint8_t *component_U, uint8_t *component_V,
+                                         uint8_t *hops_Y, uint8_t *hops_U, uint8_t *hops_V,
+                                         int width_Y, int height_Y, int width_UV, int height_UV, 
+                                         int linesize_Y, int linesize_U, int linesize_V, 
+                                         uint8_t *first_color_block_Y, uint8_t *first_color_block_U, uint8_t *first_color_block_V) 
+{
+    //Luminance
+    lhe_decode_one_hop_per_pixel(prec, hops_Y, component_Y, first_color_block_Y[0], width_Y, height_Y, linesize_Y);
+
+    //Chrominance U
+    lhe_decode_one_hop_per_pixel(prec, hops_U, component_U, first_color_block_U[0], width_UV, height_UV, linesize_U);
+
+    //Chrominance V
+    lhe_decode_one_hop_per_pixel(prec, hops_V, component_V, first_color_block_V[0], width_UV, height_UV, linesize_V);
+}
+
+
+static void lhe_decode_frame_pararell (LheBasicPrec *prec, 
+                                       uint8_t *component_Y, uint8_t *component_U, uint8_t *component_V,
+                                       uint8_t *hops_Y, uint8_t *hops_U, uint8_t *hops_V,
+                                       int width_Y, int height_Y, int width_UV, int height_UV, 
+                                       int linesize_Y, int linesize_U, int linesize_V, 
+                                       uint8_t *first_color_block_Y, uint8_t *first_color_block_U, uint8_t *first_color_block_V,
+                                       int total_blocks_width, int total_blocks_height) 
+{
+    
+    #pragma omp parallel for
+    for (int j=0; j<total_blocks_height; j++)      
+    {  
+        for (int i=0; i<total_blocks_width; i++) 
+        {
+            
+            //Luminance
+            lhe_decode_one_hop_per_pixel_block(prec, hops_Y, component_Y, 
+                                                width_Y, height_Y, linesize_Y, 
+                                                first_color_block_Y, total_blocks_width, 
+                                                i, j, BLOCK_WIDTH_Y, BLOCK_HEIGHT_Y);
+
+            //Chrominance U
+            lhe_decode_one_hop_per_pixel_block(prec, hops_U, component_U, 
+                                                width_UV, height_UV, linesize_U,
+                                                first_color_block_U, total_blocks_width, 
+                                                i, j, BLOCK_WIDTH_UV, BLOCK_HEIGHT_UV);
+        
+            //Chrominance V
+            lhe_decode_one_hop_per_pixel_block(prec, hops_V, component_V, 
+                                            width_UV, height_UV, linesize_V,
+                                            first_color_block_V, total_blocks_width, 
+                                            i, j, BLOCK_WIDTH_UV, BLOCK_HEIGHT_UV);
+        }
+    }
+}
 
 static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, AVPacket *avpkt)
 {
-    int i;
     uint32_t width_Y, width_UV, height_Y, height_UV, image_size_Y, image_size_UV;
-    uint8_t *component_Y, *component_U, *component_V, *hops_Y, *hops_UV;
+    uint8_t *component_Y, *component_U, *component_V, *hops_Y, *hops_U, *hops_V;
     uint8_t *symbols_Y, *symbols_U, *symbols_V;
     int *huffman_Y, *huffman_U, *huffman_V;
-    uint8_t first_pixel_Y, first_pixel_U, first_pixel_V;
-    int ret;
+    uint8_t *first_color_block_Y, *first_color_block_U, *first_color_block_V;
+    int total_blocks, total_blocks_width, total_blocks_height;
+    int ret, i,j;
         
     LheState *s = avctx->priv_data;
     
@@ -291,16 +449,30 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
     height_UV = (height_Y - 1)/CHROMA_FACTOR_HEIGHT + 1;
     image_size_UV = width_UV * height_UV;
     
-    first_pixel_Y = bytestream_get_byte(&lhe_data); 
-    first_pixel_U = bytestream_get_byte(&lhe_data); 
-    first_pixel_V = bytestream_get_byte(&lhe_data); 
-    
     avctx->width  = width_Y;
     avctx->height  = height_Y;    
     
     //Allocates frame
     if ((ret = ff_get_buffer(avctx, s->frame, 0)) < 0)
         return ret;
+    
+    //Blocks
+    total_blocks_width = bytestream_get_byte(&lhe_data); 
+    total_blocks_height = bytestream_get_byte(&lhe_data); 
+
+    total_blocks = total_blocks_height * total_blocks_width;
+    
+    //First pixel array
+    first_color_block_Y = malloc(sizeof(uint8_t) * image_size_Y);
+    first_color_block_U = malloc(sizeof(uint8_t) * image_size_UV);
+    first_color_block_V = malloc(sizeof(uint8_t) * image_size_UV);
+    
+    for (i=0; i<total_blocks; i++) 
+    {
+        first_color_block_Y[i] = bytestream_get_byte(&lhe_data); 
+        first_color_block_U[i] = bytestream_get_byte(&lhe_data); 
+        first_color_block_V[i] = bytestream_get_byte(&lhe_data); 
+    }
     
     //Pointers to different color components
     component_Y = s->frame->data[0];
@@ -318,7 +490,8 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
     huffman_V = malloc(sizeof(int) * LHE_MAX_HUFF_SIZE);
     
     hops_Y = malloc(sizeof(uint8_t) * image_size_Y);      
-    hops_UV = malloc(sizeof(uint8_t) * image_size_UV);      
+    hops_U = malloc(sizeof(uint8_t) * image_size_UV);    
+    hops_V = malloc(sizeof(uint8_t) * image_size_UV);      
            
     init_get_bits(&s->gb, lhe_data, avpkt->size * 8);
 
@@ -330,17 +503,30 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
     lhe_read_file_symbols(s, image_size_UV, huffman_U, symbols_U);
     lhe_read_file_symbols(s, image_size_UV, huffman_V, symbols_V);
 
-    //Luminance
+    //Translate into hops
     lhe_translate_symbols_into_hops(symbols_Y, hops_Y, width_Y, image_size_Y);
-    lhe_decode_one_hop_per_pixel(&s->prec, hops_Y, component_Y, first_pixel_Y, width_Y, height_Y, s->frame->linesize[0]);
+    lhe_translate_symbols_into_hops(symbols_U, hops_U, width_UV, image_size_UV);
+    lhe_translate_symbols_into_hops(symbols_V, hops_V, width_UV, image_size_UV);
     
-    //Chrominance U
-    lhe_translate_symbols_into_hops(symbols_U, hops_UV, width_UV, image_size_UV);
-    lhe_decode_one_hop_per_pixel(&s->prec, hops_UV, component_U, first_pixel_U, width_UV, height_UV, s->frame->linesize[1]);
-    
-    //Chrominance V
-    lhe_translate_symbols_into_hops(symbols_V, hops_UV, width_UV, image_size_UV);
-    lhe_decode_one_hop_per_pixel(&s->prec, hops_UV, component_V, first_pixel_V, width_UV, height_UV, s->frame->linesize[2]);
+    if (total_blocks > 1 && CONFIG_OPENMP) 
+    {
+        lhe_decode_frame_pararell (&s->prec, 
+                                   component_Y, component_U, component_V, 
+                                   hops_Y, hops_U, hops_V,
+                                   width_Y, height_Y, width_UV, height_UV, 
+                                   s->frame->linesize[0], s->frame->linesize[1], s->frame->linesize[2],
+                                   first_color_block_Y, first_color_block_U, first_color_block_V,
+                                   total_blocks_width, total_blocks_height);
+       
+    } else 
+    {      
+        lhe_decode_frame_sequential (&s->prec, 
+                                     component_Y, component_U, component_V, 
+                                     hops_Y, hops_U, hops_V,
+                                     width_Y, height_Y, width_UV, height_UV, 
+                                     s->frame->linesize[0], s->frame->linesize[1], s->frame->linesize[2],
+                                     first_color_block_Y, first_color_block_U, first_color_block_V);    
+    }
     
     av_log(NULL, AV_LOG_INFO, "DECODING...Width %d Height %d \n", width_Y, height_Y);
 

@@ -16,10 +16,27 @@
 #include <sys/time.h>
 #include "huffman.h"
 
+//Configuration OpenMP
+#define OPENMP_FLAGS strcmp(FFMPEG_CONFIGURATION, "--extra-cflags=-fopenmp --extra-ldflags=-fopenmp")
+#if $OPENMP_FLAGS == 0
+#define CONFIG_OPENMP 1
+#else 
+#define CONFIG_OPENMP 0
+#endif
+
+#if (CONFIG_OPENMP)
+#include <omp.h>
+#endif
+
+
 //Configuration 
 #define MIDDLE_VALUE false
 #define CHROMA_FACTOR_WIDTH 2
 #define CHROMA_FACTOR_HEIGHT 1
+#define BLOCK_WIDTH_Y 64
+#define BLOCK_HEIGHT_Y 64
+#define BLOCK_WIDTH_UV BLOCK_WIDTH_Y/CHROMA_FACTOR_WIDTH
+#define BLOCK_HEIGHT_UV BLOCK_HEIGHT_Y/CHROMA_FACTOR_HEIGHT
 
 //Params for precomputation
 #define H1_RANGE 20
