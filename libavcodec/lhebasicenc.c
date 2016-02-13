@@ -558,6 +558,8 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     {
         total_blocks = total_blocks_height * total_blocks_width;
     } else {
+        total_blocks_height = 1;
+        total_blocks_width = 1;
         total_blocks = 1;
     }
     
