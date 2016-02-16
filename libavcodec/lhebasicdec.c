@@ -508,7 +508,7 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
     lhe_translate_symbols_into_hops(symbols_U, hops_U, width_UV, image_size_UV);
     lhe_translate_symbols_into_hops(symbols_V, hops_V, width_UV, image_size_UV);
     
-    if (total_blocks > 1 && CONFIG_OPENMP) 
+    if (total_blocks > 1 && OPENMP_FLAGS == CONFIG_OPENMP) 
     {
         lhe_decode_frame_pararell (&s->prec, 
                                    component_Y, component_U, component_V, 
