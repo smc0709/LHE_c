@@ -428,6 +428,9 @@ static int lhe_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
         bytestream_put_byte(&buf, first_pixel_blocks_Y[i]);
         bytestream_put_byte(&buf, first_pixel_blocks_U[i]);
         bytestream_put_byte(&buf, first_pixel_blocks_V[i]);
+        
+                    av_log(NULL, AV_LOG_INFO, "total_blocks = %d FCY = %d FCU = %d FCV = %d \n",total_blocks, first_pixel_blocks_Y[i], first_pixel_blocks_U[i], first_pixel_blocks_V[i]);
+
     }
           
     init_put_bits(&s->pb, buf, 3*LHE_HUFFMAN_TABLE_SIZE_BYTES + n_bytes_components + file_offset_bytes);
@@ -554,7 +557,7 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     total_blocks_height = (height_Y - 1)/ BLOCK_HEIGHT_Y + 1;
     total_blocks_width = (width_Y - 1) / BLOCK_WIDTH_Y + 1;
     
-    if (CONFIG_OPENMP) 
+    if (OPENMP_FLAGS == CONFIG_OPENMP) 
     {
         total_blocks = total_blocks_height * total_blocks_width;
     } else {
