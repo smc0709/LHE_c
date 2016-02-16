@@ -69,17 +69,28 @@
 #define HOP_POS_4 8 // h4 
 
 //File symbols
+#define HOP_0_CHECK 1
+#define HOP_UP_CHECK 1
+#define HOP_POS_1_CHECK 0
+#define HOP_NEG_1_CHECK 1
+#define HOP_POS_2_CHECK 2 
+#define HOP_NEG_2_CHECK 3
+#define HOP_POS_3_CHECK 4
+#define HOP_NEG_3_CHECK 5
+#define HOP_POS_4_CHECK 6
+#define HOP_NEG_4_CHECK 7
+
 #define NO_SYMBOL 20
-#define SYM_HOP_O 0
-#define SYM_HOP_UP 1
-#define SYM_HOP_POS_1 2
-#define SYM_HOP_NEG_1 3
-#define SYM_HOP_POS_2 4 
-#define SYM_HOP_NEG_2 5
-#define SYM_HOP_POS_3 6
-#define SYM_HOP_NEG_3 7
-#define SYM_HOP_POS_4 8
-#define SYM_HOP_NEG_4 9
+#define SYM_0 0
+#define SYM_1 1
+#define SYM_2 2
+#define SYM_3 3
+#define SYM_4 4 
+#define SYM_5 5
+#define SYM_6 6
+#define SYM_7 7
+#define SYM_8 8
+#define SYM_9 9
 
 //Huffman
 #define LHE_MAX_HUFF_SIZE 10
@@ -88,17 +99,20 @@
 #define LHE_HUFFMAN_NODE_BITS 4
 #define LHE_MAX_BITS 9
 
-static const uint8_t lhe_huff_coeff_map[] = {
-    SYM_HOP_O, SYM_HOP_UP, SYM_HOP_POS_1, SYM_HOP_NEG_1, SYM_HOP_POS_2, SYM_HOP_NEG_2,
-    SYM_HOP_POS_3, SYM_HOP_NEG_3,SYM_HOP_POS_4, SYM_HOP_NEG_4
-};
-
 typedef struct LheBasicPrec {
     uint8_t prec_luminance[Y_MAX_COMPONENT][RATIO][H1_RANGE][NUMBER_OF_HOPS]; // precomputed luminance component
     uint8_t best_hop [RATIO][H1_RANGE][Y_MAX_COMPONENT][Y_MAX_COMPONENT]; //ratio - h1 - original color - prediction
     uint8_t h1_adaptation [H1_RANGE][NUMBER_OF_HOPS][NUMBER_OF_HOPS]; //h1 adaptation cache
 } LheBasicPrec; 
 
+typedef struct LheHuffEntry {
+    uint8_t  sym;
+    uint8_t  len;
+    uint32_t code;
+    uint64_t count;
+} LheHuffEntry;
+
+int lhe_generate_huffman_codes(LheHuffEntry *he);
 double time_diff(struct timeval x , struct timeval y);
 int count_bits (int num);
 

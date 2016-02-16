@@ -30,64 +30,85 @@ static av_cold int lhe_encode_init(AVCodecContext *avctx)
 
 }
 
-static void lhe_translate_hop_into_symbol (uint8_t * symbols_hops, uint8_t *hops, int pix, int width) {
+static uint8_t lhe_translate_hop_into_symbol (uint8_t *hops, int pix, int width) {
     uint8_t hop, symbol;
     bool hop_found;
     
-    hop_found = false;  
+    hop_found = false;
     hop = hops[pix];
+    symbol = 0;
     
     //First, check if hop is HOP_O
-    if (hop == HOP_0) {
-        symbol = SYM_HOP_O;
+    if (hop == HOP_0) 
+    {
         hop_found = true;
+    } else 
+    {
+        symbol += HOP_0_CHECK;
     }
     
     //Second, check if hop is HOP_UP
-    if (!hop_found && pix > width && hops[pix-width]==hop) {
-        symbol = SYM_HOP_UP;
+    if (!hop_found && pix > width && hops[pix-width]==hop) 
+    {
         hop_found = true;
+    } else if (!hop_found && pix>width)
+    {
+        symbol += HOP_UP_CHECK;
     }
 
     //Third, look for the right hop
-    if (!hop_found) {
+    
+    if (!hop_found) 
+    {
         switch (hop) {
             case HOP_POS_1:
-                symbol = SYM_HOP_POS_1;
+                symbol += HOP_POS_1_CHECK;
                 break;
             case HOP_NEG_1:
-                symbol = SYM_HOP_NEG_1;
+                symbol += HOP_NEG_1_CHECK;
                 break;
             case HOP_POS_2:
-                symbol = SYM_HOP_POS_2;
+                symbol += HOP_POS_2_CHECK;
                 break;
             case HOP_NEG_2:
-                symbol = SYM_HOP_NEG_2;
+                symbol += HOP_NEG_2_CHECK;
                 break;
             case HOP_POS_3:
-                symbol = SYM_HOP_POS_3;
+                symbol += HOP_POS_3_CHECK;
                 break;
             case HOP_NEG_3:
-                symbol = SYM_HOP_NEG_3;
+                symbol += HOP_NEG_3_CHECK;
                 break;
             case HOP_POS_4:
-                symbol = SYM_HOP_POS_4;
+                symbol += HOP_POS_4_CHECK;
                 break;
             case HOP_NEG_4:
-                symbol = SYM_HOP_NEG_4;        
+                symbol += HOP_NEG_4_CHECK;   
                 break;
-        }
+        }  
     }
-    
-    symbols_hops[pix] = symbol;
-    
+ 
+    return symbol;
 }
 
-static void lhe_translate_hops_into_symbols (uint8_t * symbols_hops, uint8_t *hops, int width, int image_size) {
+static void lhe_translate_hops_into_symbols (uint8_t *symbols_Y, uint8_t *symbols_U, uint8_t *symbols_V, 
+                                             uint8_t *hops_Y, uint8_t *hops_U , uint8_t *hops_V , 
+                                             int width, int width_UV,
+                                             int image_size, int image_size_UV) {
     int pix;
     for (pix=0; pix<image_size; pix++) 
     {
-        lhe_translate_hop_into_symbol (symbols_hops, hops, pix, width);
+        symbols_Y[pix] = lhe_translate_hop_into_symbol (hops_Y, pix, width);
+    }
+    
+    for (pix=0; pix<image_size_UV; pix++) 
+    {
+        symbols_U[pix] = lhe_translate_hop_into_symbol (hops_U, pix, width_UV);
+    }
+    
+    for (pix=0; pix<image_size_UV; pix++) 
+    {
+        symbols_V[pix] = lhe_translate_hop_into_symbol (hops_V, pix, width_UV);
     }
     
 }
@@ -279,79 +300,36 @@ static void lhe_encode_one_hop_per_pixel (LheBasicPrec *prec, uint8_t *component
     }//for y     
 }
 
-/**
- * Comparator - our nodes should ascend by count
- * but with preserved symbol order
- */
-static int lhe_huff_cmp(const void *va, const void *vb)
+static uint64_t lhe_gen_huffman (LheHuffEntry *he, 
+                                 uint8_t *symbols,
+                                 int image_size)
 {
-    const Node *a = va, *b = vb;
-    return (a->count - b->count)*LHE_MAX_HUFF_SIZE + a->sym - b->sym;
-}
-
-static int lhe_build_huff_tree(AVCodecContext *avctx, int *codes, uint8_t *symbols, 
-                               uint8_t *huffman_code, uint8_t *huffman_length , 
-                               int image_size)
-{
-    Node nodes[2*LHE_MAX_HUFF_SIZE];
-    int code, coded_symbols, bits;
-    VLC vlc;
     int i, ret;
-    
-    
-    //Initialize values
-    for (i=0; i<2*LHE_MAX_HUFF_SIZE; i++) 
-    {
-        nodes[i].count = 0;
-    }
-    
+    uint8_t  huffman_lengths[LHE_MAX_HUFF_SIZE];
+    uint64_t symbol_count[LHE_MAX_HUFF_SIZE]     = { 0 };
+   
+        
     //First compute probabilities from model
     for (i=0; i<image_size; i++) {
-        nodes[lhe_huff_coeff_map[symbols[i]]].count++;
+        symbol_count[symbols[i]]++;
+    }
+    
+    
+    //Generate Huffman length
+    if ((ret = ff_huff_gen_len_table(huffman_lengths, symbol_count, LHE_MAX_HUFF_SIZE, 1)) < 0)
+        return ret;
+    
+     for (i = 0; i < LHE_MAX_HUFF_SIZE; i++) {
+        he[i].len = huffman_lengths[i];
+        he[i].count = symbol_count[i];
+        he[i].sym = i;
     }
 
-    //Then build the huffman tree according to probabilities
-    if (ret = ff_huff_build_tree(avctx, &vlc, LHE_MAX_HUFF_SIZE, LHE_MAX_BITS,
-                                nodes, lhe_huff_cmp,
-                                FF_HUFFMAN_FLAG_HNODE_FIRST) < 0) 
-        return ret;
-
-    ff_free_vlc(&vlc);
+    //Generate Huffman codes
+    return lhe_generate_huffman_codes(he);
     
-    coded_symbols = 0;
-    bits = 0;
-    for (i=LHE_MAX_HUFF_SIZE*2 - 1; i>=0; i--) 
-    {   
-        if (nodes[i].sym != -1) {
-            
-            huffman_length[nodes[i].sym] = coded_symbols+1;
-
-            if (coded_symbols == 0) 
-            {
-                code = 0;
-            }
-            else if (coded_symbols == LHE_MAX_HUFF_SIZE-1) 
-            {
-                //Last symbol only changes last bit
-                code = code + 1;
-                huffman_length[nodes[i].sym] = coded_symbols;
-            }
-            else
-            {
-                code |= 1<<coded_symbols;
-            }
-            
-            codes[nodes[i].sym] = code;
-            huffman_code[coded_symbols] = nodes[i].sym; 
-            bits+=nodes[i].count*huffman_length[nodes[i].sym]; //bits number is symbol occurrence * symbol bits
-            coded_symbols++;
-
-        }     
-    }  
-    
-    return bits;
 }
-
+                             
 static int lhe_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt, 
                               int image_size_Y, int width_Y, int height_Y,
                               int image_size_UV, int width_UV, int height_UV,
@@ -362,11 +340,15 @@ static int lhe_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
     uint8_t *buf;
     uint8_t file_offset, file_offset_bytes;
     uint8_t *symbols_Y, *symbols_U, *symbols_V;
-    uint8_t *huffman_table_Y, *huffman_table_U, *huffman_table_V;
-    uint8_t *huffman_length_Y, *huffman_length_U, *huffman_length_V;
-    int *huffman_codes_Y, *huffman_codes_U , *huffman_codes_V;
-    int bits, n_bits_hops_Y , n_bits_hops_U, n_bits_hops_V, n_bytes, n_bytes_components;
-    int total_blocks, i, ret;
+
+    uint64_t bits, n_bits_hops_Y, n_bits_hops_U, n_bits_hops_V, n_bytes, n_bytes_components, total_blocks;
+    int i, ret;
+
+    struct timeval before , after;
+    
+    LheHuffEntry he_Y[LHE_MAX_HUFF_SIZE];
+    LheHuffEntry he_U[LHE_MAX_HUFF_SIZE];
+    LheHuffEntry he_V[LHE_MAX_HUFF_SIZE];
 
     LheContext *s = avctx->priv_data;
     
@@ -375,34 +357,32 @@ static int lhe_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
     symbols_Y = malloc(sizeof(uint8_t) * image_size_Y); 
     symbols_U = malloc(sizeof(uint8_t) * image_size_UV); 
     symbols_V = malloc(sizeof(uint8_t) * image_size_UV); 
-    huffman_table_Y = malloc (sizeof(uint8_t) * LHE_MAX_HUFF_SIZE);
-    huffman_table_U = malloc (sizeof(uint8_t) * LHE_MAX_HUFF_SIZE);
-    huffman_table_V = malloc (sizeof(uint8_t) * LHE_MAX_HUFF_SIZE);
-    huffman_length_Y = malloc (sizeof(uint8_t) * LHE_MAX_HUFF_SIZE);
-    huffman_length_U = malloc (sizeof(uint8_t) * LHE_MAX_HUFF_SIZE);
-    huffman_length_V = malloc (sizeof(uint8_t) * LHE_MAX_HUFF_SIZE);
-    huffman_codes_Y = malloc (sizeof(int) * LHE_MAX_HUFF_SIZE);
-    huffman_codes_U = malloc (sizeof(int) * LHE_MAX_HUFF_SIZE);
-    huffman_codes_V = malloc (sizeof(int) * LHE_MAX_HUFF_SIZE);
+
+    gettimeofday(&before , NULL);
+
     
     //Translate hops into symbols
-    lhe_translate_hops_into_symbols(symbols_Y, hops_Y, width_Y, image_size_Y);
-    lhe_translate_hops_into_symbols(symbols_U, hops_U, width_UV, image_size_UV);
-    lhe_translate_hops_into_symbols(symbols_V, hops_V, width_UV, image_size_UV);
-
-    //Calculate bits
-    n_bits_hops_Y = lhe_build_huff_tree(avctx, huffman_codes_Y, symbols_Y, huffman_table_Y, huffman_length_Y, image_size_Y);
-    n_bits_hops_U = lhe_build_huff_tree(avctx, huffman_codes_U, symbols_U, huffman_table_U, huffman_length_U, image_size_UV);
-    n_bits_hops_V = lhe_build_huff_tree(avctx, huffman_codes_V, symbols_V, huffman_table_V, huffman_length_V, image_size_UV);
+    lhe_translate_hops_into_symbols(symbols_Y, symbols_U, symbols_V,
+                                    hops_Y, hops_U, hops_V,
+                                    width_Y, width_UV,
+                                    image_size_Y, image_size_UV);
     
+    n_bits_hops_Y = lhe_gen_huffman (he_Y, symbols_Y, image_size_Y);
+    n_bits_hops_U = lhe_gen_huffman (he_U, symbols_U, image_size_UV);
+    n_bits_hops_V = lhe_gen_huffman (he_V, symbols_V, image_size_UV);
+    
+    
+    gettimeofday(&after , NULL);
+
     ret = (n_bits_hops_Y + n_bits_hops_U + n_bits_hops_V) % 8;
     n_bytes_components = (n_bits_hops_Y + n_bits_hops_U + n_bits_hops_V + ret)/8;
     
+
     //File size
     n_bytes = sizeof(width_Y) + sizeof(height_Y) //width and height
               + sizeof(total_blocks_height) + sizeof(total_blocks_width)
               + total_blocks * (sizeof(first_pixel_blocks_Y) + sizeof(first_pixel_blocks_U) + sizeof(first_pixel_blocks_V)) //first pixel blocks array value
-              + 3 * LHE_HUFFMAN_TABLE_SIZE_BYTES + //huffman trees
+              + 3*LHE_HUFFMAN_TABLE_SIZE_BYTES + //huffman table
               + n_bytes_components; //components
               
     file_offset = (n_bytes * 8) % 32;
@@ -426,50 +406,62 @@ static int lhe_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
     for (i=0; i<total_blocks; i++) 
     {
         bytestream_put_byte(&buf, first_pixel_blocks_Y[i]);
+    }
+    
+      for (i=0; i<total_blocks; i++) 
+    {
         bytestream_put_byte(&buf, first_pixel_blocks_U[i]);
+
+    }
+    
+      for (i=0; i<total_blocks; i++) 
+    {
         bytestream_put_byte(&buf, first_pixel_blocks_V[i]);
     }
-          
+    
+         
     init_put_bits(&s->pb, buf, 3*LHE_HUFFMAN_TABLE_SIZE_BYTES + n_bytes_components + file_offset_bytes);
 
     //Write Huffman tables
     for (i=0; i<LHE_MAX_HUFF_SIZE; i++)
     {
-        put_bits(&s->pb, LHE_HUFFMAN_NODE_BITS, huffman_table_Y[i]);
+        if (he_Y[i].len==255) he_Y[i].len=15;
+        put_bits(&s->pb, LHE_HUFFMAN_NODE_BITS, he_Y[i].len);
     }
     
-    for (i=0; i<LHE_MAX_HUFF_SIZE; i++)
+      for (i=0; i<LHE_MAX_HUFF_SIZE; i++)
     {
-        put_bits(&s->pb, LHE_HUFFMAN_NODE_BITS, huffman_table_U[i]);
+        if (he_U[i].len==255) he_U[i].len=15;
+        put_bits(&s->pb, LHE_HUFFMAN_NODE_BITS, he_U[i].len);
     }
     
-        for (i=0; i<LHE_MAX_HUFF_SIZE; i++)
+      for (i=0; i<LHE_MAX_HUFF_SIZE; i++)
     {
-        put_bits(&s->pb, LHE_HUFFMAN_NODE_BITS, huffman_table_V[i]);
-    }
+        if (he_V[i].len==255) he_V[i].len=15;
+        put_bits(&s->pb, LHE_HUFFMAN_NODE_BITS, he_V[i].len);
+    }   
     
     //Write image
     for (i=0; i<image_size_Y; i++) 
-    {
-        bits = huffman_codes_Y[symbols_Y[i]];
-        
-        put_bits(&s->pb, huffman_length_Y[symbols_Y[i]] , bits);
+    {        
+        put_bits(&s->pb, he_Y[symbols_Y[i]].len , he_Y[symbols_Y[i]].code);
     }
     
     for (i=0; i<image_size_UV; i++) 
     {        
-        bits = huffman_codes_U[symbols_U[i]];
-        put_bits(&s->pb, huffman_length_U[symbols_U[i]] , bits);
+       put_bits(&s->pb, he_U[symbols_U[i]].len , he_U[symbols_U[i]].code);
         
     }
     
     for (i=0; i<image_size_UV; i++) 
     {
-        bits = huffman_codes_V[symbols_V[i]];
-        put_bits(&s->pb, huffman_length_V[symbols_V[i]] , bits);
+        put_bits(&s->pb, he_V[symbols_V[i]].len , he_V[symbols_V[i]].code);
     }
     
     put_bits(&s->pb, file_offset, 0);
+    
+    //av_log(NULL, AV_LOG_INFO, "LHE Write file %.0lf \n", time_diff(before , after));
+
     
     return n_bytes;
 }

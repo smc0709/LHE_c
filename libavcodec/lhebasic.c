@@ -27,6 +27,68 @@ double time_diff(struct timeval x , struct timeval y)
 }
 
 /**
+ * 
+ * Huffman
+ */
+
+static int huff_cmp_len(const void *a, const void *b)
+{
+    const LheHuffEntry *aa = a, *bb = b;
+    return (aa->len - bb->len)*LHE_MAX_HUFF_SIZE + aa->sym - bb->sym;
+}
+
+/* Compare huffentry symbols */
+static int huff_cmp_sym(const void *a, const void *b)
+{
+    const LheHuffEntry *aa = a, *bb = b;
+    return aa->sym - bb->sym;
+}
+
+int lhe_generate_huffman_codes(LheHuffEntry *he)
+{
+    int len, i, j, last;
+    uint16_t code;
+    uint64_t bits;
+    
+    code = 1;
+    last = LHE_MAX_HUFF_SIZE-1;
+
+    qsort(he, LHE_MAX_HUFF_SIZE, sizeof(*he), huff_cmp_len); 
+
+    
+    while (he[last].len == 255 && last)
+        last--;
+    
+    for (i=0; i<he[last].len; i++)
+    {
+        code|= 1 << i;
+    }      
+        
+    for (len= he[last].len; len > 0; len--) {
+        for (i = 0; i <= last; i++) {
+            if (he[i].len == len)
+            {
+                he[i].code = code;
+                code--;
+            }          
+        }
+        
+        code >>= 1;
+    }
+
+    
+    qsort(he, LHE_MAX_HUFF_SIZE, sizeof(*he), huff_cmp_sym);
+    
+    for (i=0; i<LHE_MAX_HUFF_SIZE; i++) 
+    {
+        bits += (he[i].len * he[i].count); //bits number is symbol occurrence * symbol bits
+    }
+    
+    return bits;
+
+}
+
+/**
  * LHE Precomputation 
  * 
  * Precomputation methods for both LHE encoder and decoder .
