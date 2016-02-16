@@ -18,11 +18,7 @@
 
 //Configuration OpenMP
 #define OPENMP_FLAGS strcmp(FFMPEG_CONFIGURATION, "--extra-cflags=-fopenmp --extra-ldflags=-fopenmp")
-#if $OPENMP_FLAGS == 0
-#define CONFIG_OPENMP 1
-#else 
 #define CONFIG_OPENMP 0
-#endif
 
 #if (CONFIG_OPENMP)
 #include <omp.h>

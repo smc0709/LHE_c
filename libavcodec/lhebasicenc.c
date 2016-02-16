@@ -554,7 +554,7 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     total_blocks_height = (height_Y - 1)/ BLOCK_HEIGHT_Y + 1;
     total_blocks_width = (width_Y - 1) / BLOCK_WIDTH_Y + 1;
     
-    if (CONFIG_OPENMP) 
+    if (OPENMP_FLAGS == CONFIG_OPENMP) 
     {
         total_blocks = total_blocks_height * total_blocks_width;
     } else {
@@ -580,7 +580,7 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     gettimeofday(&before , NULL);
    
 
-    if(CONFIG_OPENMP) {
+    if(OPENMP_FLAGS == CONFIG_OPENMP) {
         
         lhe_encode_frame_pararell (&s->prec, 
                                    component_original_data_Y, component_original_data_U, component_original_data_V, 
