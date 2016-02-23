@@ -30,7 +30,7 @@ static av_cold int lhe_encode_init(AVCodecContext *avctx)
 
 }
 
-static uint8_t lhe_translate_hop_into_symbol (uint8_t *hops, int pix, int width) {
+static inline uint8_t lhe_translate_hop_into_symbol (uint8_t *hops, int pix, int width) {
     uint8_t hop, symbol;
     bool hop_found;
     
@@ -125,7 +125,7 @@ static void lhe_encode_one_hop_per_pixel_block (LheBasicPrec *prec, uint8_t *com
     int xini, xfin, yini, yfin;
     bool small_hop, last_small_hop;
     uint8_t predicted_luminance, hop_1, hop_number, original_color, r_max;
-    int pix, num_block;
+    int pix, pix_original_data, dif_line, dif_pix ,num_block;
     
     num_block = block_y * total_blocks_width + block_x;
     
@@ -152,18 +152,22 @@ static void lhe_encode_one_hop_per_pixel_block (LheBasicPrec *prec, uint8_t *com
     
     r_max=PARAM_R;
     
+    pix = yini*width + xini;
+    pix_original_data = yini*linesize + xini;
+    
+    dif_pix = width - xfin + xini;
+    dif_line = linesize - xfin + xini;
     
     for (int y=yini; y < yfin; y++)  {
         for (int x=xini; x < xfin; x++)  {
             
-            pix= y*width + x;
-            original_color = component_original_data[y*linesize+x]; //This can't be pix because ffmpeg adds empty memory slots. 
+            original_color = component_original_data[pix_original_data]; //This can't be pix because ffmpeg adds empty memory slots. 
             
             //prediction of signal (predicted_luminance) , based on pixel's coordinates 
             //----------------------------------------------------------
             if ((y>yini) &&(x>xini) && x!=xfin-1)
             {
-                predicted_luminance=(4*component_prediction[pix-1]+3*component_prediction[pix+1-width])/7;     
+                predicted_luminance=(component_prediction[pix-1]+component_prediction[pix+1-width])>>1;     
             } 
             else if ((x==xini) && (y>yini))
             {
@@ -173,7 +177,7 @@ static void lhe_encode_one_hop_per_pixel_block (LheBasicPrec *prec, uint8_t *com
             } 
             else if ((x==xfin-1) && (y>yini)) 
             {
-                predicted_luminance=(4*component_prediction[pix-1]+2*component_prediction[pix-width])/6;                               
+                predicted_luminance=(component_prediction[pix-1]+component_prediction[pix-width])>>1;                               
             } 
             else if (y==yini && x>xini) 
             {
@@ -182,7 +186,7 @@ static void lhe_encode_one_hop_per_pixel_block (LheBasicPrec *prec, uint8_t *com
             else if (x==xini && y==yini) {  
                 predicted_luminance=original_color;//first pixel always is perfectly predicted! :-)  
                 first_color_block[num_block] = original_color;
-            } 
+            }
             
             hop_number = prec->best_hop[r_max][hop_1][original_color][predicted_luminance]; 
             hops[pix]= hop_number;
@@ -212,8 +216,12 @@ static void lhe_encode_one_hop_per_pixel_block (LheBasicPrec *prec, uint8_t *com
 
             //lets go for the next pixel
             //--------------------------
+            pix++;
+            pix_original_data++;
             last_small_hop=small_hop;
         }//for x
+        pix+=dif_pix;
+        pix_original_data+=dif_line;
     }//for y     
 }
 
@@ -222,10 +230,11 @@ static void lhe_encode_one_hop_per_pixel (LheBasicPrec *prec, uint8_t *component
                                           int width, int height, int linesize, 
                                           uint8_t *first_color_block)
 {      
+
     //Hops computation.
     bool small_hop, last_small_hop;
     uint8_t predicted_luminance, hop_1, hop_number, original_color, r_max;
-    int pix;
+    int pix, pix_original_data, dif_line;
 
     small_hop = false;
     last_small_hop=false;          // indicates if last hop is small
@@ -234,19 +243,22 @@ static void lhe_encode_one_hop_per_pixel (LheBasicPrec *prec, uint8_t *component
     hop_number=4;                  // pre-selected hop // 4 is NULL HOP
     pix=0;                         // pixel possition, from 0 to image size        
     original_color=0;              // original color
+    r_max=PARAM_R;   
     
-    r_max=PARAM_R;     
+    dif_line = linesize - width;
+
     for (int y=0; y < height; y++)  {
         for (int x=0; x < width; x++)  {
-            
-            original_color = component_original_data[y*linesize+x]; //This can't be pix because ffmpeg adds empty memory slots. 
 
+            original_color = *component_original_data++; //This can't be pix because ffmpeg adds empty memory slots. 
+            
             //prediction of signal (predicted_luminance) , based on pixel's coordinates 
             //----------------------------------------------------------
-            if ((y>0) &&(x>0) && x!=width-1)
-            {
-                predicted_luminance=(4*component_prediction[pix-1]+3*component_prediction[pix+1-width])/7;     
-            } 
+            
+            if (y>0 && x>0 && x!=width-1) {
+                
+                predicted_luminance = (component_prediction[pix-1]+component_prediction[pix+1-width])>>1; 
+            }
             else if ((x==0) && (y>0))
             {
                 predicted_luminance=component_prediction[pix-width];
@@ -255,37 +267,29 @@ static void lhe_encode_one_hop_per_pixel (LheBasicPrec *prec, uint8_t *component
             } 
             else if ((x==width-1) && (y>0)) 
             {
-                predicted_luminance=(4*component_prediction[pix-1]+2*component_prediction[pix-width])/6;                               
+                predicted_luminance=(component_prediction[pix-1]+component_prediction[pix-width])>>1;                               
             } 
             else if (y==0 && x>0) 
             {
-                predicted_luminance=component_prediction[pix-1];
+                predicted_luminance=component_prediction[pix-1];               
             }
             else if (x==0 && y==0) {  
                 predicted_luminance=original_color;//first pixel always is perfectly predicted! :-)  
-                first_color_block[y*linesize+x]=original_color;
-            }          
+                first_color_block[0]=original_color;
+            }    
             
             hop_number = prec->best_hop[r_max][hop_1][original_color][predicted_luminance]; 
             hops[pix]= hop_number;
             component_prediction[pix]=prec -> prec_luminance[predicted_luminance][r_max][hop_1][hop_number];
 
-
             //tunning hop1 for the next hop ( "h1 adaptation")
             //------------------------------------------------
-            if (hop_number<=HOP_POS_1 && hop_number>=HOP_NEG_1) 
-            {
-                small_hop=true;// 4 is in the center, 4 is null hop
-            }
-            else 
-            {
-                small_hop=false;    
-            }
+            small_hop = (hop_number<=HOP_POS_1 && hop_number>=HOP_NEG_1) ;
+           
+            if((small_hop) && (last_small_hop))  {
 
-            if( (small_hop) && (last_small_hop))  {
-                hop_1=hop_1-1;
-                if (hop_1<MIN_HOP_1) {
-                    hop_1=MIN_HOP_1;
+                if (hop_1>MIN_HOP_1) {
+                    hop_1--;
                 } 
                 
             } else {
@@ -295,9 +299,12 @@ static void lhe_encode_one_hop_per_pixel (LheBasicPrec *prec, uint8_t *component
             //lets go for the next pixel
             //--------------------------
             last_small_hop=small_hop;
-            pix++;
+            pix++;            
         }//for x
-    }//for y     
+
+        component_original_data+=dif_line;
+    }//for y    
+    
 }
 
 static uint64_t lhe_gen_huffman (LheHuffEntry *he, 
@@ -358,21 +365,22 @@ static int lhe_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
     symbols_U = malloc(sizeof(uint8_t) * image_size_UV); 
     symbols_V = malloc(sizeof(uint8_t) * image_size_UV); 
 
+
     gettimeofday(&before , NULL);
 
-    
     //Translate hops into symbols
     lhe_translate_hops_into_symbols(symbols_Y, symbols_U, symbols_V,
                                     hops_Y, hops_U, hops_V,
                                     width_Y, width_UV,
-                                    image_size_Y, image_size_UV);
+                                    image_size_Y, image_size_UV); 
+
+    gettimeofday(&after , NULL);
+
     
     n_bits_hops_Y = lhe_gen_huffman (he_Y, symbols_Y, image_size_Y);
     n_bits_hops_U = lhe_gen_huffman (he_U, symbols_U, image_size_UV);
     n_bits_hops_V = lhe_gen_huffman (he_V, symbols_V, image_size_UV);
     
-    
-    gettimeofday(&after , NULL);
 
     ret = (n_bits_hops_Y + n_bits_hops_U + n_bits_hops_V) % 8;
     n_bytes_components = (n_bits_hops_Y + n_bits_hops_U + n_bits_hops_V + ret)/8;
@@ -460,7 +468,7 @@ static int lhe_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
     
     put_bits(&s->pb, file_offset, 0);
     
-    //av_log(NULL, AV_LOG_INFO, "LHE Write file %.0lf \n", time_diff(before , after));
+    av_log(NULL, AV_LOG_INFO, "LHE Write file %.0lf \n", time_diff(before , after));
 
     
     return n_bytes;
@@ -530,7 +538,7 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     uint8_t *first_color_block_Y, *first_color_block_U, *first_color_block_V;
     int width_Y, width_UV, height_Y, height_UV, image_size_Y, image_size_UV, n_bytes; 
     int total_blocks_width, total_blocks_height, total_blocks;
-
+    
     struct timeval before , after;
     
     LheContext *s = avctx->priv_data;
@@ -546,7 +554,7 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     total_blocks_height = (height_Y - 1)/ BLOCK_HEIGHT_Y + 1;
     total_blocks_width = (width_Y - 1) / BLOCK_WIDTH_Y + 1;
     
-    if (OPENMP_FLAGS == CONFIG_OPENMP) 
+    if (!OPENMP_FLAGS == CONFIG_OPENMP) 
     {
         total_blocks = total_blocks_height * total_blocks_width;
     } else {
@@ -572,7 +580,7 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     gettimeofday(&before , NULL);
    
 
-    if(OPENMP_FLAGS == CONFIG_OPENMP) {
+    if(!OPENMP_FLAGS == CONFIG_OPENMP) {
         
         lhe_encode_frame_pararell (&s->prec, 
                                    component_original_data_Y, component_original_data_U, component_original_data_V, 

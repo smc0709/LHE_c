@@ -209,7 +209,7 @@ static void lhe_decode_one_hop_per_pixel_block (LheBasicPrec *prec, uint8_t *hop
     int xini, xfin, yini, yfin;
     bool small_hop, last_small_hop;
     uint8_t hop, predicted_luminance, hop_1, r_max; 
-    int pix, num_block;
+    int pix, dif_pix, dif_hops, num_block;
     
     //Errors
     int min_error;      // error of predicted signal
@@ -238,17 +238,19 @@ static void lhe_decode_one_hop_per_pixel_block (LheBasicPrec *prec, uint8_t *hop
     r_max               = PARAM_R;        
     
  
+    pix = yini*linesize + xini; 
+    hops += (yini*width + xini);
+    dif_pix = linesize - xfin + xini;
+    dif_hops = width - xfin + xini;
+    
     for (int y=yini; y < yfin; y++)  {
         for (int x=xini; x < xfin; x++)     {
             
-            hop = hops[y*width + x]; 
-
-            pix = y*linesize + x; 
-       
-            
-            if ((y>yini) &&(x>xini) && x!=xfin-1)
+            hop = *hops++; 
+  
+             if ((y>yini) &&(x>xini) && x!=xfin-1)
             {
-                predicted_luminance=(4*image[pix-1]+3*image[pix+1-linesize])/7;     
+                predicted_luminance=(image[pix-1]+image[pix+1-linesize])>>1;     
             } 
             else if ((x==xini) && (y>yini))
             {
@@ -258,7 +260,7 @@ static void lhe_decode_one_hop_per_pixel_block (LheBasicPrec *prec, uint8_t *hop
             } 
             else if ((x==xfin-1) && (y>yini)) 
             {
-                predicted_luminance=(4*image[pix-1]+2*image[pix-linesize])/6;                               
+                predicted_luminance=(image[pix-1]+image[pix-linesize])>>1;                               
             } 
             else if (y==yini && x>xini) 
             {
@@ -274,30 +276,26 @@ static void lhe_decode_one_hop_per_pixel_block (LheBasicPrec *prec, uint8_t *hop
             
             //tunning hop1 for the next hop ( "h1 adaptation")
             //------------------------------------------------
-            small_hop=false;
-            if (hop<=HOP_POS_1 && hop>=HOP_NEG_1) 
-            {
-                small_hop=true;// 4 is in the center, 4 is null hop
-            }
-            else 
-            {
-                small_hop=false;    
-            }
+            small_hop = (hop<=HOP_POS_1 && hop>=HOP_NEG_1) ;
 
-           if( (small_hop) && (last_small_hop))  {
-                hop_1=hop_1-1;
-                if (hop_1<MIN_HOP_1) {
-                    hop_1=MIN_HOP_1;
+
+            if((small_hop) && (last_small_hop))  {
+
+                if (hop_1>MIN_HOP_1) {
+                    hop_1--;
                 } 
-                
+            
             } else {
                 hop_1=MAX_HOP_1;
             }
 
             //lets go for the next pixel
             //--------------------------
+            pix++;
             last_small_hop=small_hop;     
         }// for x
+        pix+=dif_pix;
+        hops+=dif_hops;
     }// for y
     
 }
@@ -309,7 +307,7 @@ static void lhe_decode_one_hop_per_pixel (LheBasicPrec *prec, uint8_t *hops, uin
     //Hops computation.
     bool small_hop, last_small_hop;
     uint8_t hop, predicted_luminance, hop_1, r_max; 
-    int pix;
+    int pix, pix_hop_data, dif_pix;
     
     //Errors
     int min_error;      // error of predicted signal
@@ -322,17 +320,16 @@ static void lhe_decode_one_hop_per_pixel (LheBasicPrec *prec, uint8_t *hops, uin
     pix                 = 0;            // pixel possition, from 0 to image size        
     r_max               = PARAM_R;        
     
+    dif_pix = linesize - width;
  
     for (int y=0; y < height; y++)  {
         for (int x=0; x < width; x++)     {
             
-            hop = hops[y*width + x]; 
-
-            pix = y*linesize + x; 
+            hop = *hops++; 
        
-            if ((y>0) &&(x>0) && x!=width-1)
+            if (y>0 && x>0 && x!=width-1)
             {
-                predicted_luminance=(4*image[pix-1]+3*image[pix+1-linesize])/7;     
+                predicted_luminance=(image[pix-1]+image[pix+1-linesize])>>1;     
             } 
             else if ((x==0) && (y>0))
             {
@@ -342,13 +339,14 @@ static void lhe_decode_one_hop_per_pixel (LheBasicPrec *prec, uint8_t *hops, uin
             } 
             else if ((x==width-1) && (y>0)) 
             {
-                predicted_luminance=(4*image[pix-1]+2*image[pix-linesize])/6;                               
+                predicted_luminance=(image[pix-1]+image[pix-linesize])>>1;                               
             } 
             else if (y==0 && x>0) 
             {
                 predicted_luminance=image[pix-1];
             }
-            else if (x==0 && y==0) {  
+            else  
+            {  
                 predicted_luminance=first_color;//first pixel always is perfectly predicted! :-)  
             }   
             
@@ -381,7 +379,9 @@ static void lhe_decode_one_hop_per_pixel (LheBasicPrec *prec, uint8_t *hops, uin
             //lets go for the next pixel
             //--------------------------
             last_small_hop=small_hop;     
+            pix++;
         }// for x
+        pix+=dif_pix;
     }// for y
     
 }
