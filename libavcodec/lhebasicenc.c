@@ -14,6 +14,27 @@
 #include "bytestream.h"
 #include "siprdata.h"
 
+#define H1_ADAPTATION                                   \
+    if (hop_number<=HOP_POS_1 && hop_number>=HOP_NEG_1) \
+    {                                                   \
+        small_hop=true;                                 \
+    } else                                              \
+    {                                                   \
+        small_hop=false;                                \
+    }                                                   \
+                                                        \
+    if( (small_hop) && (last_small_hop))  {             \
+        hop_1=hop_1-1;                                  \
+        if (hop_1<MIN_HOP_1) {                          \
+            hop_1=MIN_HOP_1;                            \
+        }                                               \
+                                                        \
+    } else {                                            \
+        hop_1=MAX_HOP_1;                                \
+    }                                                   \
+    last_small_hop=small_hop;
+        
+        
 typedef struct LheContext {
     AVClass *class;    
     LheBasicPrec prec;
@@ -30,87 +51,71 @@ static av_cold int lhe_encode_init(AVCodecContext *avctx)
 
 }
 
-static inline uint8_t lhe_translate_hop_into_symbol (uint8_t *hops, int pix, int width) {
+
+static void lhe_translate_hops_into_symbols (uint8_t *symbols, uint8_t *hops,
+                                             int width, int image_size) {
+    int pix;
     uint8_t hop, symbol;
     bool hop_found;
     
-    hop_found = false;
-    hop = hops[pix];
-    symbol = 0;
-    
-    //First, check if hop is HOP_O
-    if (hop == HOP_0) 
-    {
-        hop_found = true;
-    } else 
-    {
-        symbol += HOP_0_CHECK;
-    }
-    
-    //Second, check if hop is HOP_UP
-    if (!hop_found && pix > width && hops[pix-width]==hop) 
-    {
-        hop_found = true;
-    } else if (!hop_found && pix>width)
-    {
-        symbol += HOP_UP_CHECK;
-    }
-
-    //Third, look for the right hop
-    
-    if (!hop_found) 
-    {
-        switch (hop) {
-            case HOP_POS_1:
-                symbol += HOP_POS_1_CHECK;
-                break;
-            case HOP_NEG_1:
-                symbol += HOP_NEG_1_CHECK;
-                break;
-            case HOP_POS_2:
-                symbol += HOP_POS_2_CHECK;
-                break;
-            case HOP_NEG_2:
-                symbol += HOP_NEG_2_CHECK;
-                break;
-            case HOP_POS_3:
-                symbol += HOP_POS_3_CHECK;
-                break;
-            case HOP_NEG_3:
-                symbol += HOP_NEG_3_CHECK;
-                break;
-            case HOP_POS_4:
-                symbol += HOP_POS_4_CHECK;
-                break;
-            case HOP_NEG_4:
-                symbol += HOP_NEG_4_CHECK;   
-                break;
-        }  
-    }
- 
-    return symbol;
-}
-
-static void lhe_translate_hops_into_symbols (uint8_t *symbols_Y, uint8_t *symbols_U, uint8_t *symbols_V, 
-                                             uint8_t *hops_Y, uint8_t *hops_U , uint8_t *hops_V , 
-                                             int width, int width_UV,
-                                             int image_size, int image_size_UV) {
-    int pix;
     for (pix=0; pix<image_size; pix++) 
-    {
-        symbols_Y[pix] = lhe_translate_hop_into_symbol (hops_Y, pix, width);
-    }
-    
-    for (pix=0; pix<image_size_UV; pix++) 
-    {
-        symbols_U[pix] = lhe_translate_hop_into_symbol (hops_U, pix, width_UV);
-    }
-    
-    for (pix=0; pix<image_size_UV; pix++) 
-    {
-        symbols_V[pix] = lhe_translate_hop_into_symbol (hops_V, pix, width_UV);
-    }
-    
+    {    
+        hop_found = false;
+        hop = hops[pix];
+        symbol = SYM_0;
+        
+        //First, check if hop is HOP_O
+        if (hop == HOP_0) 
+        {
+            hop_found = true;
+        } else 
+        {
+            symbol += HOP_0_CHECK;
+        }
+        
+        //Second, check if hop is HOP_UP
+        if (!hop_found && pix > width && hops[pix-width]==hop) 
+        {
+            hop_found = true;
+        } else if (!hop_found && pix>width)
+        {
+            symbol += HOP_UP_CHECK;
+        }
+
+        //Third, look for the right hop
+        
+        if (!hop_found) 
+        {
+            switch (hop) {
+                case HOP_POS_1:
+                    symbol += HOP_POS_1_CHECK;
+                    break;
+                case HOP_NEG_1:
+                    symbol += HOP_NEG_1_CHECK;
+                    break;
+                case HOP_POS_2:
+                    symbol += HOP_POS_2_CHECK;
+                    break;
+                case HOP_NEG_2:
+                    symbol += HOP_NEG_2_CHECK;
+                    break;
+                case HOP_POS_3:
+                    symbol += HOP_POS_3_CHECK;
+                    break;
+                case HOP_NEG_3:
+                    symbol += HOP_NEG_3_CHECK;
+                    break;
+                case HOP_POS_4:
+                    symbol += HOP_POS_4_CHECK;
+                    break;
+                case HOP_NEG_4:
+                    symbol += HOP_NEG_4_CHECK;   
+                    break;
+            }  
+        }
+        
+        symbols[pix] = symbol;
+    }   
 }
 
 static void lhe_encode_one_hop_per_pixel_block (LheBasicPrec *prec, uint8_t *component_original_data, 
@@ -162,32 +167,34 @@ static void lhe_encode_one_hop_per_pixel_block (LheBasicPrec *prec, uint8_t *com
         for (int x=xini; x < xfin; x++)  {
             
             original_color = component_original_data[pix_original_data]; //This can't be pix because ffmpeg adds empty memory slots. 
-            
+
             //prediction of signal (predicted_luminance) , based on pixel's coordinates 
             //----------------------------------------------------------
-            if ((y>yini) &&(x>xini) && x!=xfin-1)
+                        
+            if (x == xini && y==yini) 
             {
-                predicted_luminance=(component_prediction[pix-1]+component_prediction[pix+1-width])>>1;     
+                predicted_luminance=original_color;//first pixel always is perfectly predicted! :-)  
+                first_color_block[num_block] = original_color;
             } 
-            else if ((x==xini) && (y>yini))
+            else if (y == yini) 
+            {
+                predicted_luminance=component_prediction[pix-1];
+            } 
+            else if (x == xini) 
             {
                 predicted_luminance=component_prediction[pix-width];
                 last_small_hop=false;
                 hop_1=START_HOP_1;
-            } 
-            else if ((x==xfin-1) && (y>yini)) 
+            } else if (x == xfin -1) 
             {
                 predicted_luminance=(component_prediction[pix-1]+component_prediction[pix-width])>>1;                               
             } 
-            else if (y==yini && x>xini) 
+            else 
             {
-                predicted_luminance=component_prediction[pix-1];
+                predicted_luminance=(component_prediction[pix-1]+component_prediction[pix+1-width])>>1;     
             }
-            else if (x==xini && y==yini) {  
-                predicted_luminance=original_color;//first pixel always is perfectly predicted! :-)  
-                first_color_block[num_block] = original_color;
-            }
-            
+
+
             hop_number = prec->best_hop[r_max][hop_1][original_color][predicted_luminance]; 
             hops[pix]= hop_number;
             component_prediction[pix]=prec -> prec_luminance[predicted_luminance][r_max][hop_1][hop_number];
@@ -195,30 +202,12 @@ static void lhe_encode_one_hop_per_pixel_block (LheBasicPrec *prec, uint8_t *com
 
             //tunning hop1 for the next hop ( "h1 adaptation")
             //------------------------------------------------
-            if (hop_number<=HOP_POS_1 && hop_number>=HOP_NEG_1) 
-            {
-                small_hop=true;// 4 is in the center, 4 is null hop
-            }
-            else 
-            {
-                small_hop=false;    
-            }
-
-            if( (small_hop) && (last_small_hop))  {
-                hop_1=hop_1-1;
-                if (hop_1<MIN_HOP_1) {
-                    hop_1=MIN_HOP_1;
-                } 
-                
-            } else {
-                hop_1=MAX_HOP_1;
-            }
+            H1_ADAPTATION;
 
             //lets go for the next pixel
             //--------------------------
             pix++;
             pix_original_data++;
-            last_small_hop=small_hop;
         }//for x
         pix+=dif_pix;
         pix_original_data+=dif_line;
@@ -234,106 +223,122 @@ static void lhe_encode_one_hop_per_pixel (LheBasicPrec *prec, uint8_t *component
     //Hops computation.
     bool small_hop, last_small_hop;
     uint8_t predicted_luminance, hop_1, hop_number, original_color, r_max;
-    int pix, pix_original_data, dif_line;
+    int pix, dif_line, x, y;
 
     small_hop = false;
     last_small_hop=false;          // indicates if last hop is small
     predicted_luminance=0;         // predicted signal
     hop_1= START_HOP_1;
     hop_number=4;                  // pre-selected hop // 4 is NULL HOP
-    pix=0;                         // pixel possition, from 0 to image size        
+    pix=0;                         // pixel possition, from 0 to image size   
+    x = 0;
+    y = 0;
     original_color=0;              // original color
-    r_max=PARAM_R;   
+    r_max=PARAM_R;
     
     dif_line = linesize - width;
-
-    for (int y=0; y < height; y++)  {
-        for (int x=0; x < width; x++)  {
-
-            original_color = *component_original_data++; //This can't be pix because ffmpeg adds empty memory slots. 
+      
+    
+    for (y=0; y < height; y++)  {
+        for (x=0; x < width; x++)  {
             
-            //prediction of signal (predicted_luminance) , based on pixel's coordinates 
-            //----------------------------------------------------------
             
-            if (y>0 && x>0 && x!=width-1) {
-                
-                predicted_luminance = (component_prediction[pix-1]+component_prediction[pix+1-width])>>1; 
+            original_color = *component_original_data++;    
+        
+            if (x==0 && y==0)
+            {
+                predicted_luminance=original_color;//first pixel always is perfectly predicted! :-)  
+                first_color_block[0]=original_color;
             }
-            else if ((x==0) && (y>0))
-            {
-                predicted_luminance=component_prediction[pix-width];
-                last_small_hop=false;
-                hop_1=START_HOP_1;
-            } 
-            else if ((x==width-1) && (y>0)) 
-            {
-                predicted_luminance=(component_prediction[pix-1]+component_prediction[pix-width])>>1;                               
-            } 
-            else if (y==0 && x>0) 
+            else if (y == 0)
             {
                 predicted_luminance=component_prediction[pix-1];               
             }
-            else if (x==0 && y==0) {  
-                predicted_luminance=original_color;//first pixel always is perfectly predicted! :-)  
-                first_color_block[0]=original_color;
-            }    
-            
-            hop_number = prec->best_hop[r_max][hop_1][original_color][predicted_luminance]; 
-            hops[pix]= hop_number;
-            component_prediction[pix]=prec -> prec_luminance[predicted_luminance][r_max][hop_1][hop_number];
-
-            //tunning hop1 for the next hop ( "h1 adaptation")
-            //------------------------------------------------
-            small_hop = (hop_number<=HOP_POS_1 && hop_number>=HOP_NEG_1) ;
-           
-            if((small_hop) && (last_small_hop))  {
-
-                if (hop_1>MIN_HOP_1) {
-                    hop_1--;
-                } 
-                
-            } else {
-                hop_1=MAX_HOP_1;
+            else if (x == 0)
+            {
+                predicted_luminance=component_prediction[pix-width];
+                last_small_hop=false;
+                hop_1=START_HOP_1;  
+            } 
+            else if (x == width -1)
+            {
+                predicted_luminance=(component_prediction[pix-1]+component_prediction[pix-width])>>1;                               
             }
-
-            //lets go for the next pixel
-            //--------------------------
-            last_small_hop=small_hop;
+            else 
+            {
+                predicted_luminance = (component_prediction[pix-1]+component_prediction[pix+1-width])>>1; 
+            }
+            
+            
+            hop_number = prec->best_hop[r_max][hop_1][original_color][predicted_luminance];            
+            component_prediction[pix]=prec -> prec_luminance[predicted_luminance][r_max][hop_1][hop_number];  
+            hops[pix]= hop_number;
+            
+            H1_ADAPTATION;
             pix++;            
-        }//for x
 
-        component_original_data+=dif_line;
-    }//for y    
+        }
+        component_original_data+=dif_line;            
+    }    
     
 }
 
-static uint64_t lhe_gen_huffman (LheHuffEntry *he, 
-                                 uint8_t *symbols,
-                                 int image_size)
+static uint64_t lhe_gen_huffman (LheHuffEntry *he_Y, LheHuffEntry *he_UV,
+                                 uint8_t *symbols_Y, uint8_t *symbols_U, uint8_t *symbols_V,
+                                 int image_size_Y, int image_size_UV)
 {
-    int i, ret;
-    uint8_t  huffman_lengths[LHE_MAX_HUFF_SIZE];
-    uint64_t symbol_count[LHE_MAX_HUFF_SIZE]     = { 0 };
-   
-        
-    //First compute probabilities from model
-    for (i=0; i<image_size; i++) {
-        symbol_count[symbols[i]]++;
+    int i, ret, n_bits;
+    uint8_t  huffman_lengths_Y[LHE_MAX_HUFF_SIZE];
+    uint8_t  huffman_lengths_UV[LHE_MAX_HUFF_SIZE];
+    uint64_t symbol_count_Y[LHE_MAX_HUFF_SIZE]     = { 0 };
+    uint64_t symbol_count_UV[LHE_MAX_HUFF_SIZE]    = { 0 };
+
+    //LUMINANCE
+    
+    //First compute luminance probabilities from model
+    for (i=0; i<image_size_Y; i++) {
+        symbol_count_Y[symbols_Y[i]]++;
     }
     
+    //Generate Huffman length luminance
+    if ((ret = ff_huff_gen_len_table(huffman_lengths_Y, symbol_count_Y, LHE_MAX_HUFF_SIZE, 1)) < 0)
+        return ret;
     
-    //Generate Huffman length
-    if ((ret = ff_huff_gen_len_table(huffman_lengths, symbol_count, LHE_MAX_HUFF_SIZE, 1)) < 0)
+    
+     for (i = 0; i < LHE_MAX_HUFF_SIZE; i++) {
+        he_Y[i].len = huffman_lengths_Y[i];
+        he_Y[i].count = symbol_count_Y[i];
+        he_Y[i].sym = i;
+    }
+    
+    //Generate luminance Huffman codes
+    n_bits = lhe_generate_huffman_codes(he_Y);
+    
+    //CHROMINANCE
+    
+    //First, compute chrominance probabilities.
+    for (i=0; i<image_size_UV; i++) {
+        symbol_count_UV[symbols_U[i]]++;
+    }
+    
+    for (i=0; i<image_size_UV; i++) {
+        symbol_count_UV[symbols_V[i]]++;
+    }
+    
+     //Generate Huffman length chrominance
+    if ((ret = ff_huff_gen_len_table(huffman_lengths_UV, symbol_count_UV, LHE_MAX_HUFF_SIZE, 1)) < 0)
         return ret;
     
      for (i = 0; i < LHE_MAX_HUFF_SIZE; i++) {
-        he[i].len = huffman_lengths[i];
-        he[i].count = symbol_count[i];
-        he[i].sym = i;
+        he_UV[i].len = huffman_lengths_UV[i];
+        he_UV[i].count = symbol_count_UV[i];
+        he_UV[i].sym = i;
     }
 
-    //Generate Huffman codes
-    return lhe_generate_huffman_codes(he);
+    //Generate chrominance Huffman codes
+    n_bits += lhe_generate_huffman_codes(he_UV);
+    
+    return n_bits;
     
 }
                              
@@ -348,14 +353,13 @@ static int lhe_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
     uint8_t file_offset, file_offset_bytes;
     uint8_t *symbols_Y, *symbols_U, *symbols_V;
 
-    uint64_t bits, n_bits_hops_Y, n_bits_hops_U, n_bits_hops_V, n_bytes, n_bytes_components, total_blocks;
+    uint64_t n_bits_hops, n_bytes, n_bytes_components, total_blocks;
     int i, ret;
 
     struct timeval before , after;
     
     LheHuffEntry he_Y[LHE_MAX_HUFF_SIZE];
-    LheHuffEntry he_U[LHE_MAX_HUFF_SIZE];
-    LheHuffEntry he_V[LHE_MAX_HUFF_SIZE];
+    LheHuffEntry he_UV[LHE_MAX_HUFF_SIZE];
 
     LheContext *s = avctx->priv_data;
     
@@ -369,28 +373,27 @@ static int lhe_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
     gettimeofday(&before , NULL);
 
     //Translate hops into symbols
-    lhe_translate_hops_into_symbols(symbols_Y, symbols_U, symbols_V,
-                                    hops_Y, hops_U, hops_V,
-                                    width_Y, width_UV,
-                                    image_size_Y, image_size_UV); 
+    lhe_translate_hops_into_symbols(symbols_Y, hops_Y, 
+                                    width_Y, image_size_Y); 
+    lhe_translate_hops_into_symbols(symbols_U, hops_U,
+                                    width_UV, image_size_UV); 
+    lhe_translate_hops_into_symbols(symbols_V, hops_V,
+                                    width_UV, image_size_UV); 
 
     gettimeofday(&after , NULL);
 
     
-    n_bits_hops_Y = lhe_gen_huffman (he_Y, symbols_Y, image_size_Y);
-    n_bits_hops_U = lhe_gen_huffman (he_U, symbols_U, image_size_UV);
-    n_bits_hops_V = lhe_gen_huffman (he_V, symbols_V, image_size_UV);
-    
+    n_bits_hops = lhe_gen_huffman (he_Y, he_UV, 
+                                     symbols_Y, symbols_U, symbols_V, 
+                                     image_size_Y, image_size_UV);
 
-    ret = (n_bits_hops_Y + n_bits_hops_U + n_bits_hops_V) % 8;
-    n_bytes_components = (n_bits_hops_Y + n_bits_hops_U + n_bits_hops_V + ret)/8;
+    n_bytes_components = (n_bits_hops + (n_bits_hops%8))/8;
     
-
     //File size
     n_bytes = sizeof(width_Y) + sizeof(height_Y) //width and height
               + sizeof(total_blocks_height) + sizeof(total_blocks_width)
               + total_blocks * (sizeof(first_pixel_blocks_Y) + sizeof(first_pixel_blocks_U) + sizeof(first_pixel_blocks_V)) //first pixel blocks array value
-              + 3*LHE_HUFFMAN_TABLE_SIZE_BYTES + //huffman table
+              + 2*LHE_HUFFMAN_TABLE_SIZE_BYTES + //huffman table
               + n_bytes_components; //components
               
     file_offset = (n_bytes * 8) % 32;
@@ -428,7 +431,7 @@ static int lhe_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
     }
     
          
-    init_put_bits(&s->pb, buf, 3*LHE_HUFFMAN_TABLE_SIZE_BYTES + n_bytes_components + file_offset_bytes);
+    init_put_bits(&s->pb, buf, 2*LHE_HUFFMAN_TABLE_SIZE_BYTES + n_bytes_components + file_offset_bytes);
 
     //Write Huffman tables
     for (i=0; i<LHE_MAX_HUFF_SIZE; i++)
@@ -439,14 +442,8 @@ static int lhe_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
     
       for (i=0; i<LHE_MAX_HUFF_SIZE; i++)
     {
-        if (he_U[i].len==255) he_U[i].len=15;
-        put_bits(&s->pb, LHE_HUFFMAN_NODE_BITS, he_U[i].len);
-    }
-    
-      for (i=0; i<LHE_MAX_HUFF_SIZE; i++)
-    {
-        if (he_V[i].len==255) he_V[i].len=15;
-        put_bits(&s->pb, LHE_HUFFMAN_NODE_BITS, he_V[i].len);
+        if (he_UV[i].len==255) he_UV[i].len=15;
+        put_bits(&s->pb, LHE_HUFFMAN_NODE_BITS, he_UV[i].len);
     }   
     
     //Write image
@@ -457,13 +454,13 @@ static int lhe_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
     
     for (i=0; i<image_size_UV; i++) 
     {        
-       put_bits(&s->pb, he_U[symbols_U[i]].len , he_U[symbols_U[i]].code);
+       put_bits(&s->pb, he_UV[symbols_U[i]].len , he_UV[symbols_U[i]].code);
         
     }
     
     for (i=0; i<image_size_UV; i++) 
     {
-        put_bits(&s->pb, he_V[symbols_V[i]].len , he_V[symbols_V[i]].code);
+        put_bits(&s->pb, he_UV[symbols_V[i]].len , he_UV[symbols_V[i]].code);
     }
     
     put_bits(&s->pb, file_offset, 0);
@@ -554,7 +551,7 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     total_blocks_height = (height_Y - 1)/ BLOCK_HEIGHT_Y + 1;
     total_blocks_width = (width_Y - 1) / BLOCK_WIDTH_Y + 1;
     
-    if (!OPENMP_FLAGS == CONFIG_OPENMP) 
+    if (OPENMP_FLAGS == CONFIG_OPENMP) 
     {
         total_blocks = total_blocks_height * total_blocks_width;
     } else {
@@ -580,7 +577,7 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     gettimeofday(&before , NULL);
    
 
-    if(!OPENMP_FLAGS == CONFIG_OPENMP) {
+    if(OPENMP_FLAGS == CONFIG_OPENMP) {
         
         lhe_encode_frame_pararell (&s->prec, 
                                    component_original_data_Y, component_original_data_U, component_original_data_V, 

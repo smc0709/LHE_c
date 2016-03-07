@@ -6,13 +6,33 @@
 #include "internal.h"
 #include "lhebasic.h"
 
+#define H1_ADAPTATION                                   \
+if (hop<=HOP_POS_1 && hop>=HOP_NEG_1)                   \
+    {                                                   \
+        small_hop=true;                                 \
+    } else                                              \
+    {                                                   \
+        small_hop=false;                                \
+    }                                                   \
+                                                        \
+    if( (small_hop) && (last_small_hop))  {             \
+        hop_1=hop_1-1;                                  \
+        if (hop_1<MIN_HOP_1) {                          \
+            hop_1=MIN_HOP_1;                            \
+        }                                               \
+                                                        \
+    } else {                                            \
+        hop_1=MAX_HOP_1;                                \
+    }                                                   \
+    last_small_hop=small_hop;
+    
+    
 typedef struct LheState {
     AVClass *class;  
     LheBasicPrec prec;
     AVFrame * frame;
     GetBitContext gb;
 } LheState;
-
 
 
 static av_cold int lhe_decode_init(AVCodecContext *avctx)
@@ -248,51 +268,40 @@ static void lhe_decode_one_hop_per_pixel_block (LheBasicPrec *prec, uint8_t *hop
             
             hop = *hops++; 
   
-             if ((y>yini) &&(x>xini) && x!=xfin-1)
+            if (x == xini && y==yini) 
             {
-                predicted_luminance=(image[pix-1]+image[pix+1-linesize])>>1;     
+                predicted_luminance=first_color_block[num_block];//first pixel always is perfectly predicted! :-)  
             } 
-            else if ((x==xini) && (y>yini))
+            else if (y == yini) 
+            {
+                predicted_luminance=image[pix-1];
+            } 
+            else if (x == xini) 
             {
                 predicted_luminance=image[pix-linesize];
                 last_small_hop=false;
                 hop_1=START_HOP_1;
-            } 
-            else if ((x==xfin-1) && (y>yini)) 
+            } else if (x == xfin -1) 
             {
-                predicted_luminance=(image[pix-1]+image[pix-linesize])>>1;                               
+                predicted_luminance=(image[pix-1]+image[pix-linesize])>>1;                                                             
             } 
-            else if (y==yini && x>xini) 
+            else 
             {
-                predicted_luminance=image[pix-1];
+                predicted_luminance=(image[pix-1]+image[pix+1-linesize])>>1;     
             }
-            else if (x==xini && y==yini) {  
-                predicted_luminance=first_color_block[num_block];//first pixel always is perfectly predicted! :-)  
-            }   
             
+          
             //assignment of component_prediction
             //This is the uncompressed image
             image[pix]= prec -> prec_luminance[predicted_luminance][r_max][hop_1][hop];
             
             //tunning hop1 for the next hop ( "h1 adaptation")
             //------------------------------------------------
-            small_hop = (hop<=HOP_POS_1 && hop>=HOP_NEG_1) ;
-
-
-            if((small_hop) && (last_small_hop))  {
-
-                if (hop_1>MIN_HOP_1) {
-                    hop_1--;
-                } 
-            
-            } else {
-                hop_1=MAX_HOP_1;
-            }
+            H1_ADAPTATION;
 
             //lets go for the next pixel
             //--------------------------
             pix++;
-            last_small_hop=small_hop;     
         }// for x
         pix+=dif_pix;
         hops+=dif_hops;
@@ -326,59 +335,40 @@ static void lhe_decode_one_hop_per_pixel (LheBasicPrec *prec, uint8_t *hops, uin
         for (int x=0; x < width; x++)     {
             
             hop = *hops++; 
-       
-            if (y>0 && x>0 && x!=width-1)
+            
+            if (x==0 && y==0)
             {
-                predicted_luminance=(image[pix-1]+image[pix+1-linesize])>>1;     
-            } 
-            else if ((x==0) && (y>0))
+                predicted_luminance=first_color;//first pixel always is perfectly predicted! :-)  
+            }
+            else if (y == 0)
+            {
+                predicted_luminance=image[pix-1];            
+            }
+            else if (x == 0)
             {
                 predicted_luminance=image[pix-linesize];
                 last_small_hop=false;
                 hop_1=START_HOP_1;
             } 
-            else if ((x==width-1) && (y>0)) 
+            else if (x == width -1)
             {
-                predicted_luminance=(image[pix-1]+image[pix-linesize])>>1;                               
-            } 
-            else if (y==0 && x>0) 
-            {
-                predicted_luminance=image[pix-1];
+                predicted_luminance=(image[pix-1]+image[pix-linesize])>>1;                                                       
             }
-            else  
-            {  
-                predicted_luminance=first_color;//first pixel always is perfectly predicted! :-)  
-            }   
-            
+            else 
+            {
+                predicted_luminance=(image[pix-1]+image[pix+1-linesize])>>1;     
+            }
+    
             //assignment of component_prediction
             //This is the uncompressed image
             image[pix]= prec -> prec_luminance[predicted_luminance][r_max][hop_1][hop];
             
             //tunning hop1 for the next hop ( "h1 adaptation")
             //------------------------------------------------
-            small_hop=false;
-            if (hop<=HOP_POS_1 && hop>=HOP_NEG_1) 
-            {
-                small_hop=true;// 4 is in the center, 4 is null hop
-            }
-            else 
-            {
-                small_hop=false;    
-            }
-
-           if( (small_hop) && (last_small_hop))  {
-                hop_1=hop_1-1;
-                if (hop_1<MIN_HOP_1) {
-                    hop_1=MIN_HOP_1;
-                } 
-                
-            } else {
-                hop_1=MAX_HOP_1;
-            }
+            H1_ADAPTATION;
 
             //lets go for the next pixel
             //--------------------------
-            last_small_hop=small_hop;     
             pix++;
         }// for x
         pix+=dif_pix;
@@ -450,8 +440,7 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
     int ret, i,j;
 
     LheHuffEntry he_Y[LHE_MAX_HUFF_SIZE];
-    LheHuffEntry he_U[LHE_MAX_HUFF_SIZE];
-    LheHuffEntry he_V[LHE_MAX_HUFF_SIZE];
+    LheHuffEntry he_UV[LHE_MAX_HUFF_SIZE];
    
     LheState *s = avctx->priv_data;
     
@@ -517,12 +506,11 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
     init_get_bits(&s->gb, lhe_data, avpkt->size * 8);
 
     lhe_read_huffman_table(s, he_Y);
-    lhe_read_huffman_table(s, he_U);
-    lhe_read_huffman_table(s, he_V);
+    lhe_read_huffman_table(s, he_UV);
 
     lhe_read_file_symbols(s, he_Y, image_size_Y, symbols_Y);
-    lhe_read_file_symbols(s, he_U, image_size_UV, symbols_U);
-    lhe_read_file_symbols(s, he_V, image_size_UV, symbols_V);
+    lhe_read_file_symbols(s, he_UV, image_size_UV, symbols_U);
+    lhe_read_file_symbols(s, he_UV, image_size_UV, symbols_V);
 
     //Translate into hops
     lhe_translate_symbols_into_hops(symbols_Y, hops_Y, width_Y, image_size_Y);

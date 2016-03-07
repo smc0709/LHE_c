@@ -1,5 +1,24 @@
 #include "lhebasic.h"
 
+#define H1_ADAPTATION                                   \
+    if (hop_number<=HOP_POS_1 && hop_number>=HOP_NEG_1) \
+    {                                                   \
+        small_hop=true;                                 \
+    } else                                              \
+    {                                                   \
+        small_hop=false;                                \
+    }                                                   \
+                                                        \
+    if( (small_hop) && (last_small_hop))  {             \
+        hop_1=hop_1-1;                                  \
+        if (hop_1<MIN_HOP_1) {                          \
+            hop_1=MIN_HOP_1;                            \
+        }                                               \
+                                                        \
+    } else {                                            \
+        hop_1=MAX_HOP_1;                                \
+    }                                                   \
+    last_small_hop=small_hop;
 
 /**
  * Count bits function
