@@ -67,49 +67,49 @@ static void lhe_read_huffman_table (LheState *s, LheHuffEntry *he)
        
 }
 
-static uint8_t lhe_translate_huffman_into_symbol (int huffman_symbol, LheHuffEntry *he, int pix) 
+static uint8_t lhe_translate_huffman_into_symbol (int huffman_symbol, LheHuffEntry *he, int pix, uint8_t count_bits) 
 {
     uint8_t symbol;
     
     symbol = NO_SYMBOL;
     
-    if (huffman_symbol == he[SYM_0].code)
+    if (huffman_symbol == he[SYM_0].code && he[SYM_0].len == count_bits)
     {
         symbol = SYM_0;
     } 
-    else if (huffman_symbol == he[SYM_1].code)
+    else if (huffman_symbol == he[SYM_1].code && he[SYM_1].len == count_bits)
     {
         symbol = SYM_1;
     } 
-    else if (huffman_symbol == he[SYM_2].code)
+    else if (huffman_symbol == he[SYM_2].code && he[SYM_2].len == count_bits)
     {
         symbol = SYM_2;
     } 
-    else if (huffman_symbol == he[SYM_3].code)
+    else if (huffman_symbol == he[SYM_3].code && he[SYM_3].len == count_bits)
     {
         symbol = SYM_3;
     } 
-    else if (huffman_symbol == he[SYM_4].code)
+    else if (huffman_symbol == he[SYM_4].code && he[SYM_4].len == count_bits)
     {
         symbol = SYM_4;
     }
-    else if (huffman_symbol == he[SYM_5].code)
+    else if (huffman_symbol == he[SYM_5].code && he[SYM_5].len == count_bits)
     {
         symbol = SYM_5;
     }
-    else if (huffman_symbol == he[SYM_6].code)
+    else if (huffman_symbol == he[SYM_6].code && he[SYM_6].len == count_bits)
     {
         symbol = SYM_6;
     }
-    else if (huffman_symbol == he[SYM_7].code)
+    else if (huffman_symbol == he[SYM_7].code && he[SYM_7].len == count_bits)
     {
         symbol = SYM_7;
     } 
-    else if (huffman_symbol == he[SYM_8].code)
+    else if (huffman_symbol == he[SYM_8].code && he[SYM_8].len == count_bits)
     {
         symbol = SYM_8;
     } 
-    else if (huffman_symbol == he[SYM_9].code)
+    else if (huffman_symbol == he[SYM_9].code && he[SYM_9].len == count_bits)
     {
         symbol = SYM_9;       
     }
@@ -118,27 +118,31 @@ static uint8_t lhe_translate_huffman_into_symbol (int huffman_symbol, LheHuffEnt
     
 }
 
+
 static void lhe_read_file_symbols (LheState *s, LheHuffEntry *he, uint32_t image_size, uint8_t *symbols) 
 {
-    uint8_t bit, symbol;
-    int i, huffman_symbol;
+    uint8_t symbol, count_bits, min_len;
+    int huffman_symbol;
     uint32_t decoded_symbols;
     
+    symbol = NO_SYMBOL;
     decoded_symbols = 0;
     huffman_symbol = 0;
-    bit = 1;
     
     while (decoded_symbols<image_size) {
         
-        huffman_symbol = (huffman_symbol<<1) | get_bits(&s->gb, 1); 
-        symbol = lhe_translate_huffman_into_symbol(huffman_symbol, he, decoded_symbols);        
+        huffman_symbol = (huffman_symbol<<1) | get_bits(&s->gb, 1);
+        count_bits++;
+
+        symbol = lhe_translate_huffman_into_symbol(huffman_symbol, he, decoded_symbols, count_bits);        
         
         if (symbol != NO_SYMBOL) 
         {
             symbols[decoded_symbols] = symbol;
             decoded_symbols++;
             huffman_symbol = 0;
-        } 
+            count_bits = 0;
+        }       
     }
 }
 
