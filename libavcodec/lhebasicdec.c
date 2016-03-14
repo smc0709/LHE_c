@@ -61,6 +61,7 @@ static void lhe_read_huffman_table (LheState *s, LheHuffEntry *he)
         if (len==15) len=255; //If symbol does not have any occurence, encoder assigns 255 length. As each table slot has 4 bits, this is 15 in the file.
         he[i].len = len;
         he[i].sym = i; 
+        he[i].code = 1024;
     }  
     
     lhe_generate_huffman_codes(he);
@@ -73,46 +74,42 @@ static uint8_t lhe_translate_huffman_into_symbol (int huffman_symbol, LheHuffEnt
     
     symbol = NO_SYMBOL;
     
-    if (huffman_symbol == he[SYM_0].code && he[SYM_0].len == count_bits)
+    if (huffman_symbol == he[HOP_0].code && he[HOP_0].len == count_bits)
     {
-        symbol = SYM_0;
+        symbol = HOP_0;
     } 
-    else if (huffman_symbol == he[SYM_1].code && he[SYM_1].len == count_bits)
+    else if (huffman_symbol == he[HOP_POS_1].code && he[HOP_POS_1].len == count_bits)
     {
-        symbol = SYM_1;
+        symbol = HOP_POS_1;
     } 
-    else if (huffman_symbol == he[SYM_2].code && he[SYM_2].len == count_bits)
+    else if (huffman_symbol == he[HOP_NEG_1].code && he[HOP_NEG_1].len == count_bits)
     {
-        symbol = SYM_2;
+        symbol = HOP_NEG_1;
     } 
-    else if (huffman_symbol == he[SYM_3].code && he[SYM_3].len == count_bits)
+    else if (huffman_symbol == he[HOP_POS_2].code && he[HOP_POS_2].len == count_bits)
     {
-        symbol = SYM_3;
+        symbol = HOP_POS_2;
     } 
-    else if (huffman_symbol == he[SYM_4].code && he[SYM_4].len == count_bits)
+    else if (huffman_symbol == he[HOP_NEG_2].code && he[HOP_NEG_2].len == count_bits)
     {
-        symbol = SYM_4;
+        symbol = HOP_NEG_2;
     }
-    else if (huffman_symbol == he[SYM_5].code && he[SYM_5].len == count_bits)
+    else if (huffman_symbol == he[HOP_POS_3].code && he[HOP_POS_3].len == count_bits)
     {
-        symbol = SYM_5;
+        symbol = HOP_POS_3;
     }
-    else if (huffman_symbol == he[SYM_6].code && he[SYM_6].len == count_bits)
+    else if (huffman_symbol == he[HOP_NEG_3].code && he[HOP_NEG_3].len == count_bits)
     {
-        symbol = SYM_6;
+        symbol = HOP_NEG_3;
     }
-    else if (huffman_symbol == he[SYM_7].code && he[SYM_7].len == count_bits)
+    else if (huffman_symbol == he[HOP_POS_4].code && he[HOP_POS_4].len == count_bits)
     {
-        symbol = SYM_7;
+        symbol = HOP_POS_4;
     } 
-    else if (huffman_symbol == he[SYM_8].code && he[SYM_8].len == count_bits)
+    else if (huffman_symbol == he[HOP_NEG_4].code && he[HOP_NEG_4].len == count_bits)
     {
-        symbol = SYM_8;
+        symbol = HOP_NEG_4;
     } 
-    else if (huffman_symbol == he[SYM_9].code && he[SYM_9].len == count_bits)
-    {
-        symbol = SYM_9;       
-    }
     
     return symbol;
     
@@ -133,7 +130,7 @@ static void lhe_read_file_symbols (LheState *s, LheHuffEntry *he, uint32_t image
         
         huffman_symbol = (huffman_symbol<<1) | get_bits(&s->gb, 1);
         count_bits++;
-
+        
         symbol = lhe_translate_huffman_into_symbol(huffman_symbol, he, decoded_symbols, count_bits);        
         
         if (symbol != NO_SYMBOL) 
@@ -143,81 +140,6 @@ static void lhe_read_file_symbols (LheState *s, LheHuffEntry *he, uint32_t image
             huffman_symbol = 0;
             count_bits = 0;
         }       
-    }
-}
-
-static void lhe_translate_symbol_into_hop (uint8_t * symbols, uint8_t *hops, int pix, int width) {
-    uint8_t symbol, hop;
-    bool hop_found;
-    
-    hop_found = false;
-    
-    symbol = symbols[pix];
-    
-
-    if (symbol == SYM_0) 
-    {
-        hop = HOP_0;
-        hop_found = true;
-    } else 
-    {
-        symbol-= HOP_0_CHECK;
-    }
-    
-    if (!hop_found && pix>width && symbol == 0)
-    {
-        hop = hops[pix-width];
-        hop_found = true;
-    } else if (!hop_found && pix>width)
-    {
-        symbol-=HOP_UP_CHECK;
-    }
-    
-    if (!hop_found) {
-        
-        if (symbol - HOP_POS_1_CHECK == 0)
-        {
-            hop = HOP_POS_1;
-        } else if (symbol - HOP_NEG_1_CHECK == 0) 
-        {
-            hop = HOP_NEG_1;
-
-        } else if (symbol - HOP_POS_2_CHECK == 0) 
-        {
-            hop = HOP_POS_2;
-
-        } else if (symbol - HOP_NEG_2_CHECK == 0) 
-        {
-            hop = HOP_NEG_2;
-
-        } else if (symbol - HOP_POS_3_CHECK == 0) 
-        {
-            hop = HOP_POS_3;
-
-        } else if (symbol - HOP_NEG_3_CHECK == 0) 
-        {
-            hop = HOP_NEG_3;
-
-        } else if (symbol - HOP_POS_4_CHECK == 0) 
-        {
-            hop = HOP_POS_4;
-
-        } else if (symbol - HOP_NEG_4_CHECK == 0) 
-        {
-            hop = HOP_NEG_4;
-
-        }
-    }
-    
-    hops[pix] = hop;   
-
-}
-
-static void lhe_translate_symbols_into_hops (uint8_t * symbols, uint8_t *hops, int width, int image_size) {
-    int pix;
-    for (pix=0; pix<image_size; pix++) 
-    {
-        lhe_translate_symbol_into_hop(symbols, hops, pix, width);
     }
 }
 
@@ -511,16 +433,11 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
 
     lhe_read_huffman_table(s, he_Y);
     lhe_read_huffman_table(s, he_UV);
-
-    lhe_read_file_symbols(s, he_Y, image_size_Y, symbols_Y);
-    lhe_read_file_symbols(s, he_UV, image_size_UV, symbols_U);
-    lhe_read_file_symbols(s, he_UV, image_size_UV, symbols_V);
-
-    //Translate into hops
-    lhe_translate_symbols_into_hops(symbols_Y, hops_Y, width_Y, image_size_Y);
-    lhe_translate_symbols_into_hops(symbols_U, hops_U, width_UV, image_size_UV);
-    lhe_translate_symbols_into_hops(symbols_V, hops_V, width_UV, image_size_UV);
     
+    lhe_read_file_symbols(s, he_Y, image_size_Y, hops_Y);
+    lhe_read_file_symbols(s, he_UV, image_size_UV, hops_U);
+    lhe_read_file_symbols(s, he_UV, image_size_UV, hops_V);
+ 
     if (total_blocks > 1 && OPENMP_FLAGS == CONFIG_OPENMP) 
     {
         lhe_decode_frame_pararell (&s->prec, 

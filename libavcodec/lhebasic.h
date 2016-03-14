@@ -68,36 +68,13 @@
 #define HOP_POS_3 7 // h3 
 #define HOP_POS_4 8 // h4 
 
-//File symbols
-#define HOP_0_CHECK 1
-#define HOP_UP_CHECK 1
-#define HOP_POS_1_CHECK 0
-#define HOP_NEG_1_CHECK 1
-#define HOP_POS_2_CHECK 2 
-#define HOP_NEG_2_CHECK 3
-#define HOP_POS_3_CHECK 4
-#define HOP_NEG_3_CHECK 5
-#define HOP_POS_4_CHECK 6
-#define HOP_NEG_4_CHECK 7
 
 #define NO_SYMBOL 20
-#define SYM_0 0
-#define SYM_1 1
-#define SYM_2 2
-#define SYM_3 3
-#define SYM_4 4 
-#define SYM_5 5
-#define SYM_6 6
-#define SYM_7 7
-#define SYM_8 8
-#define SYM_9 9
 
 //Huffman
-#define LHE_MAX_HUFF_SIZE 10
-#define LHE_HUFFMAN_TABLE_SIZE_BITS LHE_MAX_HUFF_SIZE * 4
-#define LHE_HUFFMAN_TABLE_SIZE_BYTES  LHE_HUFFMAN_TABLE_SIZE_BITS/ 8 //size in bytes
+#define LHE_MAX_HUFF_SIZE 9
 #define LHE_HUFFMAN_NODE_BITS 4
-#define LHE_MAX_BITS 9
+#define LHE_HUFFMAN_TABLE_BITS LHE_MAX_HUFF_SIZE*LHE_HUFFMAN_NODE_BITS
 
 typedef struct LheBasicPrec {
     uint8_t prec_luminance[Y_MAX_COMPONENT][RATIO][H1_RANGE][NUMBER_OF_HOPS]; // precomputed luminance component

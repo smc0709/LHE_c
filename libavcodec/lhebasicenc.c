@@ -52,72 +52,6 @@ static av_cold int lhe_encode_init(AVCodecContext *avctx)
 }
 
 
-static void lhe_translate_hops_into_symbols (uint8_t *symbols, uint8_t *hops,
-                                             int width, int image_size) {
-    int pix;
-    uint8_t hop, symbol;
-    bool hop_found;
-    
-    for (pix=0; pix<image_size; pix++) 
-    {    
-        hop_found = false;
-        hop = hops[pix];
-        symbol = SYM_0;
-        
-        //First, check if hop is HOP_O
-        if (hop == HOP_0) 
-        {
-            hop_found = true;
-        } else 
-        {
-            symbol += HOP_0_CHECK;
-        }
-        
-        //Second, check if hop is HOP_UP
-        if (!hop_found && pix > width && hops[pix-width]==hop) 
-        {
-            hop_found = true;
-        } else if (!hop_found && pix>width)
-        {
-            symbol += HOP_UP_CHECK;
-        }
-
-        //Third, look for the right hop
-        
-        if (!hop_found) 
-        {
-            switch (hop) {
-                case HOP_POS_1:
-                    symbol += HOP_POS_1_CHECK;
-                    break;
-                case HOP_NEG_1:
-                    symbol += HOP_NEG_1_CHECK;
-                    break;
-                case HOP_POS_2:
-                    symbol += HOP_POS_2_CHECK;
-                    break;
-                case HOP_NEG_2:
-                    symbol += HOP_NEG_2_CHECK;
-                    break;
-                case HOP_POS_3:
-                    symbol += HOP_POS_3_CHECK;
-                    break;
-                case HOP_NEG_3:
-                    symbol += HOP_NEG_3_CHECK;
-                    break;
-                case HOP_POS_4:
-                    symbol += HOP_POS_4_CHECK;
-                    break;
-                case HOP_NEG_4:
-                    symbol += HOP_NEG_4_CHECK;   
-                    break;
-            }  
-        }
-        
-        symbols[pix] = symbol;
-    }   
-}
-
 static void lhe_encode_one_hop_per_pixel_block (LheBasicPrec *prec, uint8_t *component_original_data, 
                                                 uint8_t *component_prediction, uint8_t *hops, 
                                                 int width, int height, int linesize, 
@@ -309,6 +243,7 @@ static uint64_t lhe_gen_huffman (LheHuffEntry *he_Y, LheHuffEntry *he_UV,
         he_Y[i].len = huffman_lengths_Y[i];
         he_Y[i].count = symbol_count_Y[i];
         he_Y[i].sym = i;
+        he_Y[i].code = 1024; //imposible code to initialize
     }
     
     //Generate luminance Huffman codes
@@ -324,6 +259,7 @@ static uint64_t lhe_gen_huffman (LheHuffEntry *he_Y, LheHuffEntry *he_UV,
     for (i=0; i<image_size_UV; i++) {
         symbol_count_UV[symbols_V[i]]++;
     }
+
     
      //Generate Huffman length chrominance
     if ((ret = ff_huff_gen_len_table(huffman_lengths_UV, symbol_count_UV, LHE_MAX_HUFF_SIZE, 1)) < 0)
@@ -333,6 +269,7 @@ static uint64_t lhe_gen_huffman (LheHuffEntry *he_Y, LheHuffEntry *he_UV,
         he_UV[i].len = huffman_lengths_UV[i];
         he_UV[i].count = symbol_count_UV[i];
         he_UV[i].sym = i;
+        he_UV[i].code = 1024;
     }
 
     //Generate chrominance Huffman codes
@@ -353,7 +290,7 @@ static int lhe_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
     uint8_t file_offset, file_offset_bytes;
     uint8_t *symbols_Y, *symbols_U, *symbols_V;
 
-    uint64_t n_bits_hops, n_bytes, n_bytes_components, total_blocks;
+    uint64_t n_bits_hops, n_bytes, n_bytes_components, n_bytes_huffman, total_blocks;
     int i, ret;
 
     struct timeval before , after;
@@ -368,35 +305,29 @@ static int lhe_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
     symbols_Y = malloc(sizeof(uint8_t) * image_size_Y); 
     symbols_U = malloc(sizeof(uint8_t) * image_size_UV); 
     symbols_V = malloc(sizeof(uint8_t) * image_size_UV); 
-
-
+    
     gettimeofday(&before , NULL);
 
-    //Translate hops into symbols
-    lhe_translate_hops_into_symbols(symbols_Y, hops_Y, 
-                                    width_Y, image_size_Y); 
-    lhe_translate_hops_into_symbols(symbols_U, hops_U,
-                                    width_UV, image_size_UV); 
-    lhe_translate_hops_into_symbols(symbols_V, hops_V,
-                                    width_UV, image_size_UV); 
 
-    gettimeofday(&after , NULL);
-
-    
     n_bits_hops = lhe_gen_huffman (he_Y, he_UV, 
-                                     symbols_Y, symbols_U, symbols_V, 
-                                     image_size_Y, image_size_UV);
+                                   hops_Y, hops_U, hops_V, 
+                                   image_size_Y, image_size_UV);
+    
 
     n_bytes_components = (n_bits_hops + (n_bits_hops%8))/8;
+    file_offset = n_bits_hops%8;
+    
+    n_bytes_huffman = (LHE_HUFFMAN_TABLE_BITS + (LHE_HUFFMAN_TABLE_BITS%8))/8;
+    file_offset+= LHE_HUFFMAN_TABLE_BITS%8;
     
     //File size
     n_bytes = sizeof(width_Y) + sizeof(height_Y) //width and height
               + sizeof(total_blocks_height) + sizeof(total_blocks_width)
               + total_blocks * (sizeof(first_pixel_blocks_Y) + sizeof(first_pixel_blocks_U) + sizeof(first_pixel_blocks_V)) //first pixel blocks array value
-              + 2*LHE_HUFFMAN_TABLE_SIZE_BYTES + //huffman table
+              + n_bytes_huffman + //huffman table
               + n_bytes_components; //components
               
-    file_offset = (n_bytes * 8) % 32;
+    file_offset += ((n_bytes * 8) % 32);
     file_offset += (file_offset%8);
     file_offset_bytes = file_offset / 8;
     n_bytes += file_offset_bytes;
@@ -431,7 +362,7 @@ static int lhe_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
     }
     
          
-    init_put_bits(&s->pb, buf, 2*LHE_HUFFMAN_TABLE_SIZE_BYTES + n_bytes_components + file_offset_bytes);
+    init_put_bits(&s->pb, buf, LHE_HUFFMAN_TABLE_BITS + n_bytes_components + file_offset_bytes);
 
     //Write Huffman tables
     for (i=0; i<LHE_MAX_HUFF_SIZE; i++)
@@ -449,24 +380,27 @@ static int lhe_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
     //Write image
     for (i=0; i<image_size_Y; i++) 
     {        
-        put_bits(&s->pb, he_Y[symbols_Y[i]].len , he_Y[symbols_Y[i]].code);
+        put_bits(&s->pb, he_Y[hops_Y[i]].len , he_Y[hops_Y[i]].code);
     }
     
     for (i=0; i<image_size_UV; i++) 
     {        
-       put_bits(&s->pb, he_UV[symbols_U[i]].len , he_UV[symbols_U[i]].code);
+       put_bits(&s->pb, he_UV[hops_U[i]].len , he_UV[hops_U[i]].code);
         
     }
     
     for (i=0; i<image_size_UV; i++) 
     {
-        put_bits(&s->pb, he_UV[symbols_V[i]].len , he_UV[symbols_V[i]].code);
+        put_bits(&s->pb, he_UV[hops_V[i]].len , he_UV[hops_V[i]].code);
     }
     
-    put_bits(&s->pb, file_offset, 0);
     
-    av_log(NULL, AV_LOG_INFO, "LHE Write file %.0lf \n", time_diff(before , after));
+    gettimeofday(&after , NULL);
 
+    
+    put_bits(&s->pb, file_offset + 8, 0);
+        
+    av_log(NULL, AV_LOG_INFO, "LHE Write file %.0lf \n", time_diff(before , after));
     
     return n_bytes;
 }
