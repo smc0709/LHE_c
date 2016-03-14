@@ -1,5 +1,24 @@
 #include "lhebasic.h"
 
+#define H1_ADAPTATION                                   \
+    if (hop_number<=HOP_POS_1 && hop_number>=HOP_NEG_1) \
+    {                                                   \
+        small_hop=true;                                 \
+    } else                                              \
+    {                                                   \
+        small_hop=false;                                \
+    }                                                   \
+                                                        \
+    if( (small_hop) && (last_small_hop))  {             \
+        hop_1=hop_1-1;                                  \
+        if (hop_1<MIN_HOP_1) {                          \
+            hop_1=MIN_HOP_1;                            \
+        }                                               \
+                                                        \
+    } else {                                            \
+        hop_1=MAX_HOP_1;                                \
+    }                                                   \
+    last_small_hop=small_hop;
 
 /**
  * Count bits function
@@ -24,6 +43,68 @@ double time_diff(struct timeval x , struct timeval y)
     double timediff = 1000000*(y.tv_sec - x.tv_sec) + (y.tv_usec - x.tv_usec); /* in microseconds */
      
     return timediff;
+}
+
+/**
+ * 
+ * Huffman
+ */
+
+static int huff_cmp_len(const void *a, const void *b)
+{
+    const LheHuffEntry *aa = a, *bb = b;
+    return (aa->len - bb->len)*LHE_MAX_HUFF_SIZE + aa->sym - bb->sym;
+}
+
+/* Compare huffentry symbols */
+static int huff_cmp_sym(const void *a, const void *b)
+{
+    const LheHuffEntry *aa = a, *bb = b;
+    return aa->sym - bb->sym;
+}
+
+int lhe_generate_huffman_codes(LheHuffEntry *he)
+{
+    int len, i, j, last;
+    uint16_t code;
+    uint64_t bits;
+    
+    code = 1;
+    last = LHE_MAX_HUFF_SIZE-1;
+
+    qsort(he, LHE_MAX_HUFF_SIZE, sizeof(*he), huff_cmp_len); 
+
+    
+    while (he[last].len == 255 && last)
+        last--;
+    
+    for (i=0; i<he[last].len; i++)
+    {
+        code|= 1 << i;
+    }      
+        
+    for (len= he[last].len; len > 0; len--) {
+        for (i = 0; i <= last; i++) {
+            if (he[i].len == len)
+            {
+                he[i].code = code;
+                code--;
+            }          
+        }
+        
+        code >>= 1;
+    }
+
+    
+    qsort(he, LHE_MAX_HUFF_SIZE, sizeof(*he), huff_cmp_sym);
+    
+    for (i=0; i<LHE_MAX_HUFF_SIZE; i++) 
+    {
+        bits += (he[i].len * he[i].count); //bits number is symbol occurrence * symbol bits
+    }
+    
+    return bits;
+
 }
 
 /**

@@ -73,6 +73,12 @@ int ff_huff_gen_len_table(uint8_t *dst, const uint64_t *stats, int stats_size, i
         if (stats[i] || !skip0)
             map[size++] = i;
     }
+    
+    if (size==1) 
+    {
+        dst[map[0]] = 1;
+        goto end;
+    }
 
     for (offset = 1; ; offset <<= 1) {
         for (i=0; i < size; i++) {

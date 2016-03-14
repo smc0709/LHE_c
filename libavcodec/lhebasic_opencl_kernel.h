@@ -53,7 +53,7 @@ const char *ff_kernel_lhe_opencl = AV_OPENCL_KERNEL(
                 //----------------------------------------------------------
                 if ((y>yini) &&(x>xini) && x!=block_width-1)
                 {
-                    predicted_luminance=(4*component_prediction[pix-1]+3*component_prediction[pix+1-image_width])/7;     
+                    predicted_luminance=(component_prediction[pix-1]+component_prediction[pix+1-image_width])/2;     
                 } 
                 else if ((x==xini) && (y>yini))
                 {
@@ -63,7 +63,7 @@ const char *ff_kernel_lhe_opencl = AV_OPENCL_KERNEL(
                 } 
                 else if ((x==block_width-1) && (y>yini)) 
                 {
-                    predicted_luminance=(4*component_prediction[pix-1]+2*component_prediction[pix-image_width])/6;                               
+                    predicted_luminance=(component_prediction[pix-1]+component_prediction[pix-image_width])/2;                               
                 } 
                 else if (y==yini && x>xini) 
                 {

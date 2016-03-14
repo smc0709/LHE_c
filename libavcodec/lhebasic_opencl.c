@@ -58,7 +58,8 @@ int ff_opencl_lhebasic_init(LheBasicPrec *prec, LheOpenclContext *locc)
 static int ff_opencl_lhe_create_image_buffers (LheOpenclContext *locc,
                                                uint8_t *component_original_data,
                                                uint8_t *component_prediction,
-                                               int image_size)
+                                               int image_size, 
+                                               int num_blocks)
 {    
     int ret = 0;
     
@@ -87,6 +88,8 @@ static int ff_opencl_lhe_create_image_buffers (LheOpenclContext *locc,
         return ret;
     
     
+    
+    
     return ret;
 }
 
@@ -95,17 +98,19 @@ int ff_opencl_lhebasic_encode(LheOpenclContext *locc,
                                 uint8_t *component_original_data,
                                 uint8_t *component_prediction,
                                 uint8_t *hops,
+                                uint8_t *first_pixel_block,
                                 int image_width, int image_height,
                                 int block_width, int block_height,
                                 int pix_size)
 {
     int ret, image_size;
-    int num_blocks_width, num_blocks_height;
+    int num_blocks, num_blocks_width, num_blocks_height;
     cl_int status;
         
     ret=0;
     num_blocks_width = image_width/block_width;
     num_blocks_height = image_height/block_height;
+    num_blocks = num_blocks_width*num_blocks_height;
     image_size = image_width * image_height;
         
     size_t local_work_size_2d[2] = {num_blocks_width, num_blocks_height}; 
@@ -113,7 +118,7 @@ int ff_opencl_lhebasic_encode(LheOpenclContext *locc,
     FFOpenclParam param_encode = {0};
     
     ff_opencl_lhe_create_image_buffers(locc, component_original_data,
-                                       component_prediction, image_size);
+                                       component_prediction, image_size, num_blocks);
 
     param_encode.kernel = locc -> kernel_encode;
     
@@ -147,9 +152,9 @@ int ff_opencl_lhebasic_encode(LheOpenclContext *locc,
     status = clEnqueueReadBuffer(locc -> command_queue, locc -> hops, CL_TRUE, 0,
                                  sizeof(uint8_t)*image_size, hops, 0, 
                                  NULL, NULL);
-    
-    
-     if (status != CL_SUCCESS) {
+
+      
+    if (status != CL_SUCCESS) {
         av_log(NULL, AV_LOG_ERROR, "OpenCL read buffer error ocurred: %s\n", av_opencl_errstr(status));
         return AVERROR_EXTERNAL;
     }
@@ -157,11 +162,6 @@ int ff_opencl_lhebasic_encode(LheOpenclContext *locc,
     
     clFinish(locc -> command_queue);
     
-    /*
-    for (int k=0; k<100; k++) {
-            av_log(NULL, AV_LOG_ERROR, "hop[%d]= %d\n", k, hops[k]);
-    }
-    */
     
     return ret;
 }

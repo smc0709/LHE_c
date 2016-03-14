@@ -13,6 +13,7 @@ typedef struct {
     cl_kernel kernel_encode;
     cl_mem component_original_data;
     cl_mem hops;
+    cl_mem first_pixel_block;
     cl_mem best_hop;
     cl_mem prec_luminance;
     cl_mem component_prediction; 
@@ -24,12 +25,13 @@ typedef struct {
 void ff_opencl_info (void);
 int ff_opencl_lhebasic_init(LheBasicPrec *prec, LheOpenclContext *locc);
 int ff_opencl_lhebasic_encode(LheOpenclContext *locc,
-                                uint8_t *component_original_data,
-                                uint8_t *component_prediction,
-                                uint8_t *hops,
-                                int image_width, int image_height,
-                                int block_width, int block_height,
-                                int pix_size);
+                              uint8_t *component_original_data,
+                              uint8_t *component_prediction,
+                              uint8_t *hops,
+                              uint8_t *first_pixel_block,
+                              int image_width, int image_height,
+                              int block_width, int block_height,
+                              int pix_size);
 
 #endif /* AVCODEC_LHE_OPENCL_H */
 
