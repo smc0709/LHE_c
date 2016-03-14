@@ -362,7 +362,6 @@ static int lhe_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
       for (i=0; i<total_blocks; i++) 
     {
         bytestream_put_byte(&buf, first_pixel_blocks_U[i]);
-
     }
     
       for (i=0; i<total_blocks; i++) 
@@ -423,20 +422,30 @@ static void lhe_encode_frame_pararell (LheContext *s,
                                        uint8_t *first_color_block_Y, uint8_t *first_color_block_U, uint8_t *first_color_block_V,
                                        int total_blocks_width, int total_blocks_height)
 {
-        
+    
+    struct timeval before , after;
+    
+    gettimeofday(&before , NULL);
+
+
     ff_opencl_lhebasic_encode(&s->opencl_ctx, component_original_data_Y,
                                   component_prediction_Y,  hops_Y, first_color_block_Y,
-                                  width_Y, height_Y, 64, 64, linesize_Y);
-        
-        /*
-        ff_opencl_lhebasic_encode(&s->opencl_ctx, component_U,
-                                  component_prediction_UV,  hops_U,
-                                  width_UV, height_UV, 64, 64, pix_size);
-        
-        ff_opencl_lhebasic_encode(&s->opencl_ctx, component_V,
-                                  component_prediction_UV,  hops_V,
-                                  width_UV, height_UV, 64, 64, pix_size);
-                                  */
+                                  width_Y, height_Y, BLOCK_WIDTH_Y, BLOCK_HEIGHT_Y, linesize_Y);
+    
+    gettimeofday(&after , NULL);
+
+            
+    ff_opencl_lhebasic_encode(&s->opencl_ctx, component_original_data_U,
+                                component_prediction_UV,  hops_U, first_color_block_U,
+                                width_UV, height_UV, BLOCK_WIDTH_UV, BLOCK_HEIGHT_UV, linesize_U);
+    
+    ff_opencl_lhebasic_encode(&s->opencl_ctx, component_original_data_V,
+                                component_prediction_UV,  hops_V, first_color_block_V,
+                                width_UV, height_UV, BLOCK_WIDTH_UV, BLOCK_HEIGHT_UV, linesize_V);
+    
+    av_log(NULL, AV_LOG_INFO, "OPENCL Coding Y time %.0lf \n", time_diff(before , after));
+
+                                  
 }
 
 static void lhe_encode_frame_pararell_2 (LheBasicPrec *prec, 

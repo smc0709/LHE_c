@@ -58,8 +58,7 @@ int ff_opencl_lhebasic_init(LheBasicPrec *prec, LheOpenclContext *locc)
 static int ff_opencl_lhe_create_image_buffers (LheOpenclContext *locc,
                                                uint8_t *component_original_data,
                                                uint8_t *component_prediction,
-                                               int image_size, 
-                                               int num_blocks)
+                                               int image_size, int num_blocks)
 {    
     int ret = 0;
     
@@ -87,7 +86,11 @@ static int ff_opencl_lhe_create_image_buffers (LheOpenclContext *locc,
     if (ret < 0)
         return ret;
     
-    
+    ret = av_opencl_buffer_create(&locc->first_pixel_block,
+                                  sizeof(uint8_t) * num_blocks,
+                                  CL_MEM_WRITE_ONLY, NULL);
+    if (ret < 0)
+        return ret;
     
     
     return ret;
@@ -101,10 +104,10 @@ int ff_opencl_lhebasic_encode(LheOpenclContext *locc,
                                 uint8_t *first_pixel_block,
                                 int image_width, int image_height,
                                 int block_width, int block_height,
-                                int pix_size)
+                                int linesize)
 {
     int ret, image_size;
-    int num_blocks, num_blocks_width, num_blocks_height;
+    int num_blocks_width, num_blocks_height, num_blocks;
     cl_int status;
         
     ret=0;
@@ -113,12 +116,13 @@ int ff_opencl_lhebasic_encode(LheOpenclContext *locc,
     num_blocks = num_blocks_width*num_blocks_height;
     image_size = image_width * image_height;
         
-    size_t local_work_size_2d[2] = {num_blocks_width, num_blocks_height}; 
-    size_t global_work_size_2d[2] = {(size_t)num_blocks_width, (size_t) num_blocks_height};
+    size_t local_work_size[2] = {1, 1};
+    size_t global_work_size[2] = {(size_t)num_blocks_width, (size_t) num_blocks_height};
     FFOpenclParam param_encode = {0};
     
     ff_opencl_lhe_create_image_buffers(locc, component_original_data,
-                                       component_prediction, image_size, num_blocks);
+                                       component_prediction, 
+                                       image_size, num_blocks);
 
     param_encode.kernel = locc -> kernel_encode;
     
@@ -128,18 +132,19 @@ int ff_opencl_lhebasic_encode(LheOpenclContext *locc,
                                       FF_OPENCL_PARAM_INFO(locc->component_original_data),
                                       FF_OPENCL_PARAM_INFO(locc->component_prediction),
                                       FF_OPENCL_PARAM_INFO(locc->hops),
+                                      FF_OPENCL_PARAM_INFO(locc->first_pixel_block),
                                       FF_OPENCL_PARAM_INFO(image_width),
                                       FF_OPENCL_PARAM_INFO(image_height),
                                       FF_OPENCL_PARAM_INFO(block_width),
                                       FF_OPENCL_PARAM_INFO(block_height),
-                                      FF_OPENCL_PARAM_INFO(pix_size),
+                                      FF_OPENCL_PARAM_INFO(linesize),
                                       NULL);
     if (ret < 0)
         return ret;
     
     status = clEnqueueNDRangeKernel(locc -> command_queue,
                                     locc -> kernel_encode, 2, NULL,
-                                    global_work_size_2d, local_work_size_2d, 0, NULL, NULL);
+                                    global_work_size, local_work_size, 0, NULL, NULL);
    
     
     if (status != CL_SUCCESS) {
@@ -152,16 +157,14 @@ int ff_opencl_lhebasic_encode(LheOpenclContext *locc,
     status = clEnqueueReadBuffer(locc -> command_queue, locc -> hops, CL_TRUE, 0,
                                  sizeof(uint8_t)*image_size, hops, 0, 
                                  NULL, NULL);
-
-      
-    if (status != CL_SUCCESS) {
-        av_log(NULL, AV_LOG_ERROR, "OpenCL read buffer error ocurred: %s\n", av_opencl_errstr(status));
-        return AVERROR_EXTERNAL;
-    }
     
+    status = clEnqueueReadBuffer(locc -> command_queue, locc -> first_pixel_block, CL_TRUE, 0,
+                                sizeof(uint8_t)*num_blocks, first_pixel_block, 0, 
+                                NULL, NULL);    
+     
     
     clFinish(locc -> command_queue);
-    
+
     
     return ret;
 }

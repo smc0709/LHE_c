@@ -31,7 +31,7 @@ int ff_opencl_lhebasic_encode(LheOpenclContext *locc,
                               uint8_t *first_pixel_block,
                               int image_width, int image_height,
                               int block_width, int block_height,
-                              int pix_size);
+                              int linesize);
 
 #endif /* AVCODEC_LHE_OPENCL_H */
 

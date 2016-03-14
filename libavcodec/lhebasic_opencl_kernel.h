@@ -12,74 +12,89 @@ const char *ff_kernel_lhe_opencl = AV_OPENCL_KERNEL(
                                  global uchar *component_original_data, 
                                  global uchar *component_prediction, 
                                  global uchar *hops, 
-                                 int image_width, int image_height, 
+                                 global uchar *first_color_block,
+                                 int width, int height, 
                                  int block_width, int block_height,
-                                 int pix_size)
+                                 int linesize)
     {
-        unsigned int i,j;
+        unsigned int block_x, block_y, num_block, total_blocks_width;
         unsigned int xini, xfin, yini, yfin;
-        int pix, index;
+        int pix, pix_original_data, dif_pix, dif_line, index;
 
         //Hops computation.
         bool small_hop, last_small_hop;
         uchar predicted_luminance, hop_1, hop_number, original_color, r_max;
-
-        i = get_global_id(0);
-        j = get_global_id(1);
         
-        xini = i*block_width;
+        block_x = get_group_id(0);
+        block_y = get_group_id(1);
+        
+        total_blocks_width = get_global_size(0);
+        num_block = block_y * total_blocks_width + block_x;
+              
+        xini = block_x * block_width;
         xfin = xini + block_width;
-        
-        yini = j*block_height;
-        yfin = yini + block_height;        
+        if (xfin>width) 
+        {
+            xfin = width;
+        }
+        yini = block_y * block_height;
+        yfin = yini + block_height;
+        if (yfin>height)
+        {
+            yfin = height;
+        }   
 
         small_hop = false;
         last_small_hop=false;          // indicates if last hop is small
         predicted_luminance=0;         // predicted signal
-        hop_1= 4;
-        hop_number=7;                  // pre-selected hop // 4 is NULL HOP
-        pix=0;                         // pixel possition, from 0 to image size        
+        hop_1= 7;
+        hop_number=4;                  // pre-selected hop // 4 is NULL HOP
+        pix=0;                         // pixel possition, from 0 to image size  
+        pix_original_data = 0;
         original_color=0;              // original color
-        r_max=25;  
+        r_max=25;
+        
+        pix = yini*width + xini;
+        pix_original_data = yini*linesize + xini;
+    
+        dif_pix = width - xfin + xini;
+        dif_line = linesize - xfin + xini;
         
         for (int y=yini; y < yfin; y++)  {
             for (int x=xini; x < xfin; x++)  {
-                
-                pix = y*image_width + x;
-                
-                original_color = component_original_data[pix_size*pix];
+      
+                original_color = component_original_data[pix_original_data];
 
                 //prediction of signal (predicted_luminance) , based on pixel's coordinates 
                 //----------------------------------------------------------
-                if ((y>yini) &&(x>xini) && x!=block_width-1)
+                if (x == xini && y==yini) 
                 {
-                    predicted_luminance=(component_prediction[pix-1]+component_prediction[pix+1-image_width])/2;     
+                    predicted_luminance=original_color;//first pixel always is perfectly predicted! :-)  
+                    first_color_block[num_block] = original_color;
                 } 
-                else if ((x==xini) && (y>yini))
+                else if (y == yini) 
                 {
-                    predicted_luminance=component_prediction[pix-image_width];
+                    predicted_luminance=component_prediction[pix-1];
+                } 
+                else if (x == xini) 
+                {
+                    predicted_luminance=component_prediction[pix-width];
                     last_small_hop=false;
                     hop_1=7;
-                } 
-                else if ((x==block_width-1) && (y>yini)) 
+                } else if (x == xfin -1) 
                 {
-                    predicted_luminance=(component_prediction[pix-1]+component_prediction[pix-image_width])/2;                               
+                    predicted_luminance=(component_prediction[pix-1]+component_prediction[pix-width])>>1;                               
                 } 
-                else if (y==yini && x>xini) 
+                else 
                 {
-                    predicted_luminance=component_prediction[x-1];
-                }
-                else if (x==xini && y==yini) {  
-                    predicted_luminance=original_color;//first pixel always is perfectly predicted! :-)  
-                }          
-                
-        //index =H1_RANGE*Y_MAX_COMPONENT*Y_MAX_COMPONENT*r_max + Y_MAX_COMPONENT*Y_MAX_COMPONENT*hop_1 + Y_MAX_COMPONENT*original_color + predicted_luminance
-        //index = RATIO*H1_RANGE*NUMBER_OF_HOPS*predicted_luminance + H1_RANGE*NUMBER_OF_HOPS*r_max + NUMBER_OF_HOPS*hop_1 + hop_number
+                    predicted_luminance=(component_prediction[pix-1]+component_prediction[pix+1-width])>>1;     
+                }                
             
                 index = 20*256*256*r_max + 256*256*hop_1 + 256*original_color + predicted_luminance;
                 hop_number = best_hop[index]; 
                 
                 hops[pix]= hop_number;
+                
                 index = 40*20*9*predicted_luminance + 20*9*r_max + 9*hop_1 + hop_number;                
                 component_prediction[pix]= prec_luminance[index];
 
@@ -87,30 +102,33 @@ const char *ff_kernel_lhe_opencl = AV_OPENCL_KERNEL(
                 //tunning hop1 for the next hop ( "h1 adaptation")
                 //------------------------------------------------
                                
-                if (hop_number<5 && hop_number>3) 
-                {
-                    small_hop=true;// 4 is in the center, 4 is null hop
-                }
-                else 
-                {
-                    small_hop=false;    
-                }
-
-                if( (small_hop) && (last_small_hop))  {
-                    hop_1=hop_1-1;
-                    if (hop_1<4) {
-                        hop_1=4;
-                    } 
-                    
-                } else {
-                    hop_1=10;
-                }
+                if (hop_number<=5 && hop_number>=3)
+                {                                                   
+                    small_hop=true;                                 
+                } else                                              
+                {                                                   
+                    small_hop=false;                                
+                }                                                   
+                                                                    
+                if( (small_hop) && (last_small_hop))  {             
+                    hop_1=hop_1-1;                                  
+                    if (hop_1<4) {                          
+                        hop_1=4;                            
+                    }                                               
+                                                                    
+                } else {                                            
+                    hop_1=10;                                
+                }                                                   
+                last_small_hop=small_hop;
                 
 
                 //lets go for the next pixel
                 //--------------------------
-                last_small_hop=small_hop;
+                pix++;
+                pix_original_data++;
             }//for x
+            pix+=dif_pix;
+            pix_original_data+=dif_line;
         }//for y           
     }
 );
