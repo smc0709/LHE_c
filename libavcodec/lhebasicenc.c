@@ -407,7 +407,7 @@ static int lhe_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
 
 static void lhe_encode_frame_pararell (LheBasicPrec *prec, 
                                        uint8_t *component_original_data_Y, uint8_t *component_original_data_U, uint8_t *component_original_data_V,
-                                       uint8_t *component_prediction_Y, uint8_t *component_prediction_UV, 
+                                       uint8_t *component_prediction_Y, uint8_t *component_prediction_U, uint8_t *component_prediction_V,  
                                        uint8_t *hops_Y, uint8_t *hops_U, uint8_t *hops_V,
                                        int width_Y, int height_Y, int width_UV, int height_UV, 
                                        int linesize_Y, int linesize_U, int linesize_V, 
@@ -426,17 +426,19 @@ static void lhe_encode_frame_pararell (LheBasicPrec *prec,
                                                 first_color_block_Y, total_blocks_width,
                                                 i, j, BLOCK_WIDTH_Y, BLOCK_HEIGHT_Y);
 
+            
             //Crominance U
-            lhe_encode_one_hop_per_pixel_block(prec, component_original_data_U, component_prediction_UV, hops_U,
+            lhe_encode_one_hop_per_pixel_block(prec, component_original_data_U, component_prediction_U, hops_U,
                                                width_UV, height_UV, linesize_U, 
                                                first_color_block_U, total_blocks_width,
                                                i, j, BLOCK_WIDTH_UV, BLOCK_HEIGHT_UV); 
 
             //Crominance V
-            lhe_encode_one_hop_per_pixel_block(prec, component_original_data_V, component_prediction_UV, hops_V, 
+            lhe_encode_one_hop_per_pixel_block(prec, component_original_data_V, component_prediction_V, hops_V, 
                                                width_UV, height_UV, linesize_V, 
                                                first_color_block_V, total_blocks_width,
                                                i, j, BLOCK_WIDTH_UV, BLOCK_HEIGHT_UV);
+                                               
         }
     }  
 }
@@ -444,7 +446,7 @@ static void lhe_encode_frame_pararell (LheBasicPrec *prec,
 
 static void lhe_encode_frame_sequential (LheBasicPrec *prec, 
                                        uint8_t *component_original_data_Y, uint8_t *component_original_data_U, uint8_t *component_original_data_V,
-                                       uint8_t *component_prediction_Y, uint8_t *component_prediction_UV, 
+                                       uint8_t *component_prediction_Y, uint8_t *component_prediction_U, uint8_t *component_prediction_V,
                                        uint8_t *hops_Y, uint8_t *hops_U, uint8_t *hops_V,
                                        int width_Y, int height_Y, int width_UV, int height_UV, 
                                        int linesize_Y, int linesize_U, int linesize_V, 
@@ -454,22 +456,60 @@ static void lhe_encode_frame_sequential (LheBasicPrec *prec,
     lhe_encode_one_hop_per_pixel(prec, component_original_data_Y, component_prediction_Y, hops_Y, width_Y, height_Y, linesize_Y, first_color_block_Y); 
 
     //Crominance U
-    lhe_encode_one_hop_per_pixel(prec, component_original_data_U, component_prediction_UV, hops_U, width_UV, height_UV, linesize_U, first_color_block_U); 
+    lhe_encode_one_hop_per_pixel(prec, component_original_data_U, component_prediction_U, hops_U, width_UV, height_UV, linesize_U, first_color_block_U); 
 
     //Crominance V
-    lhe_encode_one_hop_per_pixel(prec, component_original_data_V, component_prediction_UV, hops_V, width_UV, height_UV, linesize_V, first_color_block_V);   
+    lhe_encode_one_hop_per_pixel(prec, component_original_data_V, component_prediction_V, hops_V, width_UV, height_UV, linesize_V, first_color_block_V);   
 }
 
+static void lhe_compute_error_for_psnr (AVCodecContext *avctx, const AVFrame *frame,
+                                        int height_Y, int width_Y, int height_UV, int width_UV,
+                                        uint8_t *component_original_data_Y, uint8_t *component_original_data_U, uint8_t *component_original_data_V,
+                                        uint8_t *component_prediction_Y, uint8_t *component_prediction_U, uint8_t *component_prediction_V) 
+{
+    
+    int error= 0;
+
+    if(frame->data[0]) {
+        for(int y=0; y<height_Y; y++){
+            for(int x=0; x<width_Y; x++){
+                error = component_original_data_Y[y*frame->linesize[0] + x] - component_prediction_Y[y*width_Y + x];
+                error = abs(error);
+                avctx->error[0] += error*error;
+            }
+        }    
+    }
+    
+    if(frame->data[1]) {
+        for(int y=0; y<height_UV; y++){
+            for(int x=0; x<width_UV; x++){
+                error = component_original_data_U[y*frame->linesize[1] + x] - component_prediction_U[y*width_UV + x];
+                error = abs(error);
+                avctx->error[1] += error*error;
+            }
+        }    
+    }
+    
+    if(frame->data[2]) {
+        for(int y=0; y<height_UV; y++){
+            for(int x=0; x<width_UV; x++){
+                error = component_original_data_V[y*frame->linesize[2] + x] - component_prediction_V[y*width_UV + x];
+                error = abs(error);
+                avctx->error[2] += error*error;
+            }
+        }    
+    }
+}
 
 static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
                              const AVFrame *frame, int *got_packet)
 {
     uint8_t *component_original_data_Y, *component_original_data_U, *component_original_data_V;
-    uint8_t *component_prediction_Y, *component_prediction_UV, *hops_Y, *hops_U, *hops_V;
+    uint8_t *component_prediction_Y, *component_prediction_U, *component_prediction_V, *hops_Y, *hops_U, *hops_V;
     uint8_t *first_color_block_Y, *first_color_block_U, *first_color_block_V;
     int width_Y, width_UV, height_Y, height_UV, image_size_Y, image_size_UV, n_bytes; 
     int total_blocks_width, total_blocks_height, total_blocks;
-    
+
     struct timeval before , after;
     
     LheContext *s = avctx->priv_data;
@@ -500,7 +540,8 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     component_original_data_V = frame->data[2];
       
     component_prediction_Y = malloc(sizeof(uint8_t) * image_size_Y);  
-    component_prediction_UV = malloc(sizeof(uint8_t) * image_size_UV);  
+    component_prediction_U = malloc(sizeof(uint8_t) * image_size_UV); 
+    component_prediction_V = malloc(sizeof(uint8_t) * image_size_UV);  
     hops_Y = malloc(sizeof(uint8_t) * image_size_Y);
     hops_U = malloc(sizeof(uint8_t) * image_size_UV);
     hops_V = malloc(sizeof(uint8_t) * image_size_UV);
@@ -515,7 +556,7 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
         
         lhe_encode_frame_pararell (&s->prec, 
                                    component_original_data_Y, component_original_data_U, component_original_data_V, 
-                                   component_prediction_Y, component_prediction_UV, 
+                                   component_prediction_Y, component_prediction_U, component_prediction_V, 
                                    hops_Y, hops_U, hops_V,
                                    width_Y, height_Y, width_UV, height_UV, 
                                    frame->linesize[0], frame->linesize[1], frame->linesize[2],
@@ -528,7 +569,7 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     {
         lhe_encode_frame_sequential (&s->prec, 
                                      component_original_data_Y, component_original_data_U, component_original_data_V, 
-                                     component_prediction_Y, component_prediction_UV, 
+                                     component_prediction_Y, component_prediction_U, component_prediction_V,
                                      hops_Y, hops_U, hops_V,
                                      width_Y, height_Y, width_UV, height_UV, 
                                      frame->linesize[0], frame->linesize[1], frame->linesize[2],
@@ -543,6 +584,15 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
                                  total_blocks_width, total_blocks_height,
                                  first_color_block_Y, first_color_block_U, first_color_block_V, 
                                  hops_Y, hops_U, hops_V);
+    
+   
+    if(avctx->flags&AV_CODEC_FLAG_PSNR){
+        lhe_compute_error_for_psnr (avctx, frame,
+                                    height_Y, width_Y, height_UV, width_UV,
+                                    component_original_data_Y, component_original_data_U, component_original_data_V,
+                                    component_prediction_Y, component_prediction_U, component_prediction_V); 
+        
+    }
     
     av_log(NULL, AV_LOG_INFO, "LHE Coding...buffer size %d CodingTime %.0lf \n", n_bytes, time_diff(before , after));
 
