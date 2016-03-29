@@ -1,4 +1,4 @@
-#include "lhebasic.h"
+#include "lhe.h"
 
 #define H1_ADAPTATION                                   \
     if (hop_number<=HOP_POS_1 && hop_number>=HOP_NEG_1) \

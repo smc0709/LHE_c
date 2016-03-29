@@ -4,7 +4,7 @@
 
 #include "bytestream.h"
 #include "internal.h"
-#include "lhebasic.h"
+#include "lhe.h"
 
 #define H1_ADAPTATION                                   \
 if (hop<=HOP_POS_1 && hop>=HOP_NEG_1)                   \
@@ -118,7 +118,7 @@ static uint8_t lhe_translate_huffman_into_symbol (int huffman_symbol, LheHuffEnt
 
 static void lhe_read_file_symbols (LheState *s, LheHuffEntry *he, uint32_t image_size, uint8_t *symbols) 
 {
-    uint8_t symbol, count_bits, min_len;
+    uint8_t symbol, count_bits;
     int huffman_symbol;
     uint32_t decoded_symbols;
     
@@ -144,11 +144,11 @@ static void lhe_read_file_symbols (LheState *s, LheHuffEntry *he, uint32_t image
 }
 
 
-static void lhe_decode_one_hop_per_pixel_block (LheBasicPrec *prec, uint8_t *hops, uint8_t *image,
-                                                uint32_t width, uint32_t height, int linesize,
-                                                uint8_t *first_color_block, int total_blocks_width,
-                                                int block_x, int block_y,
-                                                int block_width, int block_height) 
+static void lhe_basic_decode_one_hop_per_pixel_block (LheBasicPrec *prec, uint8_t *hops, uint8_t *image,
+                                                      uint32_t width, uint32_t height, int linesize,
+                                                      uint8_t *first_color_block, int total_blocks_width,
+                                                      int block_x, int block_y,
+                                                      int block_width, int block_height) 
 {
        
     //Hops computation.
@@ -156,10 +156,6 @@ static void lhe_decode_one_hop_per_pixel_block (LheBasicPrec *prec, uint8_t *hop
     bool small_hop, last_small_hop;
     uint8_t hop, predicted_luminance, hop_1, r_max; 
     int pix, dif_pix, dif_hops, num_block;
-    
-    //Errors
-    int min_error;      // error of predicted signal
-    int error;          //computed error for each hop 
     
     num_block = block_y * total_blocks_width + block_x;
     
@@ -235,18 +231,14 @@ static void lhe_decode_one_hop_per_pixel_block (LheBasicPrec *prec, uint8_t *hop
     
 }
 
-static void lhe_decode_one_hop_per_pixel (LheBasicPrec *prec, uint8_t *hops, uint8_t *image,
-                                          uint8_t first_color, uint32_t width, uint32_t height, 
-                                          int linesize) {
+static void lhe_basic_decode_one_hop_per_pixel (LheBasicPrec *prec, uint8_t *hops, uint8_t *image,
+                                                uint8_t first_color, uint32_t width, uint32_t height, 
+                                                int linesize) {
        
     //Hops computation.
     bool small_hop, last_small_hop;
     uint8_t hop, predicted_luminance, hop_1, r_max; 
-    int pix, pix_hop_data, dif_pix;
-    
-    //Errors
-    int min_error;      // error of predicted signal
-    int error;          //computed error for each hop 
+    int pix, dif_pix;
     
     small_hop           = false;
     last_small_hop      = false;        // indicates if last hop is small
@@ -302,31 +294,32 @@ static void lhe_decode_one_hop_per_pixel (LheBasicPrec *prec, uint8_t *hops, uin
     
 }
 
-static void lhe_decode_frame_sequential (LheBasicPrec *prec, 
-                                         uint8_t *component_Y, uint8_t *component_U, uint8_t *component_V,
-                                         uint8_t *hops_Y, uint8_t *hops_U, uint8_t *hops_V,
-                                         int width_Y, int height_Y, int width_UV, int height_UV, 
-                                         int linesize_Y, int linesize_U, int linesize_V, 
-                                         uint8_t *first_color_block_Y, uint8_t *first_color_block_U, uint8_t *first_color_block_V) 
+static void lhe_basic_decode_frame_sequential (LheBasicPrec *prec, 
+                                               uint8_t *component_Y, uint8_t *component_U, uint8_t *component_V,
+                                               uint8_t *hops_Y, uint8_t *hops_U, uint8_t *hops_V,
+                                               int width_Y, int height_Y, int width_UV, int height_UV, 
+                                               int linesize_Y, int linesize_U, int linesize_V, 
+                                               uint8_t *first_color_block_Y, uint8_t *first_color_block_U, uint8_t *first_color_block_V) 
 {
     //Luminance
-    lhe_decode_one_hop_per_pixel(prec, hops_Y, component_Y, first_color_block_Y[0], width_Y, height_Y, linesize_Y);
+    lhe_basic_decode_one_hop_per_pixel(prec, hops_Y, component_Y, first_color_block_Y[0], width_Y, height_Y, linesize_Y);
 
     //Chrominance U
-    lhe_decode_one_hop_per_pixel(prec, hops_U, component_U, first_color_block_U[0], width_UV, height_UV, linesize_U);
+    lhe_basic_decode_one_hop_per_pixel(prec, hops_U, component_U, first_color_block_U[0], width_UV, height_UV, linesize_U);
 
     //Chrominance V
-    lhe_decode_one_hop_per_pixel(prec, hops_V, component_V, first_color_block_V[0], width_UV, height_UV, linesize_V);
+    lhe_basic_decode_one_hop_per_pixel(prec, hops_V, component_V, first_color_block_V[0], width_UV, height_UV, linesize_V);
 }
 
 
-static void lhe_decode_frame_pararell (LheBasicPrec *prec, 
-                                       uint8_t *component_Y, uint8_t *component_U, uint8_t *component_V,
-                                       uint8_t *hops_Y, uint8_t *hops_U, uint8_t *hops_V,
-                                       int width_Y, int height_Y, int width_UV, int height_UV, 
-                                       int linesize_Y, int linesize_U, int linesize_V, 
-                                       uint8_t *first_color_block_Y, uint8_t *first_color_block_U, uint8_t *first_color_block_V,
-                                       int total_blocks_width, int total_blocks_height) 
+static void lhe_basic_decode_frame_pararell (LheBasicPrec *prec, 
+                                             uint8_t *component_Y, uint8_t *component_U, uint8_t *component_V,
+                                             uint8_t *hops_Y, uint8_t *hops_U, uint8_t *hops_V,
+                                             int width_Y, int height_Y, int width_UV, int height_UV, 
+                                             int linesize_Y, int linesize_U, int linesize_V, 
+                                             uint8_t *first_color_block_Y, uint8_t *first_color_block_U, uint8_t *first_color_block_V,
+                                             int total_blocks_width, int total_blocks_height,
+                                             int block_width_Y, int block_height_Y, int block_width_UV, int block_height_UV) 
 {
     
     #pragma omp parallel for
@@ -336,22 +329,22 @@ static void lhe_decode_frame_pararell (LheBasicPrec *prec,
         {
             
             //Luminance
-            lhe_decode_one_hop_per_pixel_block(prec, hops_Y, component_Y, 
-                                                width_Y, height_Y, linesize_Y, 
-                                                first_color_block_Y, total_blocks_width, 
-                                                i, j, BLOCK_WIDTH_Y, BLOCK_HEIGHT_Y);
+            lhe_basic_decode_one_hop_per_pixel_block(prec, hops_Y, component_Y, 
+                                                     width_Y, height_Y, linesize_Y, 
+                                                     first_color_block_Y, total_blocks_width, 
+                                                     i, j, block_width_Y, block_height_Y);
 
             //Chrominance U
-            lhe_decode_one_hop_per_pixel_block(prec, hops_U, component_U, 
-                                                width_UV, height_UV, linesize_U,
-                                                first_color_block_U, total_blocks_width, 
-                                                i, j, BLOCK_WIDTH_UV, BLOCK_HEIGHT_UV);
+            lhe_basic_decode_one_hop_per_pixel_block(prec, hops_U, component_U, 
+                                                     width_UV, height_UV, linesize_U,
+                                                     first_color_block_U, total_blocks_width, 
+                                                     i, j, block_width_UV, block_height_UV);
         
             //Chrominance V
-            lhe_decode_one_hop_per_pixel_block(prec, hops_V, component_V, 
-                                            width_UV, height_UV, linesize_V,
-                                            first_color_block_V, total_blocks_width, 
-                                            i, j, BLOCK_WIDTH_UV, BLOCK_HEIGHT_UV);
+            lhe_basic_decode_one_hop_per_pixel_block(prec, hops_V, component_V, 
+                                                     width_UV, height_UV, linesize_V,
+                                                     first_color_block_V, total_blocks_width, 
+                                                     i, j, block_width_UV, block_height_UV);
         }
     }
 }
@@ -360,10 +353,9 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
 {
     uint32_t width_Y, width_UV, height_Y, height_UV, image_size_Y, image_size_UV;
     uint8_t *component_Y, *component_U, *component_V, *hops_Y, *hops_U, *hops_V;
-    uint8_t *symbols_Y, *symbols_U, *symbols_V;
     uint8_t *first_color_block_Y, *first_color_block_U, *first_color_block_V;
-    int total_blocks, total_blocks_width, total_blocks_height;
-    int ret, i,j;
+    int  block_width_Y, block_width_UV, block_height_Y, block_height_UV, total_blocks, total_blocks_width, total_blocks_height;
+    int ret, i;
 
     LheHuffEntry he_Y[LHE_MAX_HUFF_SIZE];
     LheHuffEntry he_UV[LHE_MAX_HUFF_SIZE];
@@ -390,7 +382,7 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
     //Blocks
     total_blocks_width = bytestream_get_byte(&lhe_data); 
     total_blocks_height = bytestream_get_byte(&lhe_data); 
-
+    
     total_blocks = total_blocks_height * total_blocks_width;
     
     //First pixel array
@@ -419,12 +411,7 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
     component_Y = s->frame->data[0];
     component_U = s->frame->data[1];
     component_V = s->frame->data[2];
-    
-    //Symbols array
-    symbols_Y = malloc(sizeof(uint8_t) * image_size_Y);
-    symbols_U = malloc(sizeof(uint8_t) * image_size_UV);
-    symbols_V = malloc(sizeof(uint8_t) * image_size_UV);
-    
+      
     hops_Y = malloc(sizeof(uint8_t) * image_size_Y);      
     hops_U = malloc(sizeof(uint8_t) * image_size_UV);    
     hops_V = malloc(sizeof(uint8_t) * image_size_UV);      
@@ -440,22 +427,28 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
  
     if (total_blocks > 1 && OPENMP_FLAGS == CONFIG_OPENMP) 
     {
-        lhe_decode_frame_pararell (&s->prec, 
-                                   component_Y, component_U, component_V, 
-                                   hops_Y, hops_U, hops_V,
-                                   width_Y, height_Y, width_UV, height_UV, 
-                                   s->frame->linesize[0], s->frame->linesize[1], s->frame->linesize[2],
-                                   first_color_block_Y, first_color_block_U, first_color_block_V,
-                                   total_blocks_width, total_blocks_height);
+        block_width_Y = (width_Y-1)/total_blocks_width + 1;
+        block_height_Y = (height_Y-1)/total_blocks_height + 1;
+        block_width_UV = (width_UV-1)/total_blocks_width + 1;
+        block_height_UV = (height_UV-1)/total_blocks_height +1;
+
+        lhe_basic_decode_frame_pararell (&s->prec, 
+                                         component_Y, component_U, component_V, 
+                                         hops_Y, hops_U, hops_V,
+                                         width_Y, height_Y, width_UV, height_UV, 
+                                         s->frame->linesize[0], s->frame->linesize[1], s->frame->linesize[2],
+                                         first_color_block_Y, first_color_block_U, first_color_block_V,
+                                         total_blocks_width, total_blocks_height,
+                                         block_width_Y, block_height_Y, block_width_UV, block_height_UV);                                
        
     } else 
     {      
-        lhe_decode_frame_sequential (&s->prec, 
-                                     component_Y, component_U, component_V, 
-                                     hops_Y, hops_U, hops_V,
-                                     width_Y, height_Y, width_UV, height_UV, 
-                                     s->frame->linesize[0], s->frame->linesize[1], s->frame->linesize[2],
-                                     first_color_block_Y, first_color_block_U, first_color_block_V);    
+        lhe_basic_decode_frame_sequential (&s->prec, 
+                                           component_Y, component_U, component_V, 
+                                           hops_Y, hops_U, hops_V,
+                                           width_Y, height_Y, width_UV, height_UV, 
+                                           s->frame->linesize[0], s->frame->linesize[1], s->frame->linesize[2],
+                                           first_color_block_Y, first_color_block_U, first_color_block_V);    
     }
     
     av_log(NULL, AV_LOG_INFO, "DECODING...Width %d Height %d \n", width_Y, height_Y);
