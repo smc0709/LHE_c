@@ -285,23 +285,24 @@ static void lhe_advanced_compute_perceptual_relevance (uint8_t *hops_Y,
     uint32_t count_prx, count_pry;
     int coord_x, coord_y;
         
-    perceptual_relevance_x = malloc(sizeof(float*) * (total_blocks_width+1));  
+    perceptual_relevance_x = malloc(sizeof(float*) * (total_blocks_height+1));  
     
-    for (i=0; i<total_blocks_width+1; i++) 
+    for (i=0; i<total_blocks_height+1; i++) 
     {
-        perceptual_relevance_x[i] = malloc(sizeof(float) * (total_blocks_height+1));
+        perceptual_relevance_x[i] = malloc(sizeof(float) * (total_blocks_width+1));
     }
     
-    perceptual_relevance_y = malloc(sizeof(float*) * (total_blocks_width+1)); 
+    perceptual_relevance_y = malloc(sizeof(float*) * (total_blocks_height+1)); 
     
-    for (i=0; i<total_blocks_width+1; i++) 
+    for (i=0; i<total_blocks_height+1; i++) 
     {
-        perceptual_relevance_y[i] = malloc(sizeof(float) * (total_blocks_height+1));
+        perceptual_relevance_y[i] = malloc(sizeof(float) * (total_blocks_width+1));
     }
     
-    for (coord_x=0; coord_x<total_blocks_width+1; coord_x++) 
+    
+    for (coord_y=0; coord_y<total_blocks_height+1; coord_y++) 
     {
-        for (coord_y=0; coord_y<total_blocks_height+1; coord_y++) 
+        for (coord_x=0; coord_x<total_blocks_width+1; coord_x++) 
         {
             xini = coord_x * block_width;
             xini_pr_block = xini - block_width/2; 
@@ -395,32 +396,41 @@ static void lhe_advanced_compute_perceptual_relevance (uint8_t *hops_Y,
             if (count_prx == 0) 
             {
 
-                perceptual_relevance_x[coord_x][coord_y] = 0;
+                perceptual_relevance_x[coord_y][coord_x] = 0;
             } else 
             {
-                perceptual_relevance_x[coord_x][coord_y] = prx / (4.0*count_prx);
+                perceptual_relevance_x[coord_y][coord_x] = prx / (4.0*count_prx);
             }
 
             if (count_pry == 0) 
             {
-                perceptual_relevance_y[coord_x][coord_y] = 0;
+                perceptual_relevance_y[coord_y][coord_x] = 0;
             } else 
             {
-                perceptual_relevance_y[coord_x][coord_y] = pry / (4.0*count_pry);
+                perceptual_relevance_y[coord_y][coord_x] = pry / (4.0*count_pry);
             }                   
         }
     }
+        
+
     
-    /*
-    for (int i=0; i<total_blocks_width+1; i++) {
-        for (int j=0; j<total_blocks_height+1; j++) 
+    if (PRINT_LOGS) {
+
+        av_log (NULL, AV_LOG_INFO, "*******PERCEPTUAL RELEVANCE METRICS %dx%d (Prx, Pry)*******\n",total_blocks_width, total_blocks_height);
+
+        for (coord_y=0; coord_y<total_blocks_height+1; coord_y++) 
         {
-        av_log (NULL, AV_LOG_INFO, "x %d y % d PRX = %f PRY= %f \n", i, j, perceptual_relevance_x[i][j], perceptual_relevance_y[i][j]);
+            for (coord_x=0; coord_x<total_blocks_width+1; coord_x++) 
+            {  
+                av_log (NULL, AV_LOG_INFO, "(%4.2f,%4.2f) ", perceptual_relevance_x[coord_y][coord_x], perceptual_relevance_y[coord_y][coord_x]);
+            }
+            
+            av_log (NULL, AV_LOG_INFO, "*\n");
         }
+        
+        av_log (NULL, AV_LOG_INFO, "*******PERCEPTUAL RELEVANCE METRICS %dx%d (Prx, Pry)*******\n",total_blocks_width, total_blocks_height);
     }
-    */
-    
-    
+
 }
 
 
@@ -764,7 +774,7 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
         
     }
     
-    av_log(NULL, AV_LOG_INFO, "LHE Coding...buffer size %d CodingTime %.0lf \n", n_bytes, time_diff(before , after));
+    av_log(NULL, AV_LOG_INFO, "LHE Coding...buffer size %d CodingTime %.0lf %d \n", n_bytes, time_diff(before , after), AV_CODEC_FLAG_PSNR);
 
     pkt->flags |= AV_PKT_FLAG_KEY;
     *got_packet = 1;
