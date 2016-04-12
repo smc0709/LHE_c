@@ -39,6 +39,7 @@ typedef struct LheContext {
     AVClass *class;    
     LheBasicPrec prec;
     PutBitContext pb;
+    int pr_metrics;
 } LheContext;
 
 static av_cold int lhe_encode_init(AVCodecContext *avctx)
@@ -272,47 +273,64 @@ static void lhe_compute_error_for_psnr (AVCodecContext *avctx, const AVFrame *fr
     }
 }
 
-static void lhe_advanced_compute_perceptual_relevance (uint8_t *hops_Y,
+static void print_json_pr_metrics (float** perceptual_relevance_x, float** perceptual_relevance_y,
+                                   int total_blocks_width, int total_blocks_height) 
+{
+    int i,j;
+    
+    av_log (NULL, AV_LOG_WARNING, "[");
+        
+    for (j=0; j<total_blocks_height+1; j++) 
+    {
+        for (i=0; i<total_blocks_width+1; i++) 
+        {  
+            if (i==total_blocks_width && j==total_blocks_height) 
+            {
+                av_log (NULL, AV_LOG_WARNING, "{\"prx\":%.4f, \"pry\":%.4f}", perceptual_relevance_x[j][i], perceptual_relevance_y[j][i]);
+            }
+            else 
+            {
+                av_log (NULL, AV_LOG_WARNING, "{\"prx\":%.4f, \"pry\":%.4f},", perceptual_relevance_x[j][i], perceptual_relevance_y[j][i]);
+            }
+        }
+        
+    }
+    
+    av_log (NULL, AV_LOG_WARNING, "]");   
+}
+
+static void lhe_advanced_compute_perceptual_relevance (float **perceptual_relevance_x, float  **perceptual_relevance_y,
+                                                       uint8_t *hops_Y,
                                                        int width, int height,
                                                        uint32_t total_blocks_width, uint32_t total_blocks_height,
                                                        uint32_t block_width, uint32_t block_height) 
 {
-    float **perceptual_relevance_x,  **perceptual_relevance_y;
-    int xini, yini, xini_pr_block, xfin_pr_block, yini_pr_block, yfin_pr_block;
+    
+    int xini, xfin, yini, yfin, xini_pr_block, xfin_pr_block, yini_pr_block, yfin_pr_block;
     int i, x,y, pix, dif_pix;
     uint8_t last_hop, top_hop, hop;
     int prx, pry;
     uint32_t count_prx, count_pry;
     int coord_x, coord_y;
-        
-    perceptual_relevance_x = malloc(sizeof(float*) * (total_blocks_height+1));  
-    
-    for (i=0; i<total_blocks_height+1; i++) 
-    {
-        perceptual_relevance_x[i] = malloc(sizeof(float) * (total_blocks_width+1));
-    }
-    
-    perceptual_relevance_y = malloc(sizeof(float*) * (total_blocks_height+1)); 
-    
-    for (i=0; i<total_blocks_height+1; i++) 
-    {
-        perceptual_relevance_y[i] = malloc(sizeof(float) * (total_blocks_width+1));
-    }
     
     
+          
+   // #pragma omp parallel for
     for (coord_y=0; coord_y<total_blocks_height+1; coord_y++) 
     {
         for (coord_x=0; coord_x<total_blocks_width+1; coord_x++) 
         {
+            
             xini = coord_x * block_width;
-            xini_pr_block = xini - block_width/2; 
+            xini_pr_block = xini - (block_width - 1)/2 + 1; 
             
             if (xini_pr_block < 0) 
             {
                 xini_pr_block = 0;
             }
             
-            xfin_pr_block = xini_pr_block + block_width;
+            xfin = xini +  block_width;
+            xfin_pr_block = xfin - (block_width-1)/2 + 1;
             
             if (xfin_pr_block>width) 
             {
@@ -320,19 +338,21 @@ static void lhe_advanced_compute_perceptual_relevance (uint8_t *hops_Y,
             }    
             
             yini = coord_y * block_height;
-            yini_pr_block = yini - block_width/2;
+            yini_pr_block = yini - (block_width-1)/2 + 1;
             
             if (yini_pr_block < 0) 
             {
                 yini_pr_block = 0;
             }
             
-            yfin_pr_block = yini_pr_block + block_height;
+            yfin = yini + block_height;
+            yfin_pr_block = yfin - (block_height-1)/2 + 1;
             
             if (yfin_pr_block>height)
             {
                 yfin_pr_block = height;
             }
+            
             
             pix = yini_pr_block*width + xini_pr_block;
             dif_pix = width - xfin_pr_block + xini_pr_block;
@@ -342,6 +362,7 @@ static void lhe_advanced_compute_perceptual_relevance (uint8_t *hops_Y,
             count_prx = 0;
             count_pry = 0;
             
+
             for (y=yini_pr_block; y < yfin_pr_block; y++)  
             {
                 for (x=xini_pr_block; x < xfin_pr_block; x++)  
@@ -355,7 +376,7 @@ static void lhe_advanced_compute_perceptual_relevance (uint8_t *hops_Y,
                     
                     if (pix>width)
                         top_hop = hops_Y[pix-width];
-                    
+                         
                     
                     if (hop == HOP_POS_4 || hop == HOP_NEG_4) {
                         prx += 4;
@@ -366,25 +387,25 @@ static void lhe_advanced_compute_perceptual_relevance (uint8_t *hops_Y,
                     
                         if (hop > HOP_0 && last_hop < HOP_0) 
                         {
-                            prx += hop - 4; // only abs (-4...0...4)
+                            prx += hop - HOP_0; // only abs (-4...0...4)
                             count_prx++;
                         } else if (hop < HOP_0 && last_hop > HOP_0) 
                         {
-                            prx += hop;
+                            prx += HOP_0 - hop;
                             count_prx++;
                         } 
                         
                         if (hop > HOP_0 && top_hop < HOP_0) 
                         {
-                            pry += hop - 4;
+                            pry += hop - HOP_0;
                             count_pry++;
                         } else if (hop < HOP_0 && top_hop > HOP_0) 
                         {
-                            pry += hop;
+                            pry += HOP_0 - hop;
                             count_pry++;
                         }
                     }
-                    
+                                        
                     pix++;
                 }
                 
@@ -408,29 +429,10 @@ static void lhe_advanced_compute_perceptual_relevance (uint8_t *hops_Y,
             } else 
             {
                 perceptual_relevance_y[coord_y][coord_x] = pry / (4.0*count_pry);
-            }                   
-        }
-    }
-        
-
-    
-    if (PRINT_LOGS) {
-
-        av_log (NULL, AV_LOG_INFO, "*******PERCEPTUAL RELEVANCE METRICS %dx%d (Prx, Pry)*******\n",total_blocks_width, total_blocks_height);
-
-        for (coord_y=0; coord_y<total_blocks_height+1; coord_y++) 
-        {
-            for (coord_x=0; coord_x<total_blocks_width+1; coord_x++) 
-            {  
-                av_log (NULL, AV_LOG_INFO, "(%4.2f,%4.2f) ", perceptual_relevance_x[coord_y][coord_x], perceptual_relevance_y[coord_y][coord_x]);
             }
-            
-            av_log (NULL, AV_LOG_INFO, "*\n");
+          
         }
-        
-        av_log (NULL, AV_LOG_INFO, "*******PERCEPTUAL RELEVANCE METRICS %dx%d (Prx, Pry)*******\n",total_blocks_width, total_blocks_height);
     }
-
 }
 
 
@@ -669,11 +671,15 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     uint8_t *component_original_data_Y, *component_original_data_U, *component_original_data_V;
     uint8_t *component_prediction_Y, *component_prediction_U, *component_prediction_V, *hops_Y, *hops_U, *hops_V;
     uint8_t *first_color_block_Y, *first_color_block_U, *first_color_block_V;
+    float **perceptual_relevance_x,  **perceptual_relevance_y;
     int width_Y, width_UV, height_Y, height_UV, image_size_Y, image_size_UV, n_bytes; 
     int total_blocks_width, total_blocks_height, total_blocks, pixels_block;
     int block_width_Y, block_width_UV, block_height_Y, block_height_UV;
-
+    int i,j;
+    
     struct timeval before , after;
+    
+
     
     LheContext *s = avctx->priv_data;
 
@@ -722,9 +728,22 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     first_color_block_U = malloc(sizeof(uint8_t) * total_blocks);
     first_color_block_V = malloc(sizeof(uint8_t) * total_blocks);
     
+    perceptual_relevance_x = malloc(sizeof(float*) * (total_blocks_height+1));  
     
-   
+    for (i=0; i<total_blocks_height+1; i++) 
+    {
+        perceptual_relevance_x[i] = malloc(sizeof(float) * (total_blocks_width+1));
+    }
+    
+    perceptual_relevance_y = malloc(sizeof(float*) * (total_blocks_height+1)); 
+    
+    for (i=0; i<total_blocks_height+1; i++) 
+    {
+        perceptual_relevance_y[i] = malloc(sizeof(float) * (total_blocks_width+1));
+    }   
+    
     gettimeofday(&before , NULL);
+
 
     if(OPENMP_FLAGS == CONFIG_OPENMP) {
         
@@ -751,19 +770,33 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
                                            first_color_block_Y, first_color_block_U, first_color_block_V);        
     }
     
+    gettimeofday(&after , NULL);
 
-    lhe_advanced_compute_perceptual_relevance (hops_Y,
+
+    lhe_advanced_compute_perceptual_relevance (perceptual_relevance_x, perceptual_relevance_y,
+                                               hops_Y,
                                                width_Y,  height_Y,
                                                total_blocks_width,  total_blocks_height,
                                                block_width_Y,  block_height_Y);
     
-    gettimeofday(&after , NULL);
+
+
+    
+    
  
     n_bytes = lhe_write_lhe_file(avctx, pkt,image_size_Y,  width_Y,  height_Y,
                                  image_size_UV,  width_UV,  height_UV,
                                  total_blocks_width, total_blocks_height,
                                  first_color_block_Y, first_color_block_U, first_color_block_V, 
                                  hops_Y, hops_U, hops_V);
+    
+    if (s->pr_metrics)
+    {
+        print_json_pr_metrics (perceptual_relevance_x, perceptual_relevance_y,
+                               total_blocks_width, total_blocks_height);   
+    }
+    
+   
     
    
     if(avctx->flags&AV_CODEC_FLAG_PSNR){
@@ -774,7 +807,7 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
         
     }
     
-    av_log(NULL, AV_LOG_INFO, "LHE Coding...buffer size %d CodingTime %.0lf %d \n", n_bytes, time_diff(before , after), AV_CODEC_FLAG_PSNR);
+    av_log(NULL, AV_LOG_INFO, "LHE Coding...buffer size %d CodingTime %.0lf \n", n_bytes, time_diff(before , after));
 
     pkt->flags |= AV_PKT_FLAG_KEY;
     *got_packet = 1;
@@ -795,12 +828,22 @@ static int lhe_encode_close(AVCodecContext *avctx)
 
 }
 
+#define OFFSET(x) offsetof(LheContext, x)
+#define VE AV_OPT_FLAG_VIDEO_PARAM | AV_OPT_FLAG_ENCODING_PARAM
+static const AVOption options[] = {
+    { "pr_metrics", "Print PR metrics", OFFSET(pr_metrics), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, VE },
+    { NULL },
+};
+
 
 static const AVClass lhe_class = {
     .class_name = "LHE Basic encoder",
     .item_name  = av_default_item_name,
+    .option     = options,
     .version    = LIBAVUTIL_VERSION_INT,
 };
+
+
 
 AVCodec ff_lhe_encoder = {
     .name           = "lhe",

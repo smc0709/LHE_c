@@ -77,8 +77,6 @@
 #define LHE_HUFFMAN_NODE_BITS 4
 #define LHE_HUFFMAN_TABLE_BITS LHE_MAX_HUFF_SIZE*LHE_HUFFMAN_NODE_BITS
 
-#define PRINT_LOGS false
-
 typedef struct LheBasicPrec {
     uint8_t prec_luminance[Y_MAX_COMPONENT][RATIO][H1_RANGE][NUMBER_OF_HOPS]; // precomputed luminance component
     uint8_t best_hop [RATIO][H1_RANGE][Y_MAX_COMPONENT][Y_MAX_COMPONENT]; //ratio - h1 - original color - prediction
