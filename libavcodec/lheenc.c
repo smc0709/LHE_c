@@ -322,7 +322,7 @@ static void lhe_advanced_compute_perceptual_relevance (float **perceptual_releva
         {
             
             xini = coord_x * block_width;
-            xini_pr_block = xini - (block_width - 1)/2 + 1; 
+            xini_pr_block = xini - ((block_width - 1)/2 + 1); 
             
             if (xini_pr_block < 0) 
             {
@@ -330,7 +330,7 @@ static void lhe_advanced_compute_perceptual_relevance (float **perceptual_releva
             }
             
             xfin = xini +  block_width;
-            xfin_pr_block = xfin - (block_width-1)/2 + 1;
+            xfin_pr_block = xfin - ((block_width-1)/2 + 1);
             
             if (xfin_pr_block>width) 
             {
@@ -338,7 +338,7 @@ static void lhe_advanced_compute_perceptual_relevance (float **perceptual_releva
             }    
             
             yini = coord_y * block_height;
-            yini_pr_block = yini - (block_width-1)/2 + 1;
+            yini_pr_block = yini - ((block_width-1)/2 + 1);
             
             if (yini_pr_block < 0) 
             {
@@ -346,7 +346,7 @@ static void lhe_advanced_compute_perceptual_relevance (float **perceptual_releva
             }
             
             yfin = yini + block_height;
-            yfin_pr_block = yfin - (block_height-1)/2 + 1;
+            yfin_pr_block = yfin - ((block_height-1)/2 + 1);
             
             if (yfin_pr_block>height)
             {
@@ -413,7 +413,7 @@ static void lhe_advanced_compute_perceptual_relevance (float **perceptual_releva
 
             }   
             
-            
+                  
             if (count_prx == 0) 
             {
 
@@ -430,7 +430,6 @@ static void lhe_advanced_compute_perceptual_relevance (float **perceptual_releva
             {
                 perceptual_relevance_y[coord_y][coord_x] = pry / (4.0*count_pry);
             }
-          
         }
     }
 }
