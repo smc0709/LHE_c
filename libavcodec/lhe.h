@@ -75,7 +75,12 @@
 //Huffman
 #define LHE_MAX_HUFF_SIZE 9
 #define LHE_HUFFMAN_NODE_BITS 4
-#define LHE_HUFFMAN_TABLE_BITS LHE_MAX_HUFF_SIZE*LHE_HUFFMAN_NODE_BITS
+#define LHE_HUFFMAN_TABLE_BITS 2*LHE_MAX_HUFF_SIZE*LHE_HUFFMAN_NODE_BITS
+#define LHE_HUFFMAN_TABLE_BYTES LHE_HUFFMAN_TABLE_BITS/8
+
+//Offset file
+#define FILE_OFFSET_BYTES 4
+#define FILE_OFFSET_BITS 32
 
 typedef struct LheBasicPrec {
     uint8_t prec_luminance[Y_MAX_COMPONENT][RATIO][H1_RANGE][NUMBER_OF_HOPS]; // precomputed luminance component
