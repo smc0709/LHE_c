@@ -287,12 +287,10 @@ static int lhe_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
                               uint8_t *hops_Y, uint8_t *hops_U, uint8_t *hops_V) {
   
     uint8_t *buf;
-    uint8_t file_offset, file_offset_bytes;
-    uint8_t *symbols_Y, *symbols_U, *symbols_V;
-
-    uint64_t n_bits_hops, n_bytes, n_bytes_components, n_bytes_huffman, total_blocks;
+    
+    uint64_t n_bits_hops, n_bytes, n_bytes_components, total_blocks;
     int i, ret;
-
+        
     struct timeval before , after;
     
     LheHuffEntry he_Y[LHE_MAX_HUFF_SIZE];
@@ -302,10 +300,6 @@ static int lhe_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
     
     total_blocks = total_blocks_height * total_blocks_width;
     
-    symbols_Y = malloc(sizeof(uint8_t) * image_size_Y); 
-    symbols_U = malloc(sizeof(uint8_t) * image_size_UV); 
-    symbols_V = malloc(sizeof(uint8_t) * image_size_UV); 
-    
     gettimeofday(&before , NULL);
 
 
@@ -314,24 +308,16 @@ static int lhe_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
                                    image_size_Y, image_size_UV);
     
 
-    n_bytes_components = (n_bits_hops + (n_bits_hops%8))/8;
-    file_offset = n_bits_hops%8;
-    
-    n_bytes_huffman = (LHE_HUFFMAN_TABLE_BITS + (LHE_HUFFMAN_TABLE_BITS%8))/8;
-    file_offset+= LHE_HUFFMAN_TABLE_BITS%8;
+    n_bytes_components = n_bits_hops/8;        
     
     //File size
     n_bytes = sizeof(width_Y) + sizeof(height_Y) //width and height
               + sizeof(total_blocks_height) + sizeof(total_blocks_width)
               + total_blocks * (sizeof(first_pixel_blocks_Y) + sizeof(first_pixel_blocks_U) + sizeof(first_pixel_blocks_V)) //first pixel blocks array value
-              + n_bytes_huffman + //huffman table
+              + LHE_HUFFMAN_TABLE_BYTES + //huffman table
               + n_bytes_components; //components
+
               
-    file_offset += ((n_bytes * 8) % 32);
-    file_offset += (file_offset%8);
-    file_offset_bytes = file_offset / 8;
-    n_bytes += file_offset_bytes;
-    
     //ff_alloc_packet2 reserves n_bytes of memory
     if ((ret = ff_alloc_packet2(avctx, pkt, n_bytes, 0)) < 0)
         return ret;
@@ -362,7 +348,7 @@ static int lhe_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
     }
     
          
-    init_put_bits(&s->pb, buf, LHE_HUFFMAN_TABLE_BITS + n_bytes_components + file_offset_bytes);
+    init_put_bits(&s->pb, buf, LHE_HUFFMAN_TABLE_BYTES + n_bytes_components + FILE_OFFSET_BYTES);
 
     //Write Huffman tables
     for (i=0; i<LHE_MAX_HUFF_SIZE; i++)
@@ -386,7 +372,6 @@ static int lhe_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
     for (i=0; i<image_size_UV; i++) 
     {        
        put_bits(&s->pb, he_UV[hops_U[i]].len , he_UV[hops_U[i]].code);
-        
     }
     
     for (i=0; i<image_size_UV; i++) 
@@ -394,12 +379,10 @@ static int lhe_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
         put_bits(&s->pb, he_UV[hops_V[i]].len , he_UV[hops_V[i]].code);
     }
     
+    put_bits(&s->pb, FILE_OFFSET_BITS , 0);
     
     gettimeofday(&after , NULL);
 
-    
-    put_bits(&s->pb, file_offset + 8, 0);
-        
     av_log(NULL, AV_LOG_INFO, "LHE Write file %.0lf \n", time_diff(before , after));
     
     return n_bytes;
