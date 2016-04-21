@@ -289,6 +289,27 @@ static void print_json_pr_metrics (float** perceptual_relevance_x, float** perce
     av_log (NULL, AV_LOG_PANIC, "]");   
 }
 
+static void print_csv_pr_metrics (float** perceptual_relevance_x, float** perceptual_relevance_y,
+                                   int total_blocks_width, int total_blocks_height) 
+{
+    int i,j;
+            
+    for (j=0; j<total_blocks_height+1; j++) 
+    {
+        for (i=0; i<total_blocks_width+1; i++) 
+        {  
+
+            av_log (NULL, AV_LOG_PANIC, "%.4f;%.4f;", perceptual_relevance_x[j][i], perceptual_relevance_y[j][i]);
+
+        }
+        
+        av_log (NULL, AV_LOG_PANIC, "\n");
+
+        
+    }
+    
+}
+
 static void lhe_advanced_compute_perceptual_relevance_block (float **perceptual_relevance_x, float  **perceptual_relevance_y,
                                                              uint8_t *hops_Y,
                                                              int xini_pr_block, int xfin_pr_block, int yini_pr_block, int yfin_pr_block,
