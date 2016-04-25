@@ -57,11 +57,24 @@
 #define MIN_HOP_1 4
 #define START_HOP_1 (MAX_HOP_1 + MIN_HOP_1) / 2
 #define PARAM_R 25
+
+//SPS Params
 #define SPS_RATIO_WIDTH 2
 #define SPS_RATIO_HEIGHT 2
-#define PR_HMAX_CONSTANT 1.0/4.0
-#define PR_EXPANSION_CONSTANT_1 5.0/6.0
-#define PR_EXPANSION_CONSTANT_2 2.0/3.0
+
+//Perceptual Relevance Params
+#define PR_HMAX 1.0/4.0
+#define PR_MIN 0.2f
+#define PR_MAX 0.5f
+#define PR_DIF 0.3f //PR_MAX-PR_MIN
+#define PR_QUANT_0 0
+#define PR_QUANT_1 0.125f
+#define PR_QUANT_2 0.25f
+#define PR_QUANT_3 0.5f
+#define PR_QUANT_4 0.75f
+#define PR_QUANT_5 1
+#define CORNERS 4
+
 
 //Hops
 #define HOP_NEG_4 0 // h-4 

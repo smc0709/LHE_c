@@ -300,11 +300,11 @@ static void print_csv_pr_metrics (float** perceptual_relevance_x, float** percep
         for (i=0; i<total_blocks_width+1; i++) 
         {  
 
-            av_log (NULL, AV_LOG_PANIC, "%.4f;%.4f;", perceptual_relevance_x[j][i], perceptual_relevance_y[j][i]);
+            av_log (NULL, AV_LOG_INFO, "%.4f;%.4f;", perceptual_relevance_x[j][i], perceptual_relevance_y[j][i]);
 
         }
         
-        av_log (NULL, AV_LOG_PANIC, "\n");
+        av_log (NULL, AV_LOG_INFO, "\n");
 
         
     }
@@ -319,20 +319,23 @@ static void lhe_advanced_compute_perceptual_relevance_block (float **perceptual_
 {
     int pix, dif_pix;
     uint8_t last_hop, top_hop, hop;
-    int prx, pry;
-    uint32_t count_prx, count_pry;  
+    float prx, pry;
+    float prx_expand, pry_expand;
+    float prx_quant, pry_quant;
+    uint64_t hx, hy;
+    uint32_t count_hx, count_hy;  
     
     pix = yini_pr_block*width + xini_pr_block;
     dif_pix = width - xfin_pr_block + xini_pr_block;
         
-    prx = 0;
-    pry = 0;
-    count_prx = 0;
-    count_pry = 0;
+    hx = 0;
+    hy = 0;
+    count_hx = 0;
+    count_hy = 0;
     
-    for (int y=yini_pr_block; y < yfin_pr_block; y+=2)  
+    for (int y=yini_pr_block; y < yfin_pr_block; y++)  
     {
-        for (int x=xini_pr_block; x < xfin_pr_block; x+=2)  
+        for (int x=xini_pr_block; x < xfin_pr_block; x++)  
         {
             hop = hops_Y [pix];
             last_hop = HOP_0;
@@ -346,30 +349,30 @@ static void lhe_advanced_compute_perceptual_relevance_block (float **perceptual_
                     
             
             if (hop == HOP_POS_4 || hop == HOP_NEG_4) {
-                prx += 4;
-                pry += 4;
-                count_prx++;
-                count_pry++;
+                hx += 4;
+                hy += 4;
+                count_hx++;
+                count_hy++;
             } else {
             
                 if (hop > HOP_0 && last_hop < HOP_0) 
                 {
-                    prx += hop - HOP_0; // only abs (-4...0...4)
-                    count_prx++;
+                    hx += hop - HOP_0; // only abs (-4...0...4)
+                    count_hx++;
                 } else if (hop < HOP_0 && last_hop > HOP_0) 
                 {
-                    prx += HOP_0 - hop;
-                    count_prx++;
+                    hx += HOP_0 - hop;
+                    count_hx++;
                 } 
                 
                 if (hop > HOP_0 && top_hop < HOP_0) 
                 {
-                    pry += hop - HOP_0;
-                    count_pry++;
+                    hy += hop - HOP_0;
+                    count_hy++;
                 } else if (hop < HOP_0 && top_hop > HOP_0) 
                 {
-                    pry += HOP_0 - hop;
-                    count_pry++;
+                    hy += HOP_0 - hop;
+                    count_hy++;
                 }
             }
                                 
@@ -380,22 +383,53 @@ static void lhe_advanced_compute_perceptual_relevance_block (float **perceptual_
 
     }   
     
-            
-    if (count_prx == 0) 
-    {
 
+    if (count_hx == 0) 
+    {
         perceptual_relevance_x[coord_y][coord_x] = 0;
     } else 
     {
-        perceptual_relevance_x[coord_y][coord_x] = prx / (4.0*count_prx);
+        prx = (PR_HMAX * hx) / count_hx;
+        
+        prx_expand = (prx-PR_MIN) / PR_DIF;
+               
+        if (prx_expand < PR_QUANT_1) {
+            prx_quant = PR_QUANT_0;
+        } else if (prx_expand < PR_QUANT_2) {
+            prx_quant = PR_QUANT_1;
+        } else if (prx_expand < PR_QUANT_3) {
+            prx_quant = PR_QUANT_2;
+        } else if (prx_expand < PR_QUANT_4) {
+            prx_quant = PR_QUANT_3;
+        } else {
+            prx_quant = PR_QUANT_5;
+        }
+ 
+        perceptual_relevance_x[coord_y][coord_x] = prx_quant;
     }
 
-    if (count_pry == 0) 
+    if (count_hy == 0) 
     {
         perceptual_relevance_y[coord_y][coord_x] = 0;
     } else 
     {
-        perceptual_relevance_y[coord_y][coord_x] = pry / (4.0*count_pry);
+        pry = (PR_HMAX * hy) / count_hy;
+        
+        pry_expand = (pry-PR_MIN) / PR_DIF;
+            
+        if (pry_expand < PR_QUANT_1) {
+            pry_quant = PR_QUANT_0;
+        } else if (pry_expand < PR_QUANT_2) {
+            pry_quant = PR_QUANT_1;
+        } else if (pry_expand < PR_QUANT_3) {
+            pry_quant = PR_QUANT_2;
+        } else if (pry_expand < PR_QUANT_4) {
+            pry_quant = PR_QUANT_3;
+        } else {
+            pry_quant = PR_QUANT_5;
+        }
+      
+        perceptual_relevance_y[coord_y][coord_x] = pry_quant;
     }
             
 }
@@ -786,21 +820,6 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     first_color_block_Y = malloc(sizeof(uint8_t) * total_blocks);
     first_color_block_U = malloc(sizeof(uint8_t) * total_blocks);
     first_color_block_V = malloc(sizeof(uint8_t) * total_blocks);
-    
-    perceptual_relevance_x = malloc(sizeof(float*) * (total_blocks_height_pr+1));  
-    
-    for (i=0; i<total_blocks_height_pr+1; i++) 
-    {
-        perceptual_relevance_x[i] = malloc(sizeof(float) * (total_blocks_width_pr+1));
-    }
-    
-    perceptual_relevance_y = malloc(sizeof(float*) * (total_blocks_height_pr+1)); 
-    
-    for (i=0; i<total_blocks_height_pr+1; i++) 
-    {
-        perceptual_relevance_y[i] = malloc(sizeof(float) * (total_blocks_width_pr+1));
-    }   
-    
 
     //BASIC LHE
    
@@ -845,7 +864,20 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     hops_flhe = malloc(sizeof(uint8_t) * image_size_flhe);
     component_prediction_flhe = malloc(sizeof(uint8_t) * image_size_flhe);
     
-
+    perceptual_relevance_x = malloc(sizeof(float*) * (total_blocks_height_pr+1));  
+    
+    for (i=0; i<total_blocks_height_pr+1; i++) 
+    {
+        perceptual_relevance_x[i] = malloc(sizeof(float) * (total_blocks_width_pr+1));
+    }
+    
+    perceptual_relevance_y = malloc(sizeof(float*) * (total_blocks_height_pr+1)); 
+    
+    for (i=0; i<total_blocks_height_pr+1; i++) 
+    {
+        perceptual_relevance_y[i] = malloc(sizeof(float) * (total_blocks_width_pr+1));
+    }   
+    
 
     lhe_advanced_downsampling_sps (width_Y, height_Y, frame->linesize[0],
                                    component_original_data_Y, component_original_data_flhe);
