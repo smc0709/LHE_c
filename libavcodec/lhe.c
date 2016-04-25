@@ -65,10 +65,11 @@ static int huff_cmp_sym(const void *a, const void *b)
 
 int lhe_generate_huffman_codes(LheHuffEntry *he)
 {
-    int len, i, j, last;
+    int len, i, last;
     uint16_t code;
     uint64_t bits;
     
+    bits=0;
     code = 1;
     last = LHE_MAX_HUFF_SIZE-1;
 
@@ -121,12 +122,12 @@ int lhe_generate_huffman_codes(LheHuffEntry *he)
  * h0--)(-----h1----center-------------)(---------h2--------center----------------)
  */
 static void lhe_init_hop_center_color_component_value (LheBasicPrec *prec, int hop0_Y, int hop1, int rmax,
-                                                    uint8_t hop_neg_4 [H1_RANGE][Y_MAX_COMPONENT], 
-                                                    uint8_t hop_neg_3 [H1_RANGE][Y_MAX_COMPONENT], 
-                                                    uint8_t hop_neg_2 [H1_RANGE][Y_MAX_COMPONENT],
-                                                    uint8_t hop_pos_2 [H1_RANGE][Y_MAX_COMPONENT],
-                                                    uint8_t hop_pos_3 [H1_RANGE][Y_MAX_COMPONENT],
-                                                    uint8_t hop_pos_4 [H1_RANGE][Y_MAX_COMPONENT])
+                                                    uint8_t hop_neg_4 [Y_MAX_COMPONENT][H1_RANGE], 
+                                                    uint8_t hop_neg_3 [Y_MAX_COMPONENT][H1_RANGE], 
+                                                    uint8_t hop_neg_2 [Y_MAX_COMPONENT][H1_RANGE],
+                                                    uint8_t hop_pos_2 [Y_MAX_COMPONENT][H1_RANGE],
+                                                    uint8_t hop_pos_3 [Y_MAX_COMPONENT][H1_RANGE],
+                                                    uint8_t hop_pos_4 [Y_MAX_COMPONENT][H1_RANGE])
 {
     
     //MIDDLE VALUE LUMINANCE

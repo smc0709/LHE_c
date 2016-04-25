@@ -57,6 +57,11 @@
 #define MIN_HOP_1 4
 #define START_HOP_1 (MAX_HOP_1 + MIN_HOP_1) / 2
 #define PARAM_R 25
+#define SPS_RATIO_WIDTH 2
+#define SPS_RATIO_HEIGHT 2
+#define PR_HMAX_CONSTANT 1.0/4.0
+#define PR_EXPANSION_CONSTANT_1 5.0/6.0
+#define PR_EXPANSION_CONSTANT_2 2.0/3.0
 
 //Hops
 #define HOP_NEG_4 0 // h-4 

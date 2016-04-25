@@ -40,6 +40,7 @@ typedef struct LheContext {
     LheBasicPrec prec;
     PutBitContext pb;
     int pr_metrics;
+    int sps_ratio;
 } LheContext;
 
 static av_cold int lhe_encode_init(AVCodecContext *avctx)
@@ -329,9 +330,9 @@ static void lhe_advanced_compute_perceptual_relevance_block (float **perceptual_
     count_prx = 0;
     count_pry = 0;
     
-    for (int y=yini_pr_block; y < yfin_pr_block; y++)  
+    for (int y=yini_pr_block; y < yfin_pr_block; y+=2)  
     {
-        for (int x=xini_pr_block; x < xfin_pr_block; x++)  
+        for (int x=xini_pr_block; x < xfin_pr_block; x+=2)  
         {
             hop = hops_Y [pix];
             last_hop = HOP_0;
@@ -567,7 +568,7 @@ static void lhe_basic_encode_one_hop_per_pixel (LheBasicPrec *prec, uint8_t *com
     //Hops computation.
     bool small_hop, last_small_hop;
     uint8_t predicted_luminance, hop_1, hop_number, original_color, r_max;
-    int pix, dif_line, x, y;
+    int pix, pix_original_data, dif_line, x, y;
 
     small_hop = false;
     last_small_hop=false;          // indicates if last hop is small
@@ -575,19 +576,20 @@ static void lhe_basic_encode_one_hop_per_pixel (LheBasicPrec *prec, uint8_t *com
     hop_1= START_HOP_1;
     hop_number=4;                  // pre-selected hop // 4 is NULL HOP
     pix=0;                         // pixel possition, from 0 to image size   
+    pix_original_data = 0;
     x = 0;
     y = 0;
     original_color=0;              // original color
     r_max=PARAM_R;
     
-    dif_line = linesize - width;
+    dif_line = linesize - width; 
       
     
     for (y=0; y < height; y++)  {
         for (x=0; x < width; x++)  {
             
             
-            original_color = *component_original_data++;    
+            original_color = component_original_data[pix_original_data];    
         
             if (x==0 && y==0)
             {
@@ -617,12 +619,13 @@ static void lhe_basic_encode_one_hop_per_pixel (LheBasicPrec *prec, uint8_t *com
             hop_number = prec->best_hop[r_max][hop_1][original_color][predicted_luminance];            
             component_prediction[pix]=prec -> prec_luminance[predicted_luminance][r_max][hop_1][hop_number];  
             hops[pix]= hop_number;
-            
+                        
             H1_ADAPTATION;
-            pix++;            
+            pix++;   
+            pix_original_data++;
 
         }
-        component_original_data+=dif_line;            
+        pix_original_data+=dif_line;            
     }    
     
 }
@@ -690,12 +693,35 @@ static void lhe_basic_encode_frame_sequential (LheBasicPrec *prec,
                                        width_UV, height_UV, linesize_V, first_color_block_V);   
 }
 
+static void lhe_advanced_downsampling_sps (int width, int height, int linesize,
+                                           uint8_t *component_original_data, uint8_t *component_original_data_flhe)
+{
+    int pix, pix_original_data, dif_line, sps_line_pix;
+    
+    pix = 0;
+    pix_original_data = 0;
+    dif_line = linesize - width;
+    sps_line_pix = (SPS_RATIO_HEIGHT-1) * linesize + dif_line;
+
+    for (register int y=0; y < height; y+=SPS_RATIO_HEIGHT)  {
+        for (register int x=0; x < width; x+=SPS_RATIO_WIDTH)  {
+            component_original_data_flhe[pix] = component_original_data[pix_original_data];
+            
+            pix++;
+            pix_original_data+=SPS_RATIO_WIDTH;
+
+        }
+        
+        pix_original_data +=sps_line_pix;
+     }
+}
 
 static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
                              const AVFrame *frame, int *got_packet)
 {
     uint8_t *component_original_data_Y, *component_original_data_U, *component_original_data_V;
-    uint8_t *component_prediction_Y, *component_prediction_U, *component_prediction_V, *hops_Y, *hops_U, *hops_V;
+    uint8_t *component_prediction_Y, *component_prediction_U, *component_prediction_V;
+    uint8_t *hops_Y, *hops_U, *hops_V;
     uint8_t *first_color_block_Y, *first_color_block_U, *first_color_block_V;
     float **perceptual_relevance_x,  **perceptual_relevance_y;
     int width_Y, width_UV, height_Y, height_UV, image_size_Y, image_size_UV, n_bytes; 
@@ -703,10 +729,11 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     int block_width_Y, block_width_UV, block_height_Y, block_height_UV, block_width_pr, block_height_pr;
     int i,j;
     
+    uint8_t *component_original_data_flhe, *component_prediction_flhe, *hops_flhe;
+    int width_flhe, height_flhe, image_size_flhe, block_width_flhe, block_height_flhe;
+    
     struct timeval before , after;
-    
 
-    
     LheContext *s = avctx->priv_data;
 
     width_Y = frame->width;
@@ -774,9 +801,9 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
         perceptual_relevance_y[i] = malloc(sizeof(float) * (total_blocks_width_pr+1));
     }   
     
-    gettimeofday(&before , NULL);
 
-
+    //BASIC LHE
+   
     if(OPENMP_FLAGS == CONFIG_OPENMP) {
         
         lhe_basic_encode_frame_pararell (&s->prec, 
@@ -802,20 +829,62 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
                                            first_color_block_Y, first_color_block_U, first_color_block_V);        
     }
     
+   
+    gettimeofday(&before , NULL);
+
+
+    //ADVANCED LHE
+    width_flhe = (width_Y-1) / SPS_RATIO_WIDTH + 1;
+    height_flhe = (height_Y-1) / SPS_RATIO_HEIGHT + 1;
+    image_size_flhe = width_flhe * height_flhe;
+    
+    block_width_flhe = (width_flhe-1) / total_blocks_width + 1;
+    block_height_flhe = (height_flhe-1) / total_blocks_height + 1;
+    
+    component_original_data_flhe = malloc(sizeof(uint8_t) * image_size_flhe);
+    hops_flhe = malloc(sizeof(uint8_t) * image_size_flhe);
+    component_prediction_flhe = malloc(sizeof(uint8_t) * image_size_flhe);
+    
+
+
+    lhe_advanced_downsampling_sps (width_Y, height_Y, frame->linesize[0],
+                                   component_original_data_Y, component_original_data_flhe);
+
+    if(OPENMP_FLAGS == CONFIG_OPENMP) {
+        #pragma omp parallel for
+        for (int j=0; j<total_blocks_height; j++)      
+        {  
+            for (int i=0; i<total_blocks_width; i++) 
+            {
+                // linesize will be width_flhe because we have created a new array 
+                lhe_basic_encode_one_hop_per_pixel_block(&s->prec, component_original_data_flhe, component_prediction_flhe, hops_flhe,      
+                                                        width_flhe, height_flhe, width_flhe, 
+                                                        first_color_block_Y, total_blocks_width,
+                                                        i, j, block_width_flhe, block_height_flhe);
+            }
+        }
+
+                                       
+                               
+    } else 
+    {
+        // linesize will be width_flhe because we have created a new array 
+        lhe_basic_encode_one_hop_per_pixel(&s->prec, 
+                                           component_original_data_flhe, component_prediction_flhe, hops_flhe, 
+                                           width_flhe, height_flhe, width_flhe, first_color_block_Y);        
+    }
+    
 
 
     lhe_advanced_compute_perceptual_relevance (perceptual_relevance_x, perceptual_relevance_y,
-                                               hops_Y,
-                                               width_Y,  height_Y,
+                                               hops_flhe,
+                                               width_flhe,  height_flhe,
                                                total_blocks_width_pr,  total_blocks_height_pr,
-                                               block_width_pr,  block_height_pr);
+                                               block_width_flhe,  block_height_flhe);
+                                               
     
     gettimeofday(&after , NULL);
 
-
-    
-    
- 
     n_bytes = lhe_write_lhe_file(avctx, pkt,image_size_Y,  width_Y,  height_Y,
                                  image_size_UV,  width_UV,  height_UV,
                                  total_blocks_width, total_blocks_height,
@@ -824,12 +893,12 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     
     if (s->pr_metrics)
     {
-        print_json_pr_metrics (perceptual_relevance_x, perceptual_relevance_y,
-                               total_blocks_width_pr, total_blocks_height_pr);   
+       //print_json_pr_metrics (perceptual_relevance_x, perceptual_relevance_y,
+         //                      total_blocks_width_pr, total_blocks_height_pr);  
+        
+        print_csv_pr_metrics(perceptual_relevance_x, perceptual_relevance_y,
+                         total_blocks_width_pr, total_blocks_height_pr);  
     }
-    
-   
-    
    
     if(avctx->flags&AV_CODEC_FLAG_PSNR){
         lhe_compute_error_for_psnr (avctx, frame,
@@ -864,6 +933,7 @@ static int lhe_encode_close(AVCodecContext *avctx)
 #define VE AV_OPT_FLAG_VIDEO_PARAM | AV_OPT_FLAG_ENCODING_PARAM
 static const AVOption options[] = {
     { "pr_metrics", "Print PR metrics", OFFSET(pr_metrics), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, VE },
+    { "sps_ratio", "SPS ratio", OFFSET(sps_ratio), AV_OPT_TYPE_INT, { .i64 = 1 }, 0, 5, VE },
     { NULL },
 };
 
