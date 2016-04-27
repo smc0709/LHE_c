@@ -59,6 +59,7 @@
 #define PARAM_R 25
 
 //SPS Params
+#define NO_SPS_RATIO 1
 #define SPS_RATIO_WIDTH 2
 #define SPS_RATIO_HEIGHT 2
 
