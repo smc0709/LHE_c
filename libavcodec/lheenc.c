@@ -495,6 +495,71 @@ static void lhe_advanced_compute_perceptual_relevance (float **perceptual_releva
     }
 }
 
+static void lhe_advanced_perceptual_relevance_to_ppp (float compression_factor,
+                                                      float *** ppp_x, float *** ppp_y, 
+                                                      float ** perceptual_relevance_x, float ** perceptual_relevance_y,
+                                                      int total_blocks_width, int total_blocks_height) 
+{
+    float const1, const2, ppp_min, ppp_max;
+    
+    const1 = PPP_MAX - 1;
+    const2 = PPP_MAX * compression_factor;
+    ppp_max = PPP_MAX;
+    
+    
+    #pragma omp parallel for
+    for (int block_y=0; block_y<total_blocks_height; block_y++) 
+    {
+        for (int block_x=0; block_x<total_blocks_width; block_x++) 
+        {
+            
+            ppp_x[block_y][block_x][0] = const2 / (1.0 + const1 * perceptual_relevance_x[block_y][block_x]);
+            ppp_x[block_y][block_x][1] = const2 / (1.0 + const1 * perceptual_relevance_x[block_y][block_x+1]);     
+            ppp_x[block_y][block_x][2] = const2 / (1.0 + const1 * perceptual_relevance_x[block_y+1][block_x]);  
+            ppp_x[block_y][block_x][3] = const2 / (1.0 + const1 * perceptual_relevance_x[block_y+1][block_x+1]);
+            
+
+            ppp_y[block_y][block_x][0] = const2 / (1.0 + const1 * perceptual_relevance_y[block_y][block_x]);    
+            ppp_y[block_y][block_x][1] = const2 / (1.0 + const1 * perceptual_relevance_y[block_y][block_x+1]);   
+            ppp_y[block_y][block_x][2] = const2 / (1.0 + const1 * perceptual_relevance_y[block_y+1][block_x]);        
+            ppp_y[block_y][block_x][3] = const2 / (1.0 + const1 * perceptual_relevance_y[block_y+1][block_x+1]);
+            
+            
+             //Looks for ppp_min
+            if (ppp_x[block_y][block_x][0] < ppp_min) ppp_min = ppp_x[block_y][block_x][0];
+            if (ppp_x[block_y][block_x][1] < ppp_min) ppp_min = ppp_x[block_y][block_x][1];
+            if (ppp_x[block_y][block_x][2] < ppp_min) ppp_min = ppp_x[block_y][block_x][2];
+            if (ppp_x[block_y][block_x][3] < ppp_min) ppp_min = ppp_x[block_y][block_x][3];
+            if (ppp_y[block_y][block_x][0] < ppp_min) ppp_min = ppp_y[block_y][block_x][0];
+            if (ppp_y[block_y][block_x][1] < ppp_min) ppp_min = ppp_y[block_y][block_x][1];
+            if (ppp_y[block_y][block_x][2] < ppp_min) ppp_min = ppp_y[block_y][block_x][2];
+            if (ppp_y[block_y][block_x][3] < ppp_min) ppp_min = ppp_y[block_y][block_x][3];
+            
+            //Max elastic restriction
+            ppp_max = ppp_min * ELASTIC_MAX;
+            
+            //Adjust values
+            if (ppp_x[block_y][block_x][0]> ppp_max) ppp_x[block_y][block_x][0] = ppp_max;
+            if (ppp_x[block_y][block_x][0]< PPP_MIN) ppp_x[block_y][block_x][0] = PPP_MIN;
+            if (ppp_x[block_y][block_x][1]> ppp_max) ppp_x[block_y][block_x][1] = ppp_max;
+            if (ppp_x[block_y][block_x][1]< PPP_MIN) ppp_x[block_y][block_x][1] = PPP_MIN;
+            if (ppp_x[block_y][block_x][2]> ppp_max) ppp_x[block_y][block_x][2] = ppp_max;
+            if (ppp_x[block_y][block_x][2]< PPP_MIN) ppp_x[block_y][block_x][2] = PPP_MIN;
+            if (ppp_x[block_y][block_x][3]> ppp_max) ppp_x[block_y][block_x][3] = ppp_max;
+            if (ppp_x[block_y][block_x][3]< PPP_MIN) ppp_x[block_y][block_x][3] = PPP_MIN;   
+            if (ppp_y[block_y][block_x][0]> ppp_max) ppp_y[block_y][block_x][0] = ppp_max;
+            if (ppp_y[block_y][block_x][0]< PPP_MIN) ppp_y[block_y][block_x][0] = PPP_MIN;
+            if (ppp_y[block_y][block_x][1]> ppp_max) ppp_y[block_y][block_x][1] = ppp_max;
+            if (ppp_y[block_y][block_x][1]< PPP_MIN) ppp_y[block_y][block_x][1] = PPP_MIN;
+            if (ppp_y[block_y][block_x][2]> ppp_max) ppp_y[block_y][block_x][2] = ppp_max;
+            if (ppp_y[block_y][block_x][2]< PPP_MIN) ppp_y[block_y][block_x][2] = PPP_MIN;
+            if (ppp_y[block_y][block_x][3]> ppp_max) ppp_y[block_y][block_x][3] = ppp_max;
+            if (ppp_y[block_y][block_x][3]< PPP_MIN) ppp_y[block_y][block_x][3] = PPP_MIN;
+               
+        }
+    }
+}
+
 
 static void lhe_basic_encode_one_hop_per_pixel_block (LheBasicPrec *prec, uint8_t *component_original_data, 
                                                       uint8_t *component_prediction, uint8_t *hops, 
@@ -762,6 +827,7 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     uint8_t *hops_Y, *hops_U, *hops_V;
     uint8_t *first_color_block_Y, *first_color_block_U, *first_color_block_V;
     float **perceptual_relevance_x,  **perceptual_relevance_y;
+    float ***ppp_x, ***ppp_y;
     int width_Y, width_UV, height_Y, height_UV, image_size_Y, image_size_UV, n_bytes; 
     int total_blocks_width, total_blocks_height, total_blocks, pixels_block, total_blocks_width_pr, total_blocks_height_pr;
     int block_width_Y, block_width_UV, block_height_Y, block_height_UV, block_width_pr, block_height_pr;
@@ -884,7 +950,31 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
         perceptual_relevance_y[i] = malloc(sizeof(float) * (total_blocks_width_pr+1));
     }   
     
-
+    ppp_x = malloc(sizeof(float**) * (total_blocks_height_pr+1));  
+    
+    for (i=0; i<total_blocks_height_pr+1; i++) 
+    {
+        ppp_x[i] = malloc(sizeof(float*) * (total_blocks_width_pr+1));
+        
+        for (j=0; j<total_blocks_width+1; j++) 
+        {
+            ppp_x[i][j] = malloc(sizeof(float) * CORNERS);
+        }
+    }
+    
+     ppp_y = malloc(sizeof(float**) * (total_blocks_height_pr+1));  
+    
+    for (i=0; i<total_blocks_height_pr+1; i++) 
+    {
+        ppp_y[i] = malloc(sizeof(float*) * (total_blocks_width_pr+1));
+        
+        for (j=0; j<total_blocks_width+1; j++) 
+        {
+            ppp_y[i][j] = malloc(sizeof(float) * CORNERS);
+        }
+    }
+    
+    
 
     if(OPENMP_FLAGS == CONFIG_OPENMP) {
         #pragma omp parallel for
@@ -916,6 +1006,11 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
                                                width_flhe,  height_flhe,
                                                total_blocks_width_pr,  total_blocks_height_pr,
                                                block_width_flhe,  block_height_flhe);
+    
+    lhe_advanced_perceptual_relevance_to_ppp (1, 
+                                              ppp_x, ppp_y,
+                                              perceptual_relevance_x, perceptual_relevance_y,
+                                              total_blocks_width, total_blocks_height);
                                                
     
     gettimeofday(&after , NULL);
@@ -929,12 +1024,19 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     
     if (s->pr_metrics)
     {
-       //print_json_pr_metrics (perceptual_relevance_x, perceptual_relevance_y,
-         //                      total_blocks_width_pr, total_blocks_height_pr);  
-        
         print_csv_pr_metrics(perceptual_relevance_x, perceptual_relevance_y,
                          total_blocks_width_pr, total_blocks_height_pr);  
     }
+    
+    /*
+    for (int i=0; i<total_blocks_height_pr; i++) {
+        for (int j=0; j<total_blocks_width; j++) {
+            for (int c=0; c<CORNERS; c++) {
+                    av_log(NULL, AV_LOG_INFO, "%f %f \n", ppp_x[i][j][c], ppp_y[i][j][c]);
+            }
+        }
+    }
+    */
    
     if(avctx->flags&AV_CODEC_FLAG_PSNR){
         lhe_compute_error_for_psnr (avctx, frame,
