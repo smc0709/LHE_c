@@ -75,8 +75,8 @@
 #define PR_QUANT_4 0.75f
 #define PR_QUANT_5 1
 #define CORNERS 4
-#define PPP_MAX 20
 #define PPP_MIN 1
+#define SIDE_MIN 2
 #define ELASTIC_MAX 3
 
 //Hops

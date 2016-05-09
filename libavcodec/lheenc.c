@@ -495,16 +495,121 @@ static void lhe_advanced_compute_perceptual_relevance (float **perceptual_releva
     }
 }
 
+static void ppp_to_rectangle_shape (float *** ppp_x, float *** ppp_y, 
+                                    int total_blocks_width, int total_blocks_height,
+                                    int block_width, int block_height) {
+    
+    float max_ppp,side_c, side_d, weight, side_average, side_min, side_max, add;
+    
+    int subsampled_block_width;
+    weight = 2;
+    max_ppp = block_width / SIDE_MIN;
+    
+    #pragma omp parallel for
+    for (int block_y=0; block_y<total_blocks_height; block_y++) 
+    {
+        for (int block_x=0; block_x<total_blocks_width; block_x++) 
+        {
+            side_c = ppp_x[block_y][block_x][0] + ppp_x[block_y][block_x][1];
+            side_d = ppp_x[block_y][block_x][2] + ppp_x[block_y][block_x][2];
+            
+            side_average = side_c;
+            if (side_c != side_d) {
+                //horizontal sides adjustment   
+                //---------------------------
+                //side_min is the side whose ppp summation is bigger ( seems a contradiction but it is correct)
+                //side max is the side whose resolution is bigger and ppp summation is lower
+                side_min = side_c;
+                side_max = side_d;
+                if (side_min < side_max) {
+                    side_min = side_d;
+                    side_max = side_c;
+                }
+                
+                side_average=side_max;
+            }
+            
+            subsampled_block_width = (2 * block_width -1 ) / side_average + 1;
+            
+            side_average=2*block_width/subsampled_block_width;
+            
+            //adjust side c
+            //--------------
+            if (ppp_x[block_y][block_x][0]<=ppp_x[block_y][block_x][1])
+            {       
+                ppp_x[block_y][block_x][0]=side_average*ppp_x[block_y][block_x][0]/side_c;
+
+                if (ppp_x[block_y][block_x][0]<1) {ppp_x[block_y][block_x][0]=1;}//PPPmin is 1 a PPP value <1 is not possible
+
+                add = 0;
+                ppp_x[block_y][block_x][1]=side_average-ppp_x[block_y][block_x][0];//+add1;
+                if (ppp_x[block_y][block_x][1]>max_ppp) {add=ppp_x[block_y][block_x][1]-max_ppp; ppp_x[block_y][block_x][1]=max_ppp;}
+
+                ppp_x[block_y][block_x][0]+=add;
+            }
+            else
+            {
+                ppp_x[block_y][block_x][1]=side_average*ppp_x[block_y][block_x][1]/side_c;
+
+                if (ppp_x[block_y][block_x][1]<1) { ppp_x[block_y][block_x][1]=1;}//PPPmin is 1 a PPP value <1 is not possible
+                
+                add=0;
+                ppp_x[block_y][block_x][0]=side_average-ppp_x[block_y][block_x][1];//+add0;
+                if (ppp_x[block_y][block_x][0]>max_ppp) {add=ppp_x[block_y][block_x][0]-max_ppp; ppp_x[block_y][block_x][0]=max_ppp;}
+
+                ppp_x[block_y][block_x][1]+=add;
+
+
+
+            }
+
+            //adjust side d
+            if (ppp_x[block_y][block_x][2]<=ppp_x[block_y][block_x][3])
+            {       
+                ppp_x[block_y][block_x][2]=side_average*ppp_x[block_y][block_x][2]/side_d;
+
+                
+                if (ppp_x[block_y][block_x][2]<1) {ppp_x[block_y][block_x][2]=1;}// PPP can not be <1
+                
+                add=0;
+                ppp_x[block_y][block_x][3]=side_average-ppp_x[block_y][block_x][2];//+add3;
+                if (ppp_x[block_y][block_x][3]>max_ppp) {add=ppp_x[block_y][block_x][3]-max_ppp; ppp_x[block_y][block_x][3]=max_ppp;}
+
+                ppp_x[block_y][block_x][2]+=add;
+
+                //el problema es que podemos habernos pasado
+            }
+            else
+            {
+                ppp_x[block_y][block_x][3]=side_average*ppp_x[block_y][block_x][3]/side_d;
+
+                if (ppp_x[block_y][block_x][3]<1) {ppp_x[block_y][block_x][3]=1;}
+
+                add=0;
+                ppp_x[block_y][block_x][2]=side_average-ppp_x[block_y][block_x][3];
+                if (ppp_x[block_y][block_x][2]>max_ppp) {add=ppp_x[block_y][block_x][2]-max_ppp; ppp_x[block_y][block_x][2]=max_ppp;}
+                ppp_x[block_y][block_x][3]+=add;
+
+            }
+            
+        }
+    }
+}
+
 static void lhe_advanced_perceptual_relevance_to_ppp (float compression_factor,
                                                       float *** ppp_x, float *** ppp_y, 
                                                       float ** perceptual_relevance_x, float ** perceptual_relevance_y,
-                                                      int total_blocks_width, int total_blocks_height) 
+                                                      int total_blocks_width, int total_blocks_height, int block_width) 
 {
     float const1, const2, ppp_min, ppp_max;
     
-    const1 = PPP_MAX - 1;
-    const2 = PPP_MAX * compression_factor;
-    ppp_max = PPP_MAX;
+    int ppp_max_theoric;
+    
+    ppp_max_theoric = block_width/SIDE_MIN;
+    ppp_min = PPP_MIN;
+
+    const1 = ppp_max_theoric - 1;
+    const2 = ppp_max_theoric * compression_factor;
     
     
     #pragma omp parallel for
@@ -512,7 +617,6 @@ static void lhe_advanced_perceptual_relevance_to_ppp (float compression_factor,
     {
         for (int block_x=0; block_x<total_blocks_width; block_x++) 
         {
-            
             ppp_x[block_y][block_x][0] = const2 / (1.0 + const1 * perceptual_relevance_x[block_y][block_x]);
             ppp_x[block_y][block_x][1] = const2 / (1.0 + const1 * perceptual_relevance_x[block_y][block_x+1]);     
             ppp_x[block_y][block_x][2] = const2 / (1.0 + const1 * perceptual_relevance_x[block_y+1][block_x]);  
@@ -537,6 +641,8 @@ static void lhe_advanced_perceptual_relevance_to_ppp (float compression_factor,
             
             //Max elastic restriction
             ppp_max = ppp_min * ELASTIC_MAX;
+            
+            if (ppp_max > ppp_max_theoric) ppp_max = ppp_max_theoric;
             
             //Adjust values
             if (ppp_x[block_y][block_x][0]> ppp_max) ppp_x[block_y][block_x][0] = ppp_max;
@@ -1010,7 +1116,11 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     lhe_advanced_perceptual_relevance_to_ppp (1, 
                                               ppp_x, ppp_y,
                                               perceptual_relevance_x, perceptual_relevance_y,
-                                              total_blocks_width, total_blocks_height);
+                                              total_blocks_width, total_blocks_height, block_width_pr);
+    
+    ppp_to_rectangle_shape (ppp_x, ppp_y, 
+                            total_blocks_width,total_blocks_height,
+                            block_width_pr, block_height_pr);
                                                
     
     gettimeofday(&after , NULL);
