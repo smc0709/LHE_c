@@ -495,13 +495,32 @@ static void lhe_advanced_compute_perceptual_relevance (float **perceptual_releva
     }
 }
 
+/**
+* this function transform PPP values at corners in order to generate a rectangle when
+* the block is downsampled.
+* 
+* However, at interpolation, this function does not assure that the block takes a rectangular shape at interpolation
+* A rectangular downsampled block, after interpolation, generates a poligonal shape (not parallelepiped)
+* 
+*                                                                   
+*   original          down             interpolated               
+*  +-------+         +----+                    +
+*  |       |   ----> |    |   ---->     +             
+*  |       |         +----+                                    
+*  |       |        rectangle                 +             
+*  +-------+                          +  
+*                                       any shape
+*                                      
+*                                       
+*/
+
 static void ppp_to_rectangle_shape (float *** ppp_x, float *** ppp_y, 
                                     int total_blocks_width, int total_blocks_height,
                                     int block_width, int block_height) {
     
-    float max_ppp,side_c, side_d, weight, side_average, side_min, side_max, add;
+    float max_ppp,side_a, side_b, side_c, side_d, weight, side_average, side_min, side_max, add;
     
-    int subsampled_block_width;
+    int subsampled_block_width, subsampled_block_height;
     weight = 2;
     max_ppp = block_width / SIDE_MIN;
     
@@ -542,7 +561,7 @@ static void ppp_to_rectangle_shape (float *** ppp_x, float *** ppp_y,
                 if (ppp_x[block_y][block_x][0]<1) {ppp_x[block_y][block_x][0]=1;}//PPPmin is 1 a PPP value <1 is not possible
 
                 add = 0;
-                ppp_x[block_y][block_x][1]=side_average-ppp_x[block_y][block_x][0];//+add1;
+                ppp_x[block_y][block_x][1]=side_average-ppp_x[block_y][block_x][0];
                 if (ppp_x[block_y][block_x][1]>max_ppp) {add=ppp_x[block_y][block_x][1]-max_ppp; ppp_x[block_y][block_x][1]=max_ppp;}
 
                 ppp_x[block_y][block_x][0]+=add;
@@ -559,8 +578,6 @@ static void ppp_to_rectangle_shape (float *** ppp_x, float *** ppp_y,
 
                 ppp_x[block_y][block_x][1]+=add;
 
-
-
             }
 
             //adjust side d
@@ -576,8 +593,6 @@ static void ppp_to_rectangle_shape (float *** ppp_x, float *** ppp_y,
                 if (ppp_x[block_y][block_x][3]>max_ppp) {add=ppp_x[block_y][block_x][3]-max_ppp; ppp_x[block_y][block_x][3]=max_ppp;}
 
                 ppp_x[block_y][block_x][2]+=add;
-
-                //el problema es que podemos habernos pasado
             }
             else
             {
@@ -589,6 +604,90 @@ static void ppp_to_rectangle_shape (float *** ppp_x, float *** ppp_y,
                 ppp_x[block_y][block_x][2]=side_average-ppp_x[block_y][block_x][3];
                 if (ppp_x[block_y][block_x][2]>max_ppp) {add=ppp_x[block_y][block_x][2]-max_ppp; ppp_x[block_y][block_x][2]=max_ppp;}
                 ppp_x[block_y][block_x][3]+=add;
+
+            }
+            
+            //vertical sides adjustment
+            //-------------------------
+            side_a=ppp_y[block_y][block_x][0]+ppp_y[block_y][block_x][2];
+            side_b=ppp_y[block_y][block_x][1]+ppp_y[block_y][block_x][3];
+
+
+            side_average=side_a;
+
+            if (side_a!=side_b)
+            {
+                //side_min is the side whose ppp summation is bigger ( seems a contradiction but it is correct)
+                side_min=side_a;
+                side_max=side_b;
+                
+                if (side_min<side_max) {side_min=side_b;side_max=side_a;}
+                side_average=(side_min+side_max*weight)/(1.0+weight);
+
+
+                //adjust side_average
+                //----------------------
+                side_average=side_max; 
+                 
+            }
+            
+            subsampled_block_height= (2.0*block_height-1)/side_average + 1;
+            side_average=2*block_height/subsampled_block_height;
+
+
+
+            //adjust side a
+            if (ppp_y[block_y][block_x][0]<=ppp_y[block_y][block_x][2])
+            {       
+                ppp_y[block_y][block_x][0]=side_average*ppp_y[block_y][block_x][0]/side_a;
+
+                if (ppp_y[block_y][block_x][0]<1) { ppp_y[block_y][block_x][0]=1;}
+                
+                add=0;
+                
+                ppp_y[block_y][block_x][2]=side_average-ppp_y[block_y][block_x][0];
+                if (ppp_y[block_y][block_x][2]>max_ppp) {add=ppp_y[block_y][block_x][2]-max_ppp; ppp_y[block_y][block_x][2]=max_ppp;}
+
+                ppp_y[block_y][block_x][0]+=add;
+            }
+            else
+            {
+                ppp_y[block_y][block_x][2]=side_average*ppp_y[block_y][block_x][2]/side_a;
+
+                if (ppp_y[block_y][block_x][2]<1) { ppp_y[block_y][block_x][2]=1;}
+                
+                add=0;
+                ppp_y[block_y][block_x][0]=side_average-ppp_y[block_y][block_x][2];//+add0;
+                if (ppp_y[block_y][block_x][0]>max_ppp) {add=ppp_y[block_y][block_x][0]-max_ppp; ppp_y[block_y][block_x][0]=max_ppp;}
+
+                ppp_y[block_y][block_x][2]+=add;
+
+            }
+
+            //adjust side b
+            if (ppp_y[block_y][block_x][1]<=ppp_y[block_y][block_x][3])
+            {       
+                ppp_y[block_y][block_x][1]=side_average*ppp_y[block_y][block_x][1]/side_b;
+
+                if (ppp_y[block_y][block_x][1]<1) { ppp_y[block_y][block_x][1]=1;}
+
+                add=0;
+                ppp_y[block_y][block_x][3]=side_average-ppp_y[block_y][block_x][1];//+add3;
+                if (ppp_y[block_y][block_x][3]>max_ppp) {add=ppp_y[block_y][block_x][3]-max_ppp; ppp_y[block_y][block_x][3]=max_ppp;}
+
+                ppp_y[block_y][block_x][1]+=add;
+            }
+            else
+            {
+                ppp_y[block_y][block_x][3]=side_average*ppp_y[block_y][block_x][3]/side_b;
+
+                if (ppp_y[block_y][block_x][3]<1) { ppp_y[block_y][block_x][3]=1;}
+                
+                add=0;
+                ppp_y[block_y][block_x][1]=side_average-ppp_y[block_y][block_x][3];//+add1;
+                if (ppp_y[block_y][block_x][1]>max_ppp) {add=ppp_y[block_y][block_x][1]-max_ppp; ppp_y[block_y][block_x][1]=max_ppp;}
+
+                ppp_y[block_y][block_x][3]+=add;
 
             }
             
@@ -665,7 +764,6 @@ static void lhe_advanced_perceptual_relevance_to_ppp (float compression_factor,
         }
     }
 }
-
 
 static void lhe_basic_encode_one_hop_per_pixel_block (LheBasicPrec *prec, uint8_t *component_original_data, 
                                                       uint8_t *component_prediction, uint8_t *hops, 
@@ -1106,12 +1204,13 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
                                            width_Y, width_flhe, height_flhe, frame->linesize[0], first_color_block_Y,
                                            SPS_RATIO_WIDTH, SPS_RATIO_HEIGHT  );        
     }
-
+ 
     lhe_advanced_compute_perceptual_relevance (perceptual_relevance_x, perceptual_relevance_y,
                                                hops_flhe,
                                                width_flhe,  height_flhe,
                                                total_blocks_width_pr,  total_blocks_height_pr,
                                                block_width_flhe,  block_height_flhe);
+    
     
     lhe_advanced_perceptual_relevance_to_ppp (1, 
                                               ppp_x, ppp_y,
@@ -1121,6 +1220,8 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     ppp_to_rectangle_shape (ppp_x, ppp_y, 
                             total_blocks_width,total_blocks_height,
                             block_width_pr, block_height_pr);
+                            
+                            
                                                
     
     gettimeofday(&after , NULL);
@@ -1138,7 +1239,7 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
                          total_blocks_width_pr, total_blocks_height_pr);  
     }
     
-    /*
+    
     for (int i=0; i<total_blocks_height_pr; i++) {
         for (int j=0; j<total_blocks_width; j++) {
             for (int c=0; c<CORNERS; c++) {
@@ -1146,7 +1247,7 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
             }
         }
     }
-    */
+    
    
     if(avctx->flags&AV_CODEC_FLAG_PSNR){
         lhe_compute_error_for_psnr (avctx, frame,
