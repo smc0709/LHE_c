@@ -78,6 +78,10 @@
 #define PPP_MIN 1
 #define SIDE_MIN 2
 #define ELASTIC_MAX 3
+#define TOP_LEFT_CORNER 0
+#define TOP_RIGHT_CORNER 1
+#define BOT_LEFT_CORNER 2
+#define BOT_RIGHT_CORNER 3
 
 //Hops
 #define HOP_NEG_4 0 // h-4 
