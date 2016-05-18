@@ -687,6 +687,143 @@ static float lhe_advanced_perceptual_relevance_to_ppp (float *** ppp_x, float **
 }
 
 
+static void lhe_advanced_downsample_vertical (float ***ppp_array, uint32_t ** downsampled_side_array,
+                                                uint8_t *component_original_data, 
+                                                uint32_t *downsampled_original_data,
+                                                int width_image, int block_width, int block_height,
+                                                int block_x, int block_y) 
+{
+    uint32_t xini, y, yini, y_prev, yfin, yfin_downsampled, downsampled_side, luminance;
+    float yf, yf_prev, ppp_0, ppp_1, ppp, gradient, color, porcent;
+    
+    xini = block_x * block_width;
+    yini = block_y * block_height;
+    
+    if (xini==0) return;
+                
+    //initialization of ppp at side c and ppp at side d
+    ppp_0=ppp_array[block_y][block_x][1];
+    ppp_1=ppp_array[block_y][block_x][3];
+
+    // initialization of pppx to ppp_xa
+    ppp=ppp_0;
+
+    downsampled_side = downsampled_side_array [block_y][block_x];
+    gradient=(ppp_1-ppp_0)/(downsampled_side-1);
+
+    yfin = yini + block_height - 1;
+    yfin_downsampled = yini + downsampled_side - 1;
+    yf=yini+ppp; 
+    yf_prev=yini;
+    y_prev=yini;
+
+    for (int y_sc=yini;y_sc<=yfin_downsampled;y_sc++)
+    {          
+        if (y_sc==yfin_downsampled) {yf=yfin+1;ppp=yf-yf_prev;}
+        y=yf;
+
+
+        color=0;
+        porcent=(1-(yf_prev-y_prev));
+
+        color+=porcent*component_original_data[y_prev*width_image+xini-1];
+
+        for (int i=y_prev+1;i<y ;i++)
+        {
+            color+=component_original_data[i*width_image+xini-1];                    
+        }
+
+        if (yf>y) color+=(yf-y)*component_original_data[y*width_image+xini-1];
+
+        luminance= (color-1)/ppp + 1;
+        if (luminance==0) luminance=1;
+        else if (luminance>255) luminance=255;
+
+        downsampled_original_data[y_sc*width_image+xini-1]=luminance;
+
+        ppp+=gradient;
+        y_prev=y;
+        yf_prev=yf;
+        yf+=ppp;
+
+    }                     
+}
+
+
+static void lhe_advanced_downsample_horizontal (float ***ppp_array, uint32_t ** downsampled_side_array,
+                                                uint8_t *component_original_data, 
+                                                uint32_t *downsampled_original_data,
+                                                int width_image, int block_width, int block_height,
+                                                int block_x, int block_y) 
+{
+    
+    uint32_t x, yini, x_prev, xini, xfin, xfin_downsampled, downsampled_side, luminance;
+    float ppp_0, ppp_1, ppp, gradient, xf, xf_prev, color, porcent;
+    
+    yini = block_y * block_height;
+    xini = block_x * block_width;
+
+    if (yini==0) return;
+    
+    ppp_0=ppp_array[block_y][block_x][BOT_LEFT_CORNER];
+    ppp_1=ppp_array[block_y][block_x][BOT_RIGHT_CORNER];
+    
+    ppp=ppp_0;
+
+    xfin = xini + block_width - 1;
+    xf=xini+ppp;// 
+    xf_prev=xini;//xf-pppx;
+    x_prev=xini;
+  
+    downsampled_side = downsampled_side_array[block_y][block_x];
+     
+    gradient=(ppp_1-ppp_0)/(downsampled_side-1.0);
+  
+    xfin_downsampled = xini + downsampled_side -1;
+
+    for (int x_sc=xini;x_sc<=xfin_downsampled;x_sc++)
+    {
+    
+
+        if (x_sc==xfin_downsampled) {
+            xf=xfin+1.0;
+            ppp=xf-xf_prev;
+            
+        }
+        
+        x=xf;
+        color=0;
+        porcent=(1-(xf_prev-x_prev));
+        
+        
+        color+=porcent*component_original_data[(yini-1)*width_image+x_prev];
+        
+        for (int i=x_prev+1;i<x ;i++)
+        {
+            color+=component_original_data[(yini-1)*width_image+i];
+        }
+        
+        if (xf>x) {
+            color+=(xf-x)*component_original_data[(yini-1)*width_image+x];
+        }
+        
+        luminance= (color -1 )/ppp + 1;
+        
+        if (luminance==0) luminance=1;
+        else if (luminance>255) luminance=255;    
+        
+        downsampled_original_data[(yini-1)*width_image+x_sc]=luminance;
+
+        ppp+=gradient;
+        x_prev=x;
+        xf_prev=xf;
+        xf+=ppp;
+
+    }//x   
+    
+}
+
+
 
 /**
  * LHE advanced encoding
@@ -695,18 +832,22 @@ static float lhe_advanced_perceptual_relevance_to_ppp (float *** ppp_x, float **
  * PPP to rectangle shape
  * Elastic Downsampling
  */
-static void lhe_advanced_encode (float ** perceptual_relevance_x, float ** perceptual_relevance_y,
+static void lhe_advanced_encode (uint8_t *component_original_data,
+                                 float ** perceptual_relevance_x, float ** perceptual_relevance_y,
+                                 int width_image, int height_image,
                                  int total_blocks_width, int total_blocks_height, 
                                  int block_width, int block_height) 
 {
     float ***ppp_x, ***ppp_y;
     float ppp_max, ppp_max_theoric, compression_factor;
     uint32_t **downsampled_side_x, **downsampled_side_y;
+    uint32_t *downsampled_original_data;
     uint32_t i, j;
     
     ppp_max_theoric = block_width/SIDE_MIN;
-    compression_factor = 1;
- 
+    compression_factor = 1.749534;
+    
+    downsampled_original_data = malloc (sizeof(uint32_t) * width_image * height_image);
     downsampled_side_x = malloc (sizeof(float*) * (total_blocks_height+1));
 
     for (i=0; i<total_blocks_height+1; i++) 
@@ -768,10 +909,36 @@ static void lhe_advanced_encode (float ** perceptual_relevance_x, float ** perce
                                                      TOP_LEFT_CORNER, BOT_LEFT_CORNER, TOP_RIGHT_CORNER, BOT_RIGHT_CORNER,
                                                      block_height, ppp_max_theoric,
                                                      block_x, block_y);
-                                                     
-         
+
+            //horizontal downsampling
+            lhe_advanced_downsample_horizontal (ppp_x, downsampled_side_x,
+                                                component_original_data, 
+                                                downsampled_original_data,
+                                                width_image, block_width, block_height,
+                                                block_x, block_y) ;
+            //vertical downsampling                             
+            lhe_advanced_downsample_vertical   (ppp_y, downsampled_side_y,
+                                                component_original_data, 
+                                                downsampled_original_data,
+                                                width_image, block_width, block_height,
+                                                block_x, block_y) ;
+                                    
         }
     }
+    
+    /*   
+     av_log(NULL, AV_LOG_INFO, "DOWNSAMPLED \n");
+    
+    for (int i=0; i<height_image; i++) {
+        for (int j=0; j<width_image; j++) {
+            av_log(NULL, AV_LOG_INFO, "%d;", downsampled_original_data[i*width_image + j]);
+        }
+        av_log(NULL, AV_LOG_INFO, "\n");
+
+    }
+     
+     */
+
     
     /*
     av_log(NULL, AV_LOG_INFO, "LENGTH X \n");
@@ -1241,7 +1408,9 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
                                                total_blocks_width_pr,  total_blocks_height_pr,
                                                block_width_flhe,  block_height_flhe);
     
-    lhe_advanced_encode (perceptual_relevance_x, perceptual_relevance_y,
+    lhe_advanced_encode (component_original_data_Y,
+                         perceptual_relevance_x, perceptual_relevance_y,
+                         width_Y, height_Y,
                          total_blocks_width_pr, total_blocks_height_pr, 
                          block_width_pr, block_height_pr);
                                     
