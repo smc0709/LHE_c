@@ -1012,6 +1012,9 @@ static void lhe_advanced_vertical_downsample (float ***ppp_array, uint32_t ** do
 }
 
 
+
+
+/**
  * LHE advanced encoding
  * 
  * PR to PPP conversion
