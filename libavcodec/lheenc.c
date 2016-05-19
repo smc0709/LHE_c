@@ -1011,7 +1011,110 @@ static void lhe_advanced_vertical_downsample (float ***ppp_array, uint32_t ** do
     }//x
 }
 
+static void lhe_advanced_encode_block (LheBasicPrec *prec, uint32_t *component_original_data, 
+                                       uint32_t *component_prediction, uint8_t *hops, 
+                                       uint32_t ** downsampled_x_array, uint32_t ** downsampled_y_array,
+                                       int width_image, int height_image, int linesize, 
+                                       uint8_t *first_color_block, int total_blocks_width,
+                                       int block_x, int block_y,
+                                       int block_width, int block_height)
+{      
+    
+    //Hops computation.
+    int xini, xfin_downsampled, yini, yfin_downsampled;
+    bool small_hop, last_small_hop;
+    uint8_t predicted_luminance, hop_1, hop_number, original_color, r_max;
+    int pix, pix_original_data, dif_line, dif_pix ,num_block;
+    
+    uint32_t downsampled_x, downsampled_y;
+    
+    num_block = block_y * total_blocks_width + block_x;
+    
+    downsampled_x = downsampled_x_array [block_y][block_x];
+    downsampled_y = downsampled_y_array [block_y][block_x];
+    
+    //DOWNSAMPLED IMAGE
+    xini = block_x * block_width;
+    xfin_downsampled = xini + downsampled_x;
+    if (xfin_downsampled>width_image) 
+    {
+        xfin_downsampled = width_image;
+    }
+    yini = block_y * block_height;
+    yfin_downsampled = yini + downsampled_y;
+    if (yfin_downsampled > height_image) 
+    {
+        yfin_downsampled = height_image;
+    }
+    
+    
+    small_hop = false;
+    last_small_hop=false;          // indicates if last hop is small
+    predicted_luminance=0;         // predicted signal
+    hop_1= START_HOP_1;
+    hop_number=4;                  // pre-selected hop // 4 is NULL HOP
+    pix=0;                         // pixel possition, from 0 to image size        
+    original_color=0;              // original color
+    
+    r_max = PARAM_R;
+    
+    pix = yini*width_image + xini;
+    pix_original_data = yini*linesize + xini;
+    
+    dif_pix = height_image - xfin_downsampled + xini;
+    dif_line = linesize - xfin_downsampled + xini;    
 
+    for (int y=yini; y < yfin_downsampled; y++)  {
+        for (int x=xini; x < xfin_downsampled; x++)  {
+              
+            original_color = component_original_data[pix_original_data]; //This can't be pix because ffmpeg adds empty memory slots. 
+
+            //prediction of signal (predicted_luminance) , based on pixel's coordinates 
+            //----------------------------------------------------------
+                        
+            if (x == xini && y==yini) 
+            {
+                predicted_luminance=original_color;//first pixel always is perfectly predicted! :-)  
+                //first_color_block[num_block] = original_color;
+            }
+
+            else if (y == yini) 
+            {
+                predicted_luminance=component_prediction[pix-1];
+            } 
+            else if (x == xini) 
+            {
+                predicted_luminance=component_prediction[pix-width_image];
+                last_small_hop=false;
+                hop_1=START_HOP_1;
+            } else if (x == xfin_downsampled -1) 
+            {
+                predicted_luminance=(component_prediction[pix-1]+component_prediction[pix-width_image])>>1;                               
+            } 
+            else 
+            {
+                predicted_luminance=(component_prediction[pix-1]+component_prediction[pix+1-width_image])>>1;     
+            }
+             
+            hop_number = prec->best_hop[r_max][hop_1][original_color][predicted_luminance]; 
+            //hops[pix]= hop_number;
+            //component_prediction[pix]=prec -> prec_luminance[predicted_luminance][r_max][hop_1][hop_number];
+ 
+
+            //tunning hop1 for the next hop ( "h1 adaptation")
+            //------------------------------------------------
+            H1_ADAPTATION;
+
+            //lets go for the next pixel
+            //--------------------------
+            pix++;
+             
+        }//for x
+        pix+=dif_pix;
+    }//for y  
+    
+   
+}
 
 
 /**
@@ -1021,26 +1124,42 @@ static void lhe_advanced_vertical_downsample (float ***ppp_array, uint32_t ** do
  * PPP to rectangle shape
  * Elastic Downsampling
  */
-static void lhe_advanced_encode (uint8_t *component_original_data,
+static void lhe_advanced_encode (LheBasicPrec *prec, 
+                                 uint8_t *component_original_data_Y, uint8_t *component_original_data_U, uint8_t *component_original_data_V,
+                                 uint8_t *component_prediction_Y, uint8_t *component_prediction_U, uint8_t *component_prediction_V,
+                                 uint8_t *hops_Y, uint8_t *hops_U, uint8_t *hops_V,
+                                 uint8_t *first_color_block_Y, uint8_t *first_color_block_U, uint8_t *first_color_V,
                                  float ** perceptual_relevance_x, float ** perceptual_relevance_y,
-                                 int width_image, int height_image,
+                                 int width_Y, int height_Y, int width_UV, int height_UV, 
+                                 int linesize_Y, int linesize_U, int linesize_V,
                                  int total_blocks_width, int total_blocks_height, 
                                  int block_width, int block_height) 
 {
     float ***ppp_x, ***ppp_y;
     float ppp_max, ppp_max_theoric, compression_factor;
     uint32_t **downsampled_side_x, **downsampled_side_y;
-    uint32_t *intermediate_downsample, *downsampled_data, *downsampled_boundaries;
-    uint32_t i, j, image_size;
+    uint32_t *intermediate_downsample_Y, *intermediate_downsample_U, *intermediate_downsample_V;
+    uint32_t *downsampled_data_Y, *downsampled_data_U, *downsampled_data_V;
+    uint32_t *downsampled_boundaries_Y, *downsampled_boundaries_U, *downsampled_boundaries_V;
+    uint32_t i, j, image_size_Y, image_size_UV;
     
-    image_size = width_image * height_image;
+    image_size_Y = width_Y * height_Y;
+    image_size_UV = width_UV * height_UV;
     
     ppp_max_theoric = block_width/SIDE_MIN;
     compression_factor = 1.749534;
+        
+    downsampled_data_Y = malloc (sizeof(uint32_t) * image_size_Y);
+    downsampled_boundaries_Y = malloc (sizeof(uint32_t) * image_size_Y);
+    intermediate_downsample_Y  = malloc (sizeof(uint32_t) * image_size_Y);
     
-    downsampled_data = malloc (sizeof(uint32_t) * image_size);
-    downsampled_boundaries = malloc (sizeof(uint32_t) * image_size);
-    intermediate_downsample  = malloc (sizeof(uint32_t) * image_size);
+    downsampled_data_U = malloc (sizeof(uint32_t) * image_size_UV);
+    downsampled_boundaries_U = malloc (sizeof(uint32_t) * image_size_UV);
+    intermediate_downsample_U  = malloc (sizeof(uint32_t) * image_size_UV);
+    
+    downsampled_data_V = malloc (sizeof(uint32_t) * image_size_UV);
+    downsampled_boundaries_V = malloc (sizeof(uint32_t) * image_size_UV);
+    intermediate_downsample_V  = malloc (sizeof(uint32_t) * image_size_UV);
     
     downsampled_side_x = malloc (sizeof(float*) * (total_blocks_height+1));
 
@@ -1107,25 +1226,36 @@ static void lhe_advanced_encode (uint8_t *component_original_data,
             
             //horizontal downsampling: downsamples using component original data
             lhe_advanced_horizontal_downsample (ppp_x, downsampled_side_x,
-                                                component_original_data, 
-                                                intermediate_downsample,
-                                                width_image, height_image, block_width, block_height,
+                                                component_original_data_Y, 
+                                                intermediate_downsample_Y,
+                                                width_Y, height_Y, block_width, block_height,
                                                 block_x, block_y) ;
-            
-               /*                                  
+    
+                                         
             //vertical downsampling: downsamples using result from horizontal downsampling                             
             lhe_advanced_vertical_downsample (ppp_y, downsampled_side_y,
-                                              intermediate_downsample, 
-                                              downsampled_data,
-                                              width_image, height_image, block_width, block_height,
+                                              intermediate_downsample_Y, 
+                                              downsampled_data_Y,
+                                              width_Y, height_Y, block_width, block_height,
                                               block_x, block_y) ;
-      
+            
+             /*                                 
+            lhe_advanced_encode_block (prec,  downsampled_data_Y, 
+                                       component_prediction_Y, hops_Y, 
+                                       downsampled_side_x, downsampled_side_y,
+                                       width_Y,  height_Y, linesize_Y, 
+                                       first_color_block_Y, total_blocks_width,
+                                       block_x,  block_y,
+                                       block_width,  block_height);
+
+                                       
             //horizontal boundaries downsampling
             lhe_advanced_horizontal_boundaries_downsample (ppp_x, downsampled_side_x,
                                                            component_original_data, 
                                                            downsampled_boundaries,
                                                            width_image, block_width, block_height,
                                                            block_x, block_y) ;
+                                                           
             //vertical boundaries downsampling                             
             lhe_advanced_vertical_boundaries_downsample (ppp_y, downsampled_side_y,
                                                          component_original_data, 
@@ -1147,12 +1277,7 @@ static void lhe_advanced_encode (uint8_t *component_original_data,
         }
         av_log(NULL, AV_LOG_INFO, "\n");
 
-    }
-    
-     
-     
-
-    
+    }    
     
     av_log(NULL, AV_LOG_INFO, "LENGTH X \n");
 
@@ -1623,9 +1748,15 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
                                                total_blocks_width_pr,  total_blocks_height_pr,
                                                block_width_flhe,  block_height_flhe);
     
-    lhe_advanced_encode (component_original_data_Y,
+    
+    lhe_advanced_encode (&s->prec, 
+                         component_original_data_Y, component_original_data_U, component_original_data_V,
+                         component_prediction_Y, component_prediction_U, component_prediction_V,
+                         hops_Y, hops_U, hops_V,
+                         first_color_block_Y, first_color_block_U, first_color_block_V,
                          perceptual_relevance_x, perceptual_relevance_y,
-                         width_Y, height_Y,
+                         width_Y, height_Y, width_UV, height_UV, 
+                         frame->linesize[0], frame->linesize[1], frame->linesize[2],
                          total_blocks_width_pr, total_blocks_height_pr, 
                          block_width_pr, block_height_pr);
                                     
