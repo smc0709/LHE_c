@@ -40,6 +40,7 @@ typedef struct LheContext {
     LheBasicPrec prec;
     PutBitContext pb;
     int pr_metrics;
+    int basic_lhe;
 } LheContext;
 
 static av_cold int lhe_encode_init(AVCodecContext *avctx)
@@ -310,6 +311,266 @@ static void print_csv_pr_metrics (float** perceptual_relevance_x, float** percep
     
 }
 
+
+
+static void lhe_basic_encode_one_hop_per_pixel (LheBasicPrec *prec, uint8_t *component_original_data, 
+                                                uint8_t *component_prediction, uint8_t *hops, 
+                                                int width_image, int width_sps, int height_sps, int linesize, 
+                                                uint8_t *first_color_block,
+                                                uint8_t sps_ratio_width, uint8_t sps_ratio_height )
+{      
+
+    //Hops computation.
+    bool small_hop, last_small_hop;
+    uint8_t predicted_luminance, hop_1, hop_number, original_color, r_max;
+    int pix, pix_original_data, dif_line, sps_line_pix, x, y;
+
+    small_hop = false;
+    last_small_hop=false;          // indicates if last hop is small
+    predicted_luminance=0;         // predicted signal
+    hop_1= START_HOP_1;
+    hop_number=4;                  // pre-selected hop // 4 is NULL HOP
+    pix=0;                         // pixel possition, from 0 to image size   
+    pix_original_data = 0;
+    x = 0;
+    y = 0;
+    original_color=0;              // original color
+    r_max=PARAM_R;
+    
+    dif_line = linesize - width_image;       
+    sps_line_pix = (sps_ratio_height-1) * linesize + dif_line;
+    
+    for (y=0; y < height_sps; y++)  {
+        for (x=0; x < width_sps; x++)  {
+            
+            
+            original_color = component_original_data[pix_original_data];    
+        
+            if (x==0 && y==0)
+            {
+                predicted_luminance=original_color;//first pixel always is perfectly predicted! :-)  
+                first_color_block[0]=original_color;
+            }
+            else if (y == 0)
+            {
+                predicted_luminance=component_prediction[pix-1];               
+            }
+            else if (x == 0)
+            {
+                predicted_luminance=component_prediction[pix-width_sps];
+                last_small_hop=false;
+                hop_1=START_HOP_1;  
+            } 
+            else if (x == width_sps -1)
+            {
+                predicted_luminance=(component_prediction[pix-1]+component_prediction[pix-width_sps])>>1;                               
+            }
+            else 
+            {
+                predicted_luminance = (component_prediction[pix-1]+component_prediction[pix+1-width_sps])>>1; 
+            }
+            
+            
+            hop_number = prec->best_hop[r_max][hop_1][original_color][predicted_luminance];            
+            component_prediction[pix]=prec -> prec_luminance[predicted_luminance][r_max][hop_1][hop_number];  
+            hops[pix]= hop_number;
+                        
+            H1_ADAPTATION;
+            pix++;   
+            pix_original_data+=sps_ratio_width;
+
+        }
+        pix_original_data+=sps_line_pix;            
+    }    
+    
+}
+
+
+static void lhe_basic_encode_one_hop_per_pixel_block (LheBasicPrec *prec, uint8_t *component_original_data, 
+                                                      uint8_t *component_prediction, uint8_t *hops, 
+                                                      int width_image, int width_sps, int height_image, int height_sps, int linesize, 
+                                                      uint8_t *first_color_block, int total_blocks_width,
+                                                      int block_x, int block_y,
+                                                      int block_width, int block_width_sps, int block_height, int block_height_sps,
+                                                      uint8_t sps_ratio_width, uint8_t sps_ratio_height)
+{      
+    
+    //Hops computation.
+    int xini, xini_sps, xfin, xfin_sps, yini, yini_sps, yfin_sps;
+    bool small_hop, last_small_hop;
+    uint8_t predicted_luminance, hop_1, hop_number, original_color, r_max;
+    int pix, pix_original_data, dif_line, sps_line_pix, dif_pix ,num_block;
+    
+    num_block = block_y * total_blocks_width + block_x;
+    
+    //ORIGINAL IMAGE
+    xini = block_x * block_width;
+    xfin = xini + block_width;
+    if (xfin>width_image) 
+    {
+        xfin = width_image;
+    }
+    yini = block_y * block_height;
+    
+    
+    //SPS IMAGE
+    xini_sps = block_x * block_width_sps;
+    xfin_sps = xini_sps + block_width_sps;
+    if (xfin_sps>width_sps) 
+    {
+        xfin_sps = width_sps;
+    }
+    yini_sps = block_y * block_height_sps;
+    yfin_sps = yini_sps + block_height_sps;
+    if (yfin_sps>height_sps)
+    {
+        yfin_sps = height_sps;
+    }
+    
+    
+    small_hop = false;
+    last_small_hop=false;          // indicates if last hop is small
+    predicted_luminance=0;         // predicted signal
+    hop_1= START_HOP_1;
+    hop_number=4;                  // pre-selected hop // 4 is NULL HOP
+    pix=0;                         // pixel possition, from 0 to image size        
+    original_color=0;              // original color
+    
+    r_max=PARAM_R;
+    
+    pix = yini_sps*width_sps + xini_sps;
+    pix_original_data = yini*linesize + xini;
+    
+    dif_pix = width_sps - xfin_sps + xini_sps;
+    dif_line = linesize - xfin + xini;
+    sps_line_pix = (sps_ratio_height-1) * linesize + dif_line;
+    
+    
+    for (int y=yini_sps; y < yfin_sps; y++)  {
+        for (int x=xini_sps; x < xfin_sps; x++)  {
+            
+            original_color = component_original_data[pix_original_data]; //This can't be pix because ffmpeg adds empty memory slots. 
+
+            //prediction of signal (predicted_luminance) , based on pixel's coordinates 
+            //----------------------------------------------------------
+                        
+            if (x == xini_sps && y==yini_sps) 
+            {
+                predicted_luminance=original_color;//first pixel always is perfectly predicted! :-)  
+                first_color_block[num_block] = original_color;
+            } 
+            else if (y == yini_sps) 
+            {
+                predicted_luminance=component_prediction[pix-1];
+            } 
+            else if (x == xini_sps) 
+            {
+                predicted_luminance=component_prediction[pix-width_sps];
+                last_small_hop=false;
+                hop_1=START_HOP_1;
+            } else if (x == xfin_sps -1) 
+            {
+                predicted_luminance=(component_prediction[pix-1]+component_prediction[pix-width_sps])>>1;                               
+            } 
+            else 
+            {
+                predicted_luminance=(component_prediction[pix-1]+component_prediction[pix+1-width_sps])>>1;     
+            }
+
+
+            hop_number = prec->best_hop[r_max][hop_1][original_color][predicted_luminance]; 
+            hops[pix]= hop_number;
+            component_prediction[pix]=prec -> prec_luminance[predicted_luminance][r_max][hop_1][hop_number];
+
+
+            //tunning hop1 for the next hop ( "h1 adaptation")
+            //------------------------------------------------
+            H1_ADAPTATION;
+
+            //lets go for the next pixel
+            //--------------------------
+            pix++;
+            pix_original_data+=sps_ratio_width;
+        }//for x
+        pix+=dif_pix;
+        pix_original_data+=sps_line_pix;
+    }//for y     
+}
+
+static void lhe_basic_encode_frame_sequential (LheBasicPrec *prec, 
+                                               uint8_t *component_original_data_Y, uint8_t *component_original_data_U, uint8_t *component_original_data_V,
+                                               uint8_t *component_prediction_Y, uint8_t *component_prediction_U, uint8_t *component_prediction_V,
+                                               uint8_t *hops_Y, uint8_t *hops_U, uint8_t *hops_V,
+                                               int width_Y, int width_sps_Y, int height_sps_Y, int width_UV, int width_sps_UV, int height_sps_UV,
+                                               int linesize_Y, int linesize_U, int linesize_V, 
+                                               uint8_t *first_color_block_Y, uint8_t *first_color_block_U, uint8_t *first_color_block_V,
+                                               uint8_t sps_ratio_width, uint8_t sps_ratio_height )
+{
+    //Luminance
+    lhe_basic_encode_one_hop_per_pixel(prec, 
+                                       component_original_data_Y, component_prediction_Y, hops_Y, 
+                                       width_Y, width_sps_Y, height_sps_Y, linesize_Y, first_color_block_Y,
+                                       sps_ratio_width, sps_ratio_height ); 
+
+    //Crominance U
+    lhe_basic_encode_one_hop_per_pixel(prec, component_original_data_U, component_prediction_U, hops_U, 
+                                       width_UV, width_sps_UV, height_sps_UV, linesize_U, first_color_block_U,
+                                       sps_ratio_width, sps_ratio_height  ); 
+
+    //Crominance V
+    lhe_basic_encode_one_hop_per_pixel(prec, component_original_data_V, component_prediction_V, hops_V, 
+                                       width_UV, width_sps_UV, height_sps_UV, linesize_V, first_color_block_V,
+                                       sps_ratio_width, sps_ratio_height  );   
+}
+
+
+static void lhe_basic_encode_frame_pararell (LheBasicPrec *prec, 
+                                             uint8_t *component_original_data_Y, uint8_t *component_original_data_U, uint8_t *component_original_data_V,
+                                             uint8_t *component_prediction_Y, uint8_t *component_prediction_U, uint8_t *component_prediction_V,  
+                                             uint8_t *hops_Y, uint8_t *hops_U, uint8_t *hops_V,
+                                             int width_Y, int width_sps_Y, int height_Y, int height_sps_Y,  
+                                             int width_UV, int width_sps_UV, int height_UV, int height_sps_UV,
+                                             int linesize_Y, int linesize_U, int linesize_V, 
+                                             uint8_t *first_color_block_Y, uint8_t *first_color_block_U, uint8_t *first_color_block_V,
+                                             int total_blocks_width, int total_blocks_height,
+                                             int block_width_Y, int block_width_sps_Y, int block_height_Y, int block_height_sps_Y, 
+                                             int block_width_UV, int block_width_sps_UV, int block_height_UV, int block_height_sps_UV,
+                                             uint8_t sps_ratio_width, uint8_t sps_ratio_height )
+{        
+    #pragma omp parallel for
+    for (int j=0; j<total_blocks_height; j++)      
+    {  
+        for (int i=0; i<total_blocks_width; i++) 
+        {
+
+            //Luminance
+            lhe_basic_encode_one_hop_per_pixel_block(prec, component_original_data_Y, component_prediction_Y, hops_Y,      
+                                                     width_Y, width_sps_Y, height_Y, height_sps_Y, linesize_Y,
+                                                     first_color_block_Y, total_blocks_width,
+                                                     i, j, block_width_Y, block_width_sps_Y, block_height_Y, block_height_sps_Y,
+                                                     sps_ratio_width, sps_ratio_height );
+
+            
+            //Crominance U
+            lhe_basic_encode_one_hop_per_pixel_block(prec, component_original_data_U, component_prediction_U, hops_U,
+                                                     width_UV, width_sps_UV, height_UV, height_sps_UV, linesize_U, 
+                                                     first_color_block_U, total_blocks_width,
+                                                     i, j, block_width_UV, block_width_sps_UV, block_height_UV, block_height_sps_UV, 
+                                                     sps_ratio_width, sps_ratio_height  ); 
+
+            //Crominance V
+            lhe_basic_encode_one_hop_per_pixel_block(prec, component_original_data_V, component_prediction_V, hops_V, 
+                                                     width_UV, width_sps_UV, height_UV, height_sps_UV, linesize_V, 
+                                                     first_color_block_V, total_blocks_width,
+                                                     i, j, block_width_UV, block_width_sps_UV, block_height_UV, block_height_sps_UV,
+                                                     sps_ratio_width, sps_ratio_height  );
+                                                     
+                                               
+        }
+    }  
+}
+
+
 static void lhe_advanced_compute_perceptual_relevance_block (float **perceptual_relevance_x, float  **perceptual_relevance_y,
                                                              uint8_t *hops_Y,
                                                              int xini_pr_block, int xfin_pr_block, int yini_pr_block, int yfin_pr_block,
@@ -495,6 +756,66 @@ static void lhe_advanced_compute_perceptual_relevance (float **perceptual_releva
     }
 }
 
+static float lhe_advanced_perceptual_relevance_to_ppp (float *** ppp_x, float *** ppp_y, 
+                                                       float ** perceptual_relevance_x, float ** perceptual_relevance_y,
+                                                       float compression_factor,
+                                                       uint32_t ppp_max_theoric,
+                                                       int block_x, int block_y) 
+{
+    float const1, const2, ppp_min, ppp_max;
+
+    ppp_min = PPP_MIN;
+    const1 = ppp_max_theoric - 1;
+    const2 = ppp_max_theoric * compression_factor;
+    
+    ppp_x[block_y][block_x][0] = const2 / (1.0 + const1 * perceptual_relevance_x[block_y][block_x]);
+    ppp_x[block_y][block_x][1] = const2 / (1.0 + const1 * perceptual_relevance_x[block_y][block_x+1]);     
+    ppp_x[block_y][block_x][2] = const2 / (1.0 + const1 * perceptual_relevance_x[block_y+1][block_x]);  
+    ppp_x[block_y][block_x][3] = const2 / (1.0 + const1 * perceptual_relevance_x[block_y+1][block_x+1]);
+    
+
+    ppp_y[block_y][block_x][0] = const2 / (1.0 + const1 * perceptual_relevance_y[block_y][block_x]);    
+    ppp_y[block_y][block_x][1] = const2 / (1.0 + const1 * perceptual_relevance_y[block_y][block_x+1]);   
+    ppp_y[block_y][block_x][2] = const2 / (1.0 + const1 * perceptual_relevance_y[block_y+1][block_x]);        
+    ppp_y[block_y][block_x][3] = const2 / (1.0 + const1 * perceptual_relevance_y[block_y+1][block_x+1]);
+    
+    
+        //Looks for ppp_min
+    if (ppp_x[block_y][block_x][0] < ppp_min) ppp_min = ppp_x[block_y][block_x][0];
+    if (ppp_x[block_y][block_x][1] < ppp_min) ppp_min = ppp_x[block_y][block_x][1];
+    if (ppp_x[block_y][block_x][2] < ppp_min) ppp_min = ppp_x[block_y][block_x][2];
+    if (ppp_x[block_y][block_x][3] < ppp_min) ppp_min = ppp_x[block_y][block_x][3];
+    if (ppp_y[block_y][block_x][0] < ppp_min) ppp_min = ppp_y[block_y][block_x][0];
+    if (ppp_y[block_y][block_x][1] < ppp_min) ppp_min = ppp_y[block_y][block_x][1];
+    if (ppp_y[block_y][block_x][2] < ppp_min) ppp_min = ppp_y[block_y][block_x][2];
+    if (ppp_y[block_y][block_x][3] < ppp_min) ppp_min = ppp_y[block_y][block_x][3];
+    
+    //Max elastic restriction
+    ppp_max = ppp_min * ELASTIC_MAX;
+    
+    if (ppp_max > ppp_max_theoric) ppp_max = ppp_max_theoric;
+    
+    //Adjust values
+    if (ppp_x[block_y][block_x][0]> ppp_max) ppp_x[block_y][block_x][0] = ppp_max;
+    if (ppp_x[block_y][block_x][0]< PPP_MIN) ppp_x[block_y][block_x][0] = PPP_MIN;
+    if (ppp_x[block_y][block_x][1]> ppp_max) ppp_x[block_y][block_x][1] = ppp_max;
+    if (ppp_x[block_y][block_x][1]< PPP_MIN) ppp_x[block_y][block_x][1] = PPP_MIN;
+    if (ppp_x[block_y][block_x][2]> ppp_max) ppp_x[block_y][block_x][2] = ppp_max;
+    if (ppp_x[block_y][block_x][2]< PPP_MIN) ppp_x[block_y][block_x][2] = PPP_MIN;
+    if (ppp_x[block_y][block_x][3]> ppp_max) ppp_x[block_y][block_x][3] = ppp_max;
+    if (ppp_x[block_y][block_x][3]< PPP_MIN) ppp_x[block_y][block_x][3] = PPP_MIN;   
+    if (ppp_y[block_y][block_x][0]> ppp_max) ppp_y[block_y][block_x][0] = ppp_max;
+    if (ppp_y[block_y][block_x][0]< PPP_MIN) ppp_y[block_y][block_x][0] = PPP_MIN;
+    if (ppp_y[block_y][block_x][1]> ppp_max) ppp_y[block_y][block_x][1] = ppp_max;
+    if (ppp_y[block_y][block_x][1]< PPP_MIN) ppp_y[block_y][block_x][1] = PPP_MIN;
+    if (ppp_y[block_y][block_x][2]> ppp_max) ppp_y[block_y][block_x][2] = ppp_max;
+    if (ppp_y[block_y][block_x][2]< PPP_MIN) ppp_y[block_y][block_x][2] = PPP_MIN;
+    if (ppp_y[block_y][block_x][3]> ppp_max) ppp_y[block_y][block_x][3] = ppp_max;
+    if (ppp_y[block_y][block_x][3]< PPP_MIN) ppp_y[block_y][block_x][3] = PPP_MIN;
+    
+    return ppp_max;
+}
+
 
 /**
 * This function transform PPP values at corners in order to generate a rectangle when
@@ -626,70 +947,9 @@ static void lhe_advanced_ppp_side_to_rectangle_shape (uint32_t **downsampled_sid
 }
 
 
-static float lhe_advanced_perceptual_relevance_to_ppp (float *** ppp_x, float *** ppp_y, 
-                                                       float ** perceptual_relevance_x, float ** perceptual_relevance_y,
-                                                       float compression_factor,
-                                                       uint32_t ppp_max_theoric,
-                                                       int block_x, int block_y) 
-{
-    float const1, const2, ppp_min, ppp_max;
-
-    ppp_min = PPP_MIN;
-    const1 = ppp_max_theoric - 1;
-    const2 = ppp_max_theoric * compression_factor;
-    
-    ppp_x[block_y][block_x][0] = const2 / (1.0 + const1 * perceptual_relevance_x[block_y][block_x]);
-    ppp_x[block_y][block_x][1] = const2 / (1.0 + const1 * perceptual_relevance_x[block_y][block_x+1]);     
-    ppp_x[block_y][block_x][2] = const2 / (1.0 + const1 * perceptual_relevance_x[block_y+1][block_x]);  
-    ppp_x[block_y][block_x][3] = const2 / (1.0 + const1 * perceptual_relevance_x[block_y+1][block_x+1]);
-    
-
-    ppp_y[block_y][block_x][0] = const2 / (1.0 + const1 * perceptual_relevance_y[block_y][block_x]);    
-    ppp_y[block_y][block_x][1] = const2 / (1.0 + const1 * perceptual_relevance_y[block_y][block_x+1]);   
-    ppp_y[block_y][block_x][2] = const2 / (1.0 + const1 * perceptual_relevance_y[block_y+1][block_x]);        
-    ppp_y[block_y][block_x][3] = const2 / (1.0 + const1 * perceptual_relevance_y[block_y+1][block_x+1]);
-    
-    
-        //Looks for ppp_min
-    if (ppp_x[block_y][block_x][0] < ppp_min) ppp_min = ppp_x[block_y][block_x][0];
-    if (ppp_x[block_y][block_x][1] < ppp_min) ppp_min = ppp_x[block_y][block_x][1];
-    if (ppp_x[block_y][block_x][2] < ppp_min) ppp_min = ppp_x[block_y][block_x][2];
-    if (ppp_x[block_y][block_x][3] < ppp_min) ppp_min = ppp_x[block_y][block_x][3];
-    if (ppp_y[block_y][block_x][0] < ppp_min) ppp_min = ppp_y[block_y][block_x][0];
-    if (ppp_y[block_y][block_x][1] < ppp_min) ppp_min = ppp_y[block_y][block_x][1];
-    if (ppp_y[block_y][block_x][2] < ppp_min) ppp_min = ppp_y[block_y][block_x][2];
-    if (ppp_y[block_y][block_x][3] < ppp_min) ppp_min = ppp_y[block_y][block_x][3];
-    
-    //Max elastic restriction
-    ppp_max = ppp_min * ELASTIC_MAX;
-    
-    if (ppp_max > ppp_max_theoric) ppp_max = ppp_max_theoric;
-    
-    //Adjust values
-    if (ppp_x[block_y][block_x][0]> ppp_max) ppp_x[block_y][block_x][0] = ppp_max;
-    if (ppp_x[block_y][block_x][0]< PPP_MIN) ppp_x[block_y][block_x][0] = PPP_MIN;
-    if (ppp_x[block_y][block_x][1]> ppp_max) ppp_x[block_y][block_x][1] = ppp_max;
-    if (ppp_x[block_y][block_x][1]< PPP_MIN) ppp_x[block_y][block_x][1] = PPP_MIN;
-    if (ppp_x[block_y][block_x][2]> ppp_max) ppp_x[block_y][block_x][2] = ppp_max;
-    if (ppp_x[block_y][block_x][2]< PPP_MIN) ppp_x[block_y][block_x][2] = PPP_MIN;
-    if (ppp_x[block_y][block_x][3]> ppp_max) ppp_x[block_y][block_x][3] = ppp_max;
-    if (ppp_x[block_y][block_x][3]< PPP_MIN) ppp_x[block_y][block_x][3] = PPP_MIN;   
-    if (ppp_y[block_y][block_x][0]> ppp_max) ppp_y[block_y][block_x][0] = ppp_max;
-    if (ppp_y[block_y][block_x][0]< PPP_MIN) ppp_y[block_y][block_x][0] = PPP_MIN;
-    if (ppp_y[block_y][block_x][1]> ppp_max) ppp_y[block_y][block_x][1] = ppp_max;
-    if (ppp_y[block_y][block_x][1]< PPP_MIN) ppp_y[block_y][block_x][1] = PPP_MIN;
-    if (ppp_y[block_y][block_x][2]> ppp_max) ppp_y[block_y][block_x][2] = ppp_max;
-    if (ppp_y[block_y][block_x][2]< PPP_MIN) ppp_y[block_y][block_x][2] = PPP_MIN;
-    if (ppp_y[block_y][block_x][3]> ppp_max) ppp_y[block_y][block_x][3] = ppp_max;
-    if (ppp_y[block_y][block_x][3]< PPP_MIN) ppp_y[block_y][block_x][3] = PPP_MIN;
-    
-    return ppp_max;
-}
-
-
 static void lhe_advanced_vertical_boundaries_downsample (float ***ppp_array, uint32_t ** downsampled_side_array,
                                                          uint8_t *component_original_data, 
-                                                         uint32_t *downsampled_boundaries_data,
+                                                         uint8_t *downsampled_boundaries_data,
                                                          int width_image, int block_width, int block_height,
                                                          int block_x, int block_y) 
 {
@@ -752,7 +1012,7 @@ static void lhe_advanced_vertical_boundaries_downsample (float ***ppp_array, uin
 
 static void lhe_advanced_horizontal_boundaries_downsample (float ***ppp_array, uint32_t ** downsampled_side_array,
                                                            uint8_t *component_original_data, 
-                                                           uint32_t *downsampled_boundaries_data,
+                                                           uint8_t *downsampled_boundaries_data,
                                                            int width_image, int block_width, int block_height,
                                                            int block_x, int block_y) 
 {
@@ -771,8 +1031,8 @@ static void lhe_advanced_horizontal_boundaries_downsample (float ***ppp_array, u
     ppp=ppp_0;
 
     xfin = xini + block_width - 1;
-    xf=xini+ppp;// 
-    xf_prev=xini;//xf-pppx;
+    xf=xini+ppp;
+    xf_prev=xini;
     x_prev=xini;
   
     downsampled_side = downsampled_side_array[block_y][block_x];
@@ -819,7 +1079,7 @@ static void lhe_advanced_horizontal_boundaries_downsample (float ***ppp_array, u
         xf_prev=xf;
         xf+=ppp;
 
-    }//x   
+    }
     
 }
 
@@ -875,7 +1135,7 @@ static void lhe_advanced_downsample_sps (float ***ppp_x_array, float ***ppp_y_ar
     ppp_x_medium = ppp_x / 2.0;
     ppp_y_medium = ppp_y / 2.0;
 
-    y_float = y + ppp_y_medium + 0.5; 
+    y_float = yini + ppp_y_medium + 0.5; 
     y = (uint32_t) y_float;
 
     for (int y_sc=yini;y_sc<=yfin_downsampled;y_sc++)
@@ -1093,8 +1353,10 @@ static void lhe_advanced_vertical_downsample_average (float ***ppp_array, uint32
     }//x
 }
 
-static void lhe_advanced_encode_block (LheBasicPrec *prec, uint32_t *component_original_data, 
-                                       uint32_t *component_prediction, uint8_t *hops, 
+
+
+static void lhe_advanced_encode_block (LheBasicPrec *prec, uint8_t *downsampled_data, 
+                                       uint8_t *component_prediction, uint8_t *hops, 
                                        uint32_t ** downsampled_x_array, uint32_t ** downsampled_y_array,
                                        int width_image, int height_image, int linesize, 
                                        uint8_t *first_color_block, int total_blocks_width,
@@ -1149,7 +1411,7 @@ static void lhe_advanced_encode_block (LheBasicPrec *prec, uint32_t *component_o
     for (int y=yini; y < yfin_downsampled; y++)  {
         for (int x=xini; x < xfin_downsampled; x++)  {
               
-            original_color = component_original_data[pix_original_data]; //This can't be pix because ffmpeg adds empty memory slots. 
+            original_color = downsampled_data[pix_original_data]; //This can't be pix because ffmpeg adds empty memory slots. 
 
             //prediction of signal (predicted_luminance) , based on pixel's coordinates 
             //----------------------------------------------------------
@@ -1157,7 +1419,7 @@ static void lhe_advanced_encode_block (LheBasicPrec *prec, uint32_t *component_o
             if (x == xini && y==yini) 
             {
                 predicted_luminance=original_color;//first pixel always is perfectly predicted! :-)  
-                //first_color_block[num_block] = original_color;
+                first_color_block[num_block] = original_color;
             }
 
             else if (y == yini) 
@@ -1179,9 +1441,8 @@ static void lhe_advanced_encode_block (LheBasicPrec *prec, uint32_t *component_o
             }
              
             hop_number = prec->best_hop[r_max][hop_1][original_color][predicted_luminance]; 
-            //hops[pix]= hop_number;
-            //component_prediction[pix]=prec -> prec_luminance[predicted_luminance][r_max][hop_1][hop_number];
- 
+            hops[pix]= hop_number;
+            component_prediction[pix]=prec -> prec_luminance[predicted_luminance][r_max][hop_1][hop_number];
 
             //tunning hop1 for the next hop ( "h1 adaptation")
             //------------------------------------------------
@@ -1198,7 +1459,6 @@ static void lhe_advanced_encode_block (LheBasicPrec *prec, uint32_t *component_o
    
 }
 
-
 /**
  * LHE advanced encoding
  * 
@@ -1206,29 +1466,32 @@ static void lhe_advanced_encode_block (LheBasicPrec *prec, uint32_t *component_o
  * PPP to rectangle shape
  * Elastic Downsampling
  */
-static void lhe_advanced_encode (LheBasicPrec *prec, 
+static void lhe_advanced_encode (LheContext *s, const AVFrame *frame,
                                  uint8_t *component_original_data_Y, uint8_t *component_original_data_U, uint8_t *component_original_data_V,
                                  uint8_t *component_prediction_Y, uint8_t *component_prediction_U, uint8_t *component_prediction_V,
                                  uint8_t *hops_Y, uint8_t *hops_U, uint8_t *hops_V,
                                  uint8_t *first_color_block_Y, uint8_t *first_color_block_U, uint8_t *first_color_V,
-                                 float ** perceptual_relevance_x, float ** perceptual_relevance_y,
                                  int width_Y, int height_Y, int width_UV, int height_UV, 
                                  int linesize_Y, int linesize_U, int linesize_V,
                                  int total_blocks_width, int total_blocks_height, 
                                  int block_width, int block_height) 
 {
     float ***ppp_x, ***ppp_y;
+    float **perceptual_relevance_x,  **perceptual_relevance_y;
     float ppp_max, ppp_max_theoric, compression_factor;
     uint32_t **downsampled_side_x, **downsampled_side_y;
     uint8_t *downsampled_data_Y, *downsampled_data_U, *downsampled_data_V;
-    uint32_t *downsampled_boundaries_Y, *downsampled_boundaries_U, *downsampled_boundaries_V;
+    uint8_t *downsampled_boundaries_Y, *downsampled_boundaries_U, *downsampled_boundaries_V;
     uint32_t i, j, image_size_Y, image_size_UV;
+    
+    uint8_t *component_original_data_flhe, *component_prediction_flhe, *hops_flhe;
+    int width_flhe, height_flhe, image_size_flhe, block_width_flhe, block_height_flhe;
     
     image_size_Y = width_Y * height_Y;
     image_size_UV = width_UV * height_UV;
     
     ppp_max_theoric = block_width/SIDE_MIN;
-    compression_factor = 1.749534;//0.14675;//1;
+    compression_factor = 1;//1.749534;//0.14675;//1;
         
     downsampled_data_Y = malloc (sizeof(uint32_t) * image_size_Y);
     downsampled_boundaries_Y = malloc (sizeof(uint32_t) * image_size_Y);
@@ -1277,6 +1540,63 @@ static void lhe_advanced_encode (LheBasicPrec *prec,
         }
     }
     
+    width_flhe = (width_Y-1) / SPS_RATIO_WIDTH + 1;
+    height_flhe = (height_Y-1) / SPS_RATIO_HEIGHT + 1;
+    image_size_flhe = width_flhe * height_flhe;
+    
+    block_width_flhe = (width_flhe-1) / total_blocks_width + 1;
+    block_height_flhe = (height_flhe-1) / total_blocks_height + 1;
+    
+    component_original_data_flhe = malloc(sizeof(uint8_t) * image_size_flhe);
+    hops_flhe = malloc(sizeof(uint8_t) * image_size_flhe);
+    component_prediction_flhe = malloc(sizeof(uint8_t) * image_size_flhe);
+    
+    perceptual_relevance_x = malloc(sizeof(float*) * (total_blocks_height+1));  
+    
+    for (i=0; i<total_blocks_height+1; i++) 
+    {
+        perceptual_relevance_x[i] = malloc(sizeof(float) * (total_blocks_width+1));
+    }
+    
+    perceptual_relevance_y = malloc(sizeof(float*) * (total_blocks_height+1)); 
+    
+    for (i=0; i<total_blocks_height+1; i++) 
+    {
+        perceptual_relevance_y[i] = malloc(sizeof(float) * (total_blocks_width+1));
+    }   
+    
+    if(OPENMP_FLAGS == CONFIG_OPENMP) {
+        #pragma omp parallel for
+        for (int j=0; j<total_blocks_height; j++)      
+        {  
+            for (int i=0; i<total_blocks_width; i++) 
+            {
+                
+                lhe_basic_encode_one_hop_per_pixel_block(&s->prec, component_original_data_Y, component_prediction_flhe, hops_flhe,      
+                                                         width_Y, width_flhe, height_Y, height_flhe, frame->linesize[0], 
+                                                         first_color_block_Y, total_blocks_width,
+                                                         i, j, block_width, block_width_flhe, block_height, block_height_flhe,
+                                                         SPS_RATIO_WIDTH, SPS_RATIO_HEIGHT   );
+            }
+        }
+
+                                       
+                               
+    } else 
+    {
+        lhe_basic_encode_one_hop_per_pixel(&s->prec, 
+                                           component_original_data_Y, component_prediction_flhe, hops_flhe, 
+                                           width_Y, width_flhe, height_flhe, frame->linesize[0], first_color_block_Y,
+                                           SPS_RATIO_WIDTH, SPS_RATIO_HEIGHT  );        
+    }
+ 
+ 
+    lhe_advanced_compute_perceptual_relevance (perceptual_relevance_x, perceptual_relevance_y,
+                                               hops_flhe,
+                                               width_flhe,  height_flhe,
+                                               total_blocks_width,  total_blocks_height,
+                                               block_width_flhe,  block_height_flhe);
+    
     
     #pragma omp parallel for
     for (int block_y=0; block_y<total_blocks_height; block_y++) 
@@ -1310,9 +1630,9 @@ static void lhe_advanced_encode (LheBasicPrec *prec,
                                          width_Y, height_Y, block_width, block_height,
                                          block_x, block_y) ;
            
-           /*   
+              
                                              
-            lhe_advanced_encode_block (prec,  downsampled_data_Y, 
+            lhe_advanced_encode_block (s,  downsampled_data_Y, 
                                        component_prediction_Y, hops_Y, 
                                        downsampled_side_x, downsampled_side_y,
                                        width_Y,  height_Y, linesize_Y, 
@@ -1320,7 +1640,7 @@ static void lhe_advanced_encode (LheBasicPrec *prec,
                                        block_x,  block_y,
                                        block_width,  block_height);
 
-                                     
+                /*                     
             //horizontal boundaries downsampling
             lhe_advanced_horizontal_boundaries_downsample (ppp_x, downsampled_side_x,
                                                            component_original_data, 
@@ -1339,7 +1659,18 @@ static void lhe_advanced_encode (LheBasicPrec *prec,
                                     
         }
     }
+    
     /*
+     av_log(NULL, AV_LOG_INFO, "HOPS \n");
+    
+    for (int i=0; i<height_Y; i++) {
+        for (int j=0; j<width_Y; j++) {
+            av_log(NULL, AV_LOG_INFO, "%d;", hops_Y[i*width_Y + j]);
+        }
+        av_log(NULL, AV_LOG_INFO, "\n");
+
+    }  
+    
       
      av_log(NULL, AV_LOG_INFO, "DOWNSAMPLED \n");
     
@@ -1362,264 +1693,8 @@ static void lhe_advanced_encode (LheBasicPrec *prec,
 
     }  
     */
+    
    
-}
-
-static void lhe_basic_encode_one_hop_per_pixel_block (LheBasicPrec *prec, uint8_t *component_original_data, 
-                                                      uint8_t *component_prediction, uint8_t *hops, 
-                                                      int width_image, int width_sps, int height_image, int height_sps, int linesize, 
-                                                      uint8_t *first_color_block, int total_blocks_width,
-                                                      int block_x, int block_y,
-                                                      int block_width, int block_width_sps, int block_height, int block_height_sps,
-                                                      uint8_t sps_ratio_width, uint8_t sps_ratio_height)
-{      
-    
-    //Hops computation.
-    int xini, xini_sps, xfin, xfin_sps, yini, yini_sps, yfin_sps;
-    bool small_hop, last_small_hop;
-    uint8_t predicted_luminance, hop_1, hop_number, original_color, r_max;
-    int pix, pix_original_data, dif_line, sps_line_pix, dif_pix ,num_block;
-    
-    num_block = block_y * total_blocks_width + block_x;
-    
-    //ORIGINAL IMAGE
-    xini = block_x * block_width;
-    xfin = xini + block_width;
-    if (xfin>width_image) 
-    {
-        xfin = width_image;
-    }
-    yini = block_y * block_height;
-    
-    
-    //SPS IMAGE
-    xini_sps = block_x * block_width_sps;
-    xfin_sps = xini_sps + block_width_sps;
-    if (xfin_sps>width_sps) 
-    {
-        xfin_sps = width_sps;
-    }
-    yini_sps = block_y * block_height_sps;
-    yfin_sps = yini_sps + block_height_sps;
-    if (yfin_sps>height_sps)
-    {
-        yfin_sps = height_sps;
-    }
-    
-    
-    small_hop = false;
-    last_small_hop=false;          // indicates if last hop is small
-    predicted_luminance=0;         // predicted signal
-    hop_1= START_HOP_1;
-    hop_number=4;                  // pre-selected hop // 4 is NULL HOP
-    pix=0;                         // pixel possition, from 0 to image size        
-    original_color=0;              // original color
-    
-    r_max=PARAM_R;
-    
-    pix = yini_sps*width_sps + xini_sps;
-    pix_original_data = yini*linesize + xini;
-    
-    dif_pix = width_sps - xfin_sps + xini_sps;
-    dif_line = linesize - xfin + xini;
-    sps_line_pix = (sps_ratio_height-1) * linesize + dif_line;
-    
-    
-    for (int y=yini_sps; y < yfin_sps; y++)  {
-        for (int x=xini_sps; x < xfin_sps; x++)  {
-            
-            original_color = component_original_data[pix_original_data]; //This can't be pix because ffmpeg adds empty memory slots. 
-
-            //prediction of signal (predicted_luminance) , based on pixel's coordinates 
-            //----------------------------------------------------------
-                        
-            if (x == xini_sps && y==yini_sps) 
-            {
-                predicted_luminance=original_color;//first pixel always is perfectly predicted! :-)  
-                first_color_block[num_block] = original_color;
-            } 
-            else if (y == yini_sps) 
-            {
-                predicted_luminance=component_prediction[pix-1];
-            } 
-            else if (x == xini_sps) 
-            {
-                predicted_luminance=component_prediction[pix-width_sps];
-                last_small_hop=false;
-                hop_1=START_HOP_1;
-            } else if (x == xfin_sps -1) 
-            {
-                predicted_luminance=(component_prediction[pix-1]+component_prediction[pix-width_sps])>>1;                               
-            } 
-            else 
-            {
-                predicted_luminance=(component_prediction[pix-1]+component_prediction[pix+1-width_sps])>>1;     
-            }
-
-
-            hop_number = prec->best_hop[r_max][hop_1][original_color][predicted_luminance]; 
-            hops[pix]= hop_number;
-            component_prediction[pix]=prec -> prec_luminance[predicted_luminance][r_max][hop_1][hop_number];
-
-
-            //tunning hop1 for the next hop ( "h1 adaptation")
-            //------------------------------------------------
-            H1_ADAPTATION;
-
-            //lets go for the next pixel
-            //--------------------------
-            pix++;
-            pix_original_data+=sps_ratio_width;
-        }//for x
-        pix+=dif_pix;
-        pix_original_data+=sps_line_pix;
-    }//for y     
-}
-
-static void lhe_basic_encode_one_hop_per_pixel (LheBasicPrec *prec, uint8_t *component_original_data, 
-                                                uint8_t *component_prediction, uint8_t *hops, 
-                                                int width_image, int width_sps, int height_sps, int linesize, 
-                                                uint8_t *first_color_block,
-                                                uint8_t sps_ratio_width, uint8_t sps_ratio_height )
-{      
-
-    //Hops computation.
-    bool small_hop, last_small_hop;
-    uint8_t predicted_luminance, hop_1, hop_number, original_color, r_max;
-    int pix, pix_original_data, dif_line, sps_line_pix, x, y;
-
-    small_hop = false;
-    last_small_hop=false;          // indicates if last hop is small
-    predicted_luminance=0;         // predicted signal
-    hop_1= START_HOP_1;
-    hop_number=4;                  // pre-selected hop // 4 is NULL HOP
-    pix=0;                         // pixel possition, from 0 to image size   
-    pix_original_data = 0;
-    x = 0;
-    y = 0;
-    original_color=0;              // original color
-    r_max=PARAM_R;
-    
-    dif_line = linesize - width_image;       
-    sps_line_pix = (sps_ratio_height-1) * linesize + dif_line;
-    
-    for (y=0; y < height_sps; y++)  {
-        for (x=0; x < width_sps; x++)  {
-            
-            
-            original_color = component_original_data[pix_original_data];    
-        
-            if (x==0 && y==0)
-            {
-                predicted_luminance=original_color;//first pixel always is perfectly predicted! :-)  
-                first_color_block[0]=original_color;
-            }
-            else if (y == 0)
-            {
-                predicted_luminance=component_prediction[pix-1];               
-            }
-            else if (x == 0)
-            {
-                predicted_luminance=component_prediction[pix-width_sps];
-                last_small_hop=false;
-                hop_1=START_HOP_1;  
-            } 
-            else if (x == width_sps -1)
-            {
-                predicted_luminance=(component_prediction[pix-1]+component_prediction[pix-width_sps])>>1;                               
-            }
-            else 
-            {
-                predicted_luminance = (component_prediction[pix-1]+component_prediction[pix+1-width_sps])>>1; 
-            }
-            
-            
-            hop_number = prec->best_hop[r_max][hop_1][original_color][predicted_luminance];            
-            component_prediction[pix]=prec -> prec_luminance[predicted_luminance][r_max][hop_1][hop_number];  
-            hops[pix]= hop_number;
-                        
-            H1_ADAPTATION;
-            pix++;   
-            pix_original_data+=sps_ratio_width;
-
-        }
-        pix_original_data+=sps_line_pix;            
-    }    
-    
-}
-
-
-static void lhe_basic_encode_frame_pararell (LheBasicPrec *prec, 
-                                             uint8_t *component_original_data_Y, uint8_t *component_original_data_U, uint8_t *component_original_data_V,
-                                             uint8_t *component_prediction_Y, uint8_t *component_prediction_U, uint8_t *component_prediction_V,  
-                                             uint8_t *hops_Y, uint8_t *hops_U, uint8_t *hops_V,
-                                             int width_Y, int width_sps_Y, int height_Y, int height_sps_Y,  
-                                             int width_UV, int width_sps_UV, int height_UV, int height_sps_UV,
-                                             int linesize_Y, int linesize_U, int linesize_V, 
-                                             uint8_t *first_color_block_Y, uint8_t *first_color_block_U, uint8_t *first_color_block_V,
-                                             int total_blocks_width, int total_blocks_height,
-                                             int block_width_Y, int block_width_sps_Y, int block_height_Y, int block_height_sps_Y, 
-                                             int block_width_UV, int block_width_sps_UV, int block_height_UV, int block_height_sps_UV,
-                                             uint8_t sps_ratio_width, uint8_t sps_ratio_height )
-{        
-    #pragma omp parallel for
-    for (int j=0; j<total_blocks_height; j++)      
-    {  
-        for (int i=0; i<total_blocks_width; i++) 
-        {
-
-            //Luminance
-            lhe_basic_encode_one_hop_per_pixel_block(prec, component_original_data_Y, component_prediction_Y, hops_Y,      
-                                                     width_Y, width_sps_Y, height_Y, height_sps_Y, linesize_Y,
-                                                     first_color_block_Y, total_blocks_width,
-                                                     i, j, block_width_Y, block_width_sps_Y, block_height_Y, block_height_sps_Y,
-                                                     sps_ratio_width, sps_ratio_height );
-
-            
-            //Crominance U
-            lhe_basic_encode_one_hop_per_pixel_block(prec, component_original_data_U, component_prediction_U, hops_U,
-                                                     width_UV, width_sps_UV, height_UV, height_sps_UV, linesize_U, 
-                                                     first_color_block_U, total_blocks_width,
-                                                     i, j, block_width_UV, block_width_sps_UV, block_height_UV, block_height_sps_UV, 
-                                                     sps_ratio_width, sps_ratio_height  ); 
-
-            //Crominance V
-            lhe_basic_encode_one_hop_per_pixel_block(prec, component_original_data_V, component_prediction_V, hops_V, 
-                                                     width_UV, width_sps_UV, height_UV, height_sps_UV, linesize_V, 
-                                                     first_color_block_V, total_blocks_width,
-                                                     i, j, block_width_UV, block_width_sps_UV, block_height_UV, block_height_sps_UV,
-                                                     sps_ratio_width, sps_ratio_height  );
-                                                     
-                                               
-        }
-    }  
-}
-
-
-static void lhe_basic_encode_frame_sequential (LheBasicPrec *prec, 
-                                               uint8_t *component_original_data_Y, uint8_t *component_original_data_U, uint8_t *component_original_data_V,
-                                               uint8_t *component_prediction_Y, uint8_t *component_prediction_U, uint8_t *component_prediction_V,
-                                               uint8_t *hops_Y, uint8_t *hops_U, uint8_t *hops_V,
-                                               int width_Y, int width_sps_Y, int height_sps_Y, int width_UV, int width_sps_UV, int height_sps_UV,
-                                               int linesize_Y, int linesize_U, int linesize_V, 
-                                               uint8_t *first_color_block_Y, uint8_t *first_color_block_U, uint8_t *first_color_block_V,
-                                               uint8_t sps_ratio_width, uint8_t sps_ratio_height )
-{
-    //Luminance
-    lhe_basic_encode_one_hop_per_pixel(prec, 
-                                       component_original_data_Y, component_prediction_Y, hops_Y, 
-                                       width_Y, width_sps_Y, height_sps_Y, linesize_Y, first_color_block_Y,
-                                       sps_ratio_width, sps_ratio_height ); 
-
-    //Crominance U
-    lhe_basic_encode_one_hop_per_pixel(prec, component_original_data_U, component_prediction_U, hops_U, 
-                                       width_UV, width_sps_UV, height_sps_UV, linesize_U, first_color_block_U,
-                                       sps_ratio_width, sps_ratio_height  ); 
-
-    //Crominance V
-    lhe_basic_encode_one_hop_per_pixel(prec, component_original_data_V, component_prediction_V, hops_V, 
-                                       width_UV, width_sps_UV, height_sps_UV, linesize_V, first_color_block_V,
-                                       sps_ratio_width, sps_ratio_height  );   
 }
 
 
@@ -1630,19 +1705,18 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     uint8_t *component_prediction_Y, *component_prediction_U, *component_prediction_V;
     uint8_t *hops_Y, *hops_U, *hops_V;
     uint8_t *first_color_block_Y, *first_color_block_U, *first_color_block_V;
-    float **perceptual_relevance_x,  **perceptual_relevance_y;
-    int width_Y, width_UV, height_Y, height_UV, image_size_Y, image_size_UV, n_bytes; 
-    int total_blocks_width, total_blocks_height, total_blocks, pixels_block, total_blocks_width_pr, total_blocks_height_pr;
-    int block_width_Y, block_width_UV, block_height_Y, block_height_UV, block_width_pr, block_height_pr;
-    int i,j;
+    uint32_t width_Y, width_UV, height_Y, height_UV, image_size_Y, image_size_UV, n_bytes; 
+    uint32_t total_blocks_width, total_blocks_height, total_blocks, pixels_block;
+    uint32_t block_width_Y, block_width_UV, block_height_Y, block_height_UV;
     
     uint8_t *component_original_data_flhe, *component_prediction_flhe, *hops_flhe;
-    int width_flhe, height_flhe, image_size_flhe, block_width_flhe, block_height_flhe;
-    
+    uint32_t width_flhe, height_flhe, image_size_flhe, block_width_flhe, block_height_flhe;
+            
     struct timeval before , after;
 
     LheContext *s = avctx->priv_data;
 
+    
     width_Y = frame->width;
     height_Y =  frame->height; 
     image_size_Y = width_Y * height_Y;
@@ -1651,33 +1725,21 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     height_UV = (height_Y - 1)/CHROMA_FACTOR_HEIGHT + 1;
     image_size_UV = width_UV * height_UV;
     
-    total_blocks_width_pr = HORIZONTAL_BLOCKS;
+    total_blocks_width = HORIZONTAL_BLOCKS;
     pixels_block = (width_Y-1) / HORIZONTAL_BLOCKS + 1;
-    total_blocks_height_pr = (height_Y-1) / pixels_block + 1;
+    total_blocks_height = (height_Y-1) / pixels_block + 1;
     
-     //total_blocks_height_pr = (height_Y - 1)/ BLOCK_HEIGHT_Y + 1;
-     //total_blocks_width_pr = (width_Y - 1) / BLOCK_WIDTH_Y + 1;
+     //total_blocks_height = (height_Y - 1)/ BLOCK_HEIGHT_Y + 1;
+     //total_blocks_width = (width_Y - 1) / BLOCK_WIDTH_Y + 1;
     
-    block_width_pr = (width_Y-1)/total_blocks_width_pr + 1;
-    block_height_pr = (height_Y-1)/total_blocks_height_pr + 1;
-        
+    total_blocks = total_blocks_height * total_blocks_width;
+
+    block_width_Y = (width_Y-1)/total_blocks_width + 1;
+    block_height_Y = (height_Y-1)/total_blocks_height + 1;       
+
+    block_width_UV = (width_UV-1)/total_blocks_width + 1;
+    block_height_UV = (height_UV-1)/total_blocks_height +1;
     
-    if (OPENMP_FLAGS == CONFIG_OPENMP) 
-    {
-        total_blocks_width = HORIZONTAL_BLOCKS;
-        total_blocks_height = total_blocks_height_pr;
-     
-        total_blocks = total_blocks_height * total_blocks_width;
-        
-        block_width_Y = block_width_pr;
-        block_height_Y = block_height_pr;
-        block_width_UV = (width_UV-1)/total_blocks_width + 1;
-        block_height_UV = (height_UV-1)/total_blocks_height +1;
-    } else {
-        total_blocks_height = 1;
-        total_blocks_width = 1;
-        total_blocks = 1;
-    }
     
     //Pointers to different color components
     component_original_data_Y = frame->data[0];
@@ -1693,110 +1755,61 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     first_color_block_Y = malloc(sizeof(uint8_t) * total_blocks);
     first_color_block_U = malloc(sizeof(uint8_t) * total_blocks);
     first_color_block_V = malloc(sizeof(uint8_t) * total_blocks);
+    
 
-
-    //BASIC LHE
-    if(OPENMP_FLAGS == CONFIG_OPENMP) {
-     
-        lhe_basic_encode_frame_pararell (&s->prec, 
-                                         component_original_data_Y, component_original_data_U, component_original_data_V, 
-                                         component_prediction_Y, component_prediction_U, component_prediction_V, 
-                                         hops_Y, hops_U, hops_V,
-                                         width_Y, width_Y, height_Y, height_Y, 
-                                         width_UV, width_UV, height_UV, height_UV, 
-                                         frame->linesize[0], frame->linesize[1], frame->linesize[2],
-                                         first_color_block_Y, first_color_block_U, first_color_block_V,
-                                         total_blocks_width, total_blocks_height,
-                                         block_width_Y, block_width_Y, block_height_Y, block_height_Y,
-                                         block_width_UV, block_width_UV, block_height_UV, block_height_UV,
-                                         NO_SPS_RATIO, NO_SPS_RATIO );
-                                                                        
-                               
-    } else 
-    {
-        lhe_basic_encode_frame_sequential (&s->prec, 
-                                           component_original_data_Y, component_original_data_U, component_original_data_V, 
-                                           component_prediction_Y, component_prediction_U, component_prediction_V,
-                                           hops_Y, hops_U, hops_V,
-                                           width_Y, width_Y, height_Y, width_UV,  width_UV, height_UV, 
-                                           frame->linesize[0], frame->linesize[1], frame->linesize[2],
-                                           first_color_block_Y, first_color_block_U, first_color_block_V,
-                                           NO_SPS_RATIO, NO_SPS_RATIO  );        
-    }
-
-
-    //ADVANCED LHE
     gettimeofday(&before , NULL);
 
-    width_flhe = (width_Y-1) / SPS_RATIO_WIDTH + 1;
-    height_flhe = (height_Y-1) / SPS_RATIO_HEIGHT + 1;
-    image_size_flhe = width_flhe * height_flhe;
-    
-    block_width_flhe = (width_flhe-1) / total_blocks_width + 1;
-    block_height_flhe = (height_flhe-1) / total_blocks_height + 1;
-    
-    component_original_data_flhe = malloc(sizeof(uint8_t) * image_size_flhe);
-    hops_flhe = malloc(sizeof(uint8_t) * image_size_flhe);
-    component_prediction_flhe = malloc(sizeof(uint8_t) * image_size_flhe);
-    
-    perceptual_relevance_x = malloc(sizeof(float*) * (total_blocks_height_pr+1));  
-    
-    for (i=0; i<total_blocks_height+1; i++) 
+    if (s->basic_lhe) 
     {
-        perceptual_relevance_x[i] = malloc(sizeof(float) * (total_blocks_width+1));
-    }
-    
-    perceptual_relevance_y = malloc(sizeof(float*) * (total_blocks_height+1)); 
-    
-    for (i=0; i<total_blocks_height+1; i++) 
-    {
-        perceptual_relevance_y[i] = malloc(sizeof(float) * (total_blocks_width+1));
-    }   
-    
-    if(OPENMP_FLAGS == CONFIG_OPENMP) {
-        #pragma omp parallel for
-        for (int j=0; j<total_blocks_height; j++)      
-        {  
-            for (int i=0; i<total_blocks_width; i++) 
-            {
-                
-                lhe_basic_encode_one_hop_per_pixel_block(&s->prec, component_original_data_Y, component_prediction_flhe, hops_flhe,      
-                                                         width_Y, width_flhe, height_Y, height_flhe, frame->linesize[0], 
-                                                         first_color_block_Y, total_blocks_width,
-                                                         i, j, block_width_Y, block_width_flhe, block_height_Y, block_height_flhe,
-                                                         SPS_RATIO_WIDTH, SPS_RATIO_HEIGHT   );
-            }
-        }
-
-                                       
+        //BASIC LHE        
+        if(OPENMP_FLAGS == CONFIG_OPENMP) {
+     
+            
+            lhe_basic_encode_frame_pararell (&s->prec, 
+                                            component_original_data_Y, component_original_data_U, component_original_data_V, 
+                                            component_prediction_Y, component_prediction_U, component_prediction_V, 
+                                            hops_Y, hops_U, hops_V,
+                                            width_Y, width_Y, height_Y, height_Y, 
+                                            width_UV, width_UV, height_UV, height_UV, 
+                                            frame->linesize[0], frame->linesize[1], frame->linesize[2],
+                                            first_color_block_Y, first_color_block_U, first_color_block_V,
+                                            total_blocks_width, total_blocks_height,
+                                            block_width_Y, block_width_Y, block_height_Y, block_height_Y,
+                                            block_width_UV, block_width_UV, block_height_UV, block_height_UV,
+                                            NO_SPS_RATIO, NO_SPS_RATIO );
+                                                                        
                                
-    } else 
+        } else 
+        {
+            total_blocks_height = 1;
+            total_blocks_width = 1;
+            total_blocks = 1;
+            
+            lhe_basic_encode_frame_sequential (&s->prec, 
+                                               component_original_data_Y, component_original_data_U, component_original_data_V, 
+                                               component_prediction_Y, component_prediction_U, component_prediction_V,
+                                               hops_Y, hops_U, hops_V,
+                                               width_Y, width_Y, height_Y, width_UV,  width_UV, height_UV, 
+                                               frame->linesize[0], frame->linesize[1], frame->linesize[2],
+                                               first_color_block_Y, first_color_block_U, first_color_block_V,
+                                               NO_SPS_RATIO, NO_SPS_RATIO  );        
+        }
+                          
+    } 
+    else 
     {
-        lhe_basic_encode_one_hop_per_pixel(&s->prec, 
-                                           component_original_data_Y, component_prediction_flhe, hops_flhe, 
-                                           width_Y, width_flhe, height_flhe, frame->linesize[0], first_color_block_Y,
-                                           SPS_RATIO_WIDTH, SPS_RATIO_HEIGHT  );        
+        //ADVANCED LHE
+        lhe_advanced_encode (s, frame,
+                             component_original_data_Y, component_original_data_U, component_original_data_V,
+                             component_prediction_Y, component_prediction_U, component_prediction_V,
+                             hops_Y, hops_U, hops_V,
+                             first_color_block_Y, first_color_block_U, first_color_block_V,
+                             width_Y, height_Y, width_UV, height_UV, 
+                             frame->linesize[0], frame->linesize[1], frame->linesize[2],
+                             total_blocks_width, total_blocks_height, 
+                             block_width_Y, block_height_Y);
     }
- 
- 
-    lhe_advanced_compute_perceptual_relevance (perceptual_relevance_x, perceptual_relevance_y,
-                                               hops_flhe,
-                                               width_flhe,  height_flhe,
-                                               total_blocks_width_pr,  total_blocks_height_pr,
-                                               block_width_flhe,  block_height_flhe);
-    
-    
-    lhe_advanced_encode (&s->prec, 
-                         component_original_data_Y, component_original_data_U, component_original_data_V,
-                         component_prediction_Y, component_prediction_U, component_prediction_V,
-                         hops_Y, hops_U, hops_V,
-                         first_color_block_Y, first_color_block_U, first_color_block_V,
-                         perceptual_relevance_x, perceptual_relevance_y,
-                         width_Y, height_Y, width_UV, height_UV, 
-                         frame->linesize[0], frame->linesize[1], frame->linesize[2],
-                         total_blocks_width_pr, total_blocks_height_pr, 
-                         block_width_pr, block_height_pr);
-                                    
+                              
     
     gettimeofday(&after , NULL);
 
@@ -1807,12 +1820,6 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
                                  first_color_block_Y, first_color_block_U, first_color_block_V, 
                                  hops_Y, hops_U, hops_V);
     
-    if (s->pr_metrics)
-    {
-        print_csv_pr_metrics(perceptual_relevance_x, perceptual_relevance_y,
-                         total_blocks_width_pr, total_blocks_height_pr);  
-    }
-   
    
     if(avctx->flags&AV_CODEC_FLAG_PSNR){
         lhe_compute_error_for_psnr (avctx, frame,
@@ -1847,6 +1854,7 @@ static int lhe_encode_close(AVCodecContext *avctx)
 #define VE AV_OPT_FLAG_VIDEO_PARAM | AV_OPT_FLAG_ENCODING_PARAM
 static const AVOption options[] = {
     { "pr_metrics", "Print PR metrics", OFFSET(pr_metrics), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, VE },
+    { "basic_lhe", "Basic LHE", OFFSET(basic_lhe), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, VE },
     { NULL },
 };
 
