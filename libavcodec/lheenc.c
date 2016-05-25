@@ -1083,18 +1083,17 @@ static void lhe_advanced_horizontal_boundaries_downsample (float ***ppp_array, u
     
 }
 
-static void lhe_advanced_downsample_sps (float ***ppp_x_array, float ***ppp_y_array,
-                                         uint32_t ** downsampled_x_array, uint32_t ** downsampled_y_array,
+static void lhe_advanced_downsample_sps (float ppp_x_0, float ppp_x_1, float ppp_y_0, float ppp_y_1,
+                                         uint32_t downsampled_x_side, uint32_t downsampled_y_side,
                                          uint8_t *component_original_data, 
                                          uint8_t *downsampled_data,
                                          int width_image, int height_image, int block_width, int block_height,
                                          int block_x, int block_y) 
 {
-    uint32_t x, xini, xfin, xfin_downsampled, y, yini, yfin, yfin_downsampled, downsampled_x_side, downsampled_y_side;
-    float x_float, y_float, ppp_x_0, ppp_x_1, ppp_y_0, ppp_y_1, ppp_x, ppp_x_medium, ppp_y, ppp_y_medium;
+    uint32_t x, xini, xfin, xfin_downsampled, y, yini, yfin, yfin_downsampled;
+    float x_float, y_float, ppp_x, ppp_x_medium, ppp_y, ppp_y_medium;
     
-    downsampled_x_side = downsampled_x_array[block_y][block_x];
-    downsampled_y_side = downsampled_y_array[block_y][block_x];
+    
     
     xini = block_x * block_width;
     xfin = xini + downsampled_x_side -1; 
@@ -1121,14 +1120,7 @@ static void lhe_advanced_downsample_sps (float ***ppp_x_array, float ***ppp_y_ar
     {
         yfin_downsampled = height_image-1;
     }
-
-    
-    ppp_x_0=ppp_x_array[block_y][block_x][TOP_LEFT_CORNER];
-    ppp_x_1=ppp_x_array[block_y][block_x][TOP_RIGHT_CORNER];
-    
-    ppp_y_0=ppp_y_array[block_y][block_x][TOP_LEFT_CORNER];
-    ppp_y_1=ppp_y_array[block_y][block_x][BOT_LEFT_CORNER];
-    
+  
     ppp_x = (ppp_x_0 + ppp_x_1) / 2.0;
     ppp_y = (ppp_y_0 + ppp_y_1) / 2.0;
     
@@ -1357,7 +1349,7 @@ static void lhe_advanced_vertical_downsample_average (float ***ppp_array, uint32
 
 static void lhe_advanced_encode_block (LheBasicPrec *prec, uint8_t *downsampled_data, 
                                        uint8_t *component_prediction, uint8_t *hops, 
-                                       uint32_t ** downsampled_x_array, uint32_t ** downsampled_y_array,
+                                       uint32_t downsampled_x_side, uint32_t downsampled_y_side,
                                        int width_image, int height_image, int linesize, 
                                        uint8_t *first_color_block, int total_blocks_width,
                                        int block_x, int block_y,
@@ -1368,24 +1360,19 @@ static void lhe_advanced_encode_block (LheBasicPrec *prec, uint8_t *downsampled_
     int xini, xfin_downsampled, yini, yfin_downsampled;
     bool small_hop, last_small_hop;
     uint8_t predicted_luminance, hop_1, hop_number, original_color, r_max;
-    int pix, pix_original_data, dif_line, dif_pix ,num_block;
-    
-    uint32_t downsampled_x, downsampled_y;
-    
+    int pix, pix_original_data, dif_line, num_block;
+        
     num_block = block_y * total_blocks_width + block_x;
-    
-    downsampled_x = downsampled_x_array [block_y][block_x];
-    downsampled_y = downsampled_y_array [block_y][block_x];
     
     //DOWNSAMPLED IMAGE
     xini = block_x * block_width;
-    xfin_downsampled = xini + downsampled_x;
+    xfin_downsampled = xini + downsampled_x_side;
     if (xfin_downsampled>width_image) 
     {
         xfin_downsampled = width_image;
     }
     yini = block_y * block_height;
-    yfin_downsampled = yini + downsampled_y;
+    yfin_downsampled = yini + downsampled_y_side;
     if (yfin_downsampled > height_image) 
     {
         yfin_downsampled = height_image;
@@ -1404,8 +1391,7 @@ static void lhe_advanced_encode_block (LheBasicPrec *prec, uint8_t *downsampled_
     
     pix = yini*width_image + xini;
     pix_original_data = yini*linesize + xini;
-    
-    dif_pix = height_image - xfin_downsampled + xini;
+       
     dif_line = linesize - xfin_downsampled + xini;    
 
     for (int y=yini; y < yfin_downsampled; y++)  {
@@ -1443,7 +1429,7 @@ static void lhe_advanced_encode_block (LheBasicPrec *prec, uint8_t *downsampled_
             hop_number = prec->best_hop[r_max][hop_1][original_color][predicted_luminance]; 
             hops[pix]= hop_number;
             component_prediction[pix]=prec -> prec_luminance[predicted_luminance][r_max][hop_1][hop_number];
-
+            
             //tunning hop1 for the next hop ( "h1 adaptation")
             //------------------------------------------------
             H1_ADAPTATION;
@@ -1453,10 +1439,8 @@ static void lhe_advanced_encode_block (LheBasicPrec *prec, uint8_t *downsampled_
             pix++;
              
         }//for x
-        pix+=dif_pix;
-    }//for y  
-    
-   
+        pix+=dif_line;
+    }//for y    
 }
 
 /**
@@ -1470,19 +1454,20 @@ static void lhe_advanced_encode (LheContext *s, const AVFrame *frame,
                                  uint8_t *component_original_data_Y, uint8_t *component_original_data_U, uint8_t *component_original_data_V,
                                  uint8_t *component_prediction_Y, uint8_t *component_prediction_U, uint8_t *component_prediction_V,
                                  uint8_t *hops_Y, uint8_t *hops_U, uint8_t *hops_V,
-                                 uint8_t *first_color_block_Y, uint8_t *first_color_block_U, uint8_t *first_color_V,
-                                 int width_Y, int height_Y, int width_UV, int height_UV, 
+                                 uint8_t *first_color_block_Y, uint8_t *first_color_block_U, uint8_t *first_color_block_V,
+                                 uint32_t width_Y, uint32_t height_Y, uint32_t width_UV, uint32_t height_UV, 
                                  int linesize_Y, int linesize_U, int linesize_V,
-                                 int total_blocks_width, int total_blocks_height, 
-                                 int block_width, int block_height) 
+                                 uint32_t total_blocks_width, uint32_t total_blocks_height, 
+                                 uint32_t block_width_Y, uint32_t block_height_Y, uint32_t block_width_UV, uint32_t block_height_UV) 
 {
     float ***ppp_x, ***ppp_y;
     float **perceptual_relevance_x,  **perceptual_relevance_y;
     float ppp_max, ppp_max_theoric, compression_factor;
-    uint32_t **downsampled_side_x, **downsampled_side_y;
+    uint32_t **downsampled_side_x_array, **downsampled_side_y_array;
     uint8_t *downsampled_data_Y, *downsampled_data_U, *downsampled_data_V;
     uint8_t *downsampled_boundaries_Y, *downsampled_boundaries_U, *downsampled_boundaries_V;
-    uint32_t i, j, image_size_Y, image_size_UV;
+    uint32_t i, j, image_size_Y, image_size_UV, downsampled_side_x_Y, downsampled_side_y_Y, downsampled_side_x_UV, downsampled_side_y_UV;
+    float ppp_x_0_Y, ppp_x_1_Y, ppp_y_0_Y, ppp_y_1_Y, ppp_x_0_UV, ppp_x_1_UV, ppp_y_0_UV, ppp_y_1_UV;
     
     uint8_t *component_original_data_flhe, *component_prediction_flhe, *hops_flhe;
     int width_flhe, height_flhe, image_size_flhe, block_width_flhe, block_height_flhe;
@@ -1490,8 +1475,8 @@ static void lhe_advanced_encode (LheContext *s, const AVFrame *frame,
     image_size_Y = width_Y * height_Y;
     image_size_UV = width_UV * height_UV;
     
-    ppp_max_theoric = block_width/SIDE_MIN;
-    compression_factor = 1;//1.749534;//0.14675;//1;
+    ppp_max_theoric = block_width_Y/SIDE_MIN;
+    compression_factor = 1;//1.749534;//0.14675;
         
     downsampled_data_Y = malloc (sizeof(uint32_t) * image_size_Y);
     downsampled_boundaries_Y = malloc (sizeof(uint32_t) * image_size_Y);
@@ -1502,18 +1487,18 @@ static void lhe_advanced_encode (LheContext *s, const AVFrame *frame,
     downsampled_data_V = malloc (sizeof(uint32_t) * image_size_UV);
     downsampled_boundaries_V = malloc (sizeof(uint32_t) * image_size_UV);
     
-    downsampled_side_x = malloc (sizeof(float*) * (total_blocks_height+1));
+    downsampled_side_x_array = malloc (sizeof(float*) * (total_blocks_height+1));
 
     for (i=0; i<total_blocks_height+1; i++) 
     {
-        downsampled_side_x[i] = malloc(sizeof(float) * (total_blocks_width+1));
+        downsampled_side_x_array[i] = malloc(sizeof(float) * (total_blocks_width+1));
     }
     
-    downsampled_side_y = malloc(sizeof(float*) * (total_blocks_height+1));
+    downsampled_side_y_array = malloc(sizeof(float*) * (total_blocks_height+1));
     
     for (i=0; i<total_blocks_height+1; i++) 
     {
-        downsampled_side_y [i] = malloc(sizeof(float) * (total_blocks_width+1));
+        downsampled_side_y_array [i] = malloc(sizeof(float) * (total_blocks_width+1));
     }   
     
     ppp_x = malloc(sizeof(float**) * (total_blocks_height+1));  
@@ -1575,7 +1560,7 @@ static void lhe_advanced_encode (LheContext *s, const AVFrame *frame,
                 lhe_basic_encode_one_hop_per_pixel_block(&s->prec, component_original_data_Y, component_prediction_flhe, hops_flhe,      
                                                          width_Y, width_flhe, height_Y, height_flhe, frame->linesize[0], 
                                                          first_color_block_Y, total_blocks_width,
-                                                         i, j, block_width, block_width_flhe, block_height, block_height_flhe,
+                                                         i, j, block_width_Y, block_width_flhe, block_height_Y, block_height_flhe,
                                                          SPS_RATIO_WIDTH, SPS_RATIO_HEIGHT   );
             }
         }
@@ -1596,7 +1581,7 @@ static void lhe_advanced_encode (LheContext *s, const AVFrame *frame,
                                                width_flhe,  height_flhe,
                                                total_blocks_width,  total_blocks_height,
                                                block_width_flhe,  block_height_flhe);
-    
+        
     
     #pragma omp parallel for
     for (int block_y=0; block_y<total_blocks_height; block_y++) 
@@ -1610,58 +1595,93 @@ static void lhe_advanced_encode (LheContext *s, const AVFrame *frame,
                                                                block_x, block_y);
             
             //Adjust horizontal side
-            lhe_advanced_ppp_side_to_rectangle_shape (downsampled_side_x, ppp_x,
+            lhe_advanced_ppp_side_to_rectangle_shape (downsampled_side_x_array, ppp_x,
                                                       TOP_LEFT_CORNER, TOP_RIGHT_CORNER, BOT_LEFT_CORNER, BOT_RIGHT_CORNER,
-                                                      block_width, ppp_max_theoric,
+                                                      block_width_Y, ppp_max_theoric,
                                                       block_x, block_y);
             
             //Adjust vertical side
-            lhe_advanced_ppp_side_to_rectangle_shape(downsampled_side_y, ppp_y,
+            lhe_advanced_ppp_side_to_rectangle_shape(downsampled_side_y_array, ppp_y,
                                                      TOP_LEFT_CORNER, BOT_LEFT_CORNER, TOP_RIGHT_CORNER, BOT_RIGHT_CORNER,
-                                                     block_height, ppp_max_theoric,
+                                                     block_height_Y, ppp_max_theoric,
                                                      block_x, block_y);
             
-             
-            //horizontal downsampling: downsamples using component original data
-            lhe_advanced_downsample_sps (ppp_x, ppp_y,
-                                         downsampled_side_x, downsampled_side_y,
+            //LUMINANCE
+            downsampled_side_x_Y = downsampled_side_x_array[block_y][block_x];
+            downsampled_side_y_Y = downsampled_side_y_array[block_y][block_x];
+            
+            ppp_x_0_Y=ppp_x[block_y][block_x][TOP_LEFT_CORNER];
+            ppp_x_1_Y=ppp_x[block_y][block_x][TOP_RIGHT_CORNER];   
+            ppp_y_0_Y=ppp_y[block_y][block_x][TOP_LEFT_CORNER];
+            ppp_y_1_Y=ppp_y[block_y][block_x][BOT_LEFT_CORNER];
+                      
+            //Downsamples using component original data
+            lhe_advanced_downsample_sps (ppp_x_0_Y, ppp_x_1_Y, ppp_y_0_Y, ppp_y_1_Y,
+                                         downsampled_side_x_Y, downsampled_side_y_Y,
                                          component_original_data_Y, 
                                          downsampled_data_Y,
-                                         width_Y, height_Y, block_width, block_height,
+                                         width_Y, height_Y, block_width_Y, block_height_Y,
                                          block_x, block_y) ;
-           
-              
-                                             
-            lhe_advanced_encode_block (s,  downsampled_data_Y, 
+            //Encode downsampled blocks                          
+            lhe_advanced_encode_block (&s->prec,  downsampled_data_Y, 
                                        component_prediction_Y, hops_Y, 
-                                       downsampled_side_x, downsampled_side_y,
+                                       downsampled_side_x_Y, downsampled_side_y_Y,
                                        width_Y,  height_Y, linesize_Y, 
                                        first_color_block_Y, total_blocks_width,
                                        block_x,  block_y,
-                                       block_width,  block_height);
-
-                /*                     
-            //horizontal boundaries downsampling
-            lhe_advanced_horizontal_boundaries_downsample (ppp_x, downsampled_side_x,
-                                                           component_original_data, 
-                                                           downsampled_boundaries,
-                                                           width_image, block_width, block_height,
-                                                           block_x, block_y) ;
-                                                           
-            //vertical boundaries downsampling                             
-            lhe_advanced_vertical_boundaries_downsample (ppp_y, downsampled_side_y,
-                                                         component_original_data, 
-                                                         downsampled_boundaries,
-                                                         width_image, block_width, block_height,
-                                                         block_x, block_y) ;
-                                                         */
-                                                         
-                                    
+                                       block_width_Y,  block_height_Y);
+                                       
+            
+            //CHROMINANCES
+            downsampled_side_x_UV = (downsampled_side_x_Y - 1) / CHROMA_FACTOR_WIDTH + 1;
+            downsampled_side_y_UV = (downsampled_side_y_Y - 1) / CHROMA_FACTOR_HEIGHT + 1;
+            
+            ppp_x_0_UV= (ppp_x_0_Y - 1) / CHROMA_FACTOR_WIDTH + 1; 
+            ppp_x_1_UV= (ppp_x_1_Y - 1) / CHROMA_FACTOR_WIDTH + 1;  
+            ppp_y_0_UV= (ppp_y_0_Y - 1) / CHROMA_FACTOR_HEIGHT + 1; 
+            ppp_y_1_UV= (ppp_y_1_Y - 1) / CHROMA_FACTOR_HEIGHT + 1; 
+            
+            //CHROMINANCE U
+            lhe_advanced_downsample_sps (ppp_x_0_UV, ppp_x_1_UV, ppp_y_0_UV, ppp_y_1_UV,
+                                         downsampled_side_x_UV, downsampled_side_y_UV,
+                                         component_original_data_U, 
+                                         downsampled_data_U,
+                                         width_UV, height_UV, block_width_UV, block_height_UV,
+                                         block_x, block_y) ;
+                                         
+                                         
+                                       
+            lhe_advanced_encode_block (&s->prec, downsampled_data_U, 
+                                       component_prediction_U, hops_U, 
+                                       downsampled_side_x_UV, downsampled_side_y_UV,
+                                       width_UV,  height_UV, linesize_U, 
+                                       first_color_block_U, total_blocks_width,
+                                       block_x,  block_y,
+                                       block_width_UV,  block_height_UV);
+           
+             
+            //CHROMINANCE_V
+            lhe_advanced_downsample_sps (ppp_x_0_UV, ppp_x_1_UV, ppp_y_0_UV, ppp_y_1_UV,
+                                         downsampled_side_x_UV, downsampled_side_y_UV,
+                                         component_original_data_V, 
+                                         downsampled_data_V,
+                                         width_UV, height_UV, block_width_UV, block_height_UV,
+                                         block_x, block_y) ;
+                                         
+                                       
+                                       
+            lhe_advanced_encode_block (&s->prec, downsampled_data_V, 
+                                       component_prediction_V, hops_V, 
+                                       downsampled_side_x_UV, downsampled_side_y_UV,
+                                       width_UV,  height_UV, linesize_V, 
+                                       first_color_block_V, total_blocks_width,
+                                       block_x,  block_y,
+                                       block_width_UV,  block_height_UV);                                
         }
     }
     
-    /*
-     av_log(NULL, AV_LOG_INFO, "HOPS \n");
+     /*
+    av_log(NULL, AV_LOG_INFO, "HOPS Y \n");
     
     for (int i=0; i<height_Y; i++) {
         for (int j=0; j<width_Y; j++) {
@@ -1670,31 +1690,13 @@ static void lhe_advanced_encode (LheContext *s, const AVFrame *frame,
         av_log(NULL, AV_LOG_INFO, "\n");
 
     }  
-    
-      
-     av_log(NULL, AV_LOG_INFO, "DOWNSAMPLED \n");
-    
-    for (int i=0; i<height_Y; i++) {
-        for (int j=0; j<width_Y; j++) {
-            av_log(NULL, AV_LOG_INFO, "%d;", downsampled_data_Y[i*width_Y + j]);
-        }
-        av_log(NULL, AV_LOG_INFO, "\n");
-
-    }  
-    
-    
-    av_log(NULL, AV_LOG_INFO, "ORIGINAL \n");
-    
-    for (int i=0; i<height_Y; i++) {
-        for (int j=0; j<width_Y; j++) {
-            av_log(NULL, AV_LOG_INFO, "%d;", component_original_data_Y[i*width_Y + j]);
-        }
-        av_log(NULL, AV_LOG_INFO, "\n");
-
-    }  
     */
     
-   
+    if (s->pr_metrics)
+    {
+        print_csv_pr_metrics(perceptual_relevance_x, perceptual_relevance_y,
+                             total_blocks_width, total_blocks_height);  
+    }
 }
 
 
@@ -1776,9 +1778,7 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
                                             total_blocks_width, total_blocks_height,
                                             block_width_Y, block_width_Y, block_height_Y, block_height_Y,
                                             block_width_UV, block_width_UV, block_height_UV, block_height_UV,
-                                            NO_SPS_RATIO, NO_SPS_RATIO );
-                                                                        
-                               
+                                            NO_SPS_RATIO, NO_SPS_RATIO );      
         } else 
         {
             total_blocks_height = 1;
@@ -1807,7 +1807,7 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
                              width_Y, height_Y, width_UV, height_UV, 
                              frame->linesize[0], frame->linesize[1], frame->linesize[2],
                              total_blocks_width, total_blocks_height, 
-                             block_width_Y, block_height_Y);
+                             block_width_Y, block_height_Y, block_width_UV, block_height_UV);
     }
                               
     
