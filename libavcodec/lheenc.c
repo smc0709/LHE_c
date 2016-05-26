@@ -1360,7 +1360,7 @@ static void lhe_advanced_encode_block (LheBasicPrec *prec, uint8_t *downsampled_
     int xini, xfin_downsampled, yini, yfin_downsampled;
     bool small_hop, last_small_hop;
     uint8_t predicted_luminance, hop_1, hop_number, original_color, r_max;
-    int pix, pix_original_data, dif_line, num_block;
+    int pix, pix_original_data, dif_pix, dif_line, num_block;
         
     num_block = block_y * total_blocks_width + block_x;
     
@@ -1392,7 +1392,9 @@ static void lhe_advanced_encode_block (LheBasicPrec *prec, uint8_t *downsampled_
     pix = yini*width_image + xini;
     pix_original_data = yini*linesize + xini;
        
-    dif_line = linesize - xfin_downsampled + xini;    
+    dif_pix = width_image - xfin_downsampled + xini;
+    dif_line = linesize - xfin_downsampled + xini;   
+
 
     for (int y=yini; y < yfin_downsampled; y++)  {
         for (int x=xini; x < xfin_downsampled; x++)  {
@@ -1419,7 +1421,7 @@ static void lhe_advanced_encode_block (LheBasicPrec *prec, uint8_t *downsampled_
                 hop_1=START_HOP_1;
             } else if (x == xfin_downsampled -1) 
             {
-                predicted_luminance=(component_prediction[pix-1]+component_prediction[pix-width_image])>>1;                               
+                predicted_luminance=(component_prediction[pix-1]+component_prediction[pix-width_image])>>1;    
             } 
             else 
             {
@@ -1437,9 +1439,10 @@ static void lhe_advanced_encode_block (LheBasicPrec *prec, uint8_t *downsampled_
             //lets go for the next pixel
             //--------------------------
             pix++;
-             
+            pix_original_data++;
         }//for x
-        pix+=dif_line;
+        pix+=dif_pix;
+        pix_original_data+=dif_line;
     }//for y    
 }
 
@@ -1476,7 +1479,7 @@ static void lhe_advanced_encode (LheContext *s, const AVFrame *frame,
     image_size_UV = width_UV * height_UV;
     
     ppp_max_theoric = block_width_Y/SIDE_MIN;
-    compression_factor = 1;//1.749534;//0.14675;
+    compression_factor = 1;//0.14675;//1.749534;
         
     downsampled_data_Y = malloc (sizeof(uint32_t) * image_size_Y);
     downsampled_boundaries_Y = malloc (sizeof(uint32_t) * image_size_Y);
@@ -1648,9 +1651,7 @@ static void lhe_advanced_encode (LheContext *s, const AVFrame *frame,
                                          downsampled_data_U,
                                          width_UV, height_UV, block_width_UV, block_height_UV,
                                          block_x, block_y) ;
-                                         
-                                         
-                                       
+                                                                                                              
             lhe_advanced_encode_block (&s->prec, downsampled_data_U, 
                                        component_prediction_U, hops_U, 
                                        downsampled_side_x_UV, downsampled_side_y_UV,
@@ -1668,8 +1669,7 @@ static void lhe_advanced_encode (LheContext *s, const AVFrame *frame,
                                          width_UV, height_UV, block_width_UV, block_height_UV,
                                          block_x, block_y) ;
                                          
-                                       
-                                       
+                                                                 
             lhe_advanced_encode_block (&s->prec, downsampled_data_V, 
                                        component_prediction_V, hops_V, 
                                        downsampled_side_x_UV, downsampled_side_y_UV,
@@ -1686,6 +1686,26 @@ static void lhe_advanced_encode (LheContext *s, const AVFrame *frame,
     for (int i=0; i<height_Y; i++) {
         for (int j=0; j<width_Y; j++) {
             av_log(NULL, AV_LOG_INFO, "%d;", hops_Y[i*width_Y + j]);
+        }
+        av_log(NULL, AV_LOG_INFO, "\n");
+
+    }  
+    
+     av_log(NULL, AV_LOG_INFO, "HOPS U \n");
+    
+    for (int i=0; i<height_UV; i++) {
+        for (int j=0; j<width_UV; j++) {
+            av_log(NULL, AV_LOG_INFO, "%d;", hops_U[i*width_UV + j]);
+        }
+        av_log(NULL, AV_LOG_INFO, "\n");
+
+    }  
+    
+     av_log(NULL, AV_LOG_INFO, "HOPS V \n");
+    
+    for (int i=0; i<height_UV; i++) {
+        for (int j=0; j<width_UV; j++) {
+            av_log(NULL, AV_LOG_INFO, "%d;", hops_V[i*width_UV + j]);
         }
         av_log(NULL, AV_LOG_INFO, "\n");
 
