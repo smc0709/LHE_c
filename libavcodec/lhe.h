@@ -26,6 +26,8 @@
 
 
 //Configuration 
+#define BASIC_LHE 0
+#define ADVANCED_LHE 1
 #define MIDDLE_VALUE false
 #define CHROMA_FACTOR_WIDTH 2
 #define CHROMA_FACTOR_HEIGHT 1
