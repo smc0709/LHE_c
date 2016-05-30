@@ -116,7 +116,7 @@ static uint8_t lhe_translate_huffman_into_symbol (int huffman_symbol, LheHuffEnt
 }
 
 
-static void lhe_read_file_symbols (LheState *s, LheHuffEntry *he, uint32_t image_size, uint8_t *symbols) 
+static void lhe_basic_read_file_symbols (LheState *s, LheHuffEntry *he, uint32_t image_size, uint8_t *symbols) 
 {
     uint8_t symbol, count_bits;
     int huffman_symbol;
@@ -141,6 +141,78 @@ static void lhe_read_file_symbols (LheState *s, LheHuffEntry *he, uint32_t image
             count_bits = 0;
         }       
     }
+}
+
+static float lhe_advance_translate_pr_interval_to_pr_quant (uint8_t perceptual_relevance_interval)
+{
+    float perceptual_relevance_quant;
+    
+    switch (perceptual_relevance_interval) 
+    {
+        case PR_INTERVAL_0:
+            perceptual_relevance_quant = PR_QUANT_0;
+            break;
+        case PR_INTERVAL_1:
+            perceptual_relevance_quant = PR_QUANT_1;
+            break;
+        case PR_INTERVAL_2:
+            perceptual_relevance_quant = PR_QUANT_2;
+            break;
+        case PR_INTERVAL_3:
+            perceptual_relevance_quant = PR_QUANT_3;
+            break;
+        case PR_INTERVAL_4:
+            perceptual_relevance_quant = PR_QUANT_4;
+            break;
+        case PR_INTERVAL_5:
+            perceptual_relevance_quant = PR_QUANT_5;
+            break;
+            
+    }
+    
+    return perceptual_relevance_quant;
+}
+
+static void lhe_advanced_read_mesh (LheState *s, 
+                                    float ** perceptual_relevance_x, float ** perceptual_relevance_y,
+                                    float ***ppp_x, float ***ppp_y,
+                                    uint32_t **downsampled_side_x_array, uint32_t **downsampled_side_y_array,
+                                    float ppp_max_theoric, float compression_factor,
+                                    uint32_t block_width, uint32_t block_height, 
+                                    uint32_t total_blocks_width, uint32_t total_blocks_height) 
+{
+    uint8_t perceptual_relevance_x_interval, perceptual_relevance_y_interval;
+    float ppp_max;
+    
+    for (int block_y=0; block_y<total_blocks_height+1; block_y++) 
+    {
+        for (int block_x=0; block_x<total_blocks_width+1; block_x++) 
+        { 
+            perceptual_relevance_x_interval = get_bits(&s->gb, PR_INTERVAL_BITS); 
+            perceptual_relevance_y_interval = get_bits(&s->gb, PR_INTERVAL_BITS); 
+                        
+            perceptual_relevance_x[block_y][block_x] = lhe_advance_translate_pr_interval_to_pr_quant(perceptual_relevance_x_interval);
+            perceptual_relevance_y[block_y][block_x] = lhe_advance_translate_pr_interval_to_pr_quant(perceptual_relevance_y_interval);
+            /*
+            ppp_max = lhe_advanced_perceptual_relevance_to_ppp(ppp_x, ppp_y, 
+                                                               perceptual_relevance_x, perceptual_relevance_y, 
+                                                               compression_factor, ppp_max_theoric, 
+                                                               block_x, block_y);
+            
+            //Adjust horizontal side
+            lhe_advanced_ppp_side_to_rectangle_shape (downsampled_side_x_array, ppp_x,
+                                                      TOP_LEFT_CORNER, TOP_RIGHT_CORNER, BOT_LEFT_CORNER, BOT_RIGHT_CORNER,
+                                                      block_width, ppp_max_theoric,
+                                                      block_x, block_y);
+            
+            //Adjust vertical side
+            lhe_advanced_ppp_side_to_rectangle_shape(downsampled_side_y_array, ppp_y,
+                                                     TOP_LEFT_CORNER, BOT_LEFT_CORNER, TOP_RIGHT_CORNER, BOT_RIGHT_CORNER,
+                                                     block_height, ppp_max_theoric,
+                                                     block_x, block_y);
+                                                     */
+        }
+    }  
 }
 
 
@@ -352,10 +424,16 @@ static void lhe_basic_decode_frame_pararell (LheBasicPrec *prec,
 static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, AVPacket *avpkt)
 {
     uint32_t width_Y, width_UV, height_Y, height_UV, image_size_Y, image_size_UV;
+    uint8_t lhe_mode;
     uint8_t *component_Y, *component_U, *component_V, *hops_Y, *hops_U, *hops_V;
     uint8_t *first_color_block_Y, *first_color_block_U, *first_color_block_V;
     int  block_width_Y, block_width_UV, block_height_Y, block_height_UV, total_blocks, total_blocks_width, total_blocks_height;
-    int ret, i;
+    int ret, i,j;
+    
+    float **perceptual_relevance_x, **perceptual_relevance_y;
+    float ***ppp_x, ***ppp_y;
+    float ppp_max_theoric, compression_factor;
+    uint32_t **downsampled_side_x_array, **downsampled_side_y_array;
 
     LheHuffEntry he_Y[LHE_MAX_HUFF_SIZE];
     LheHuffEntry he_UV[LHE_MAX_HUFF_SIZE];
@@ -363,7 +441,10 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
     LheState *s = avctx->priv_data;
     
     const uint8_t *lhe_data = avpkt->data;
-
+    
+    //LHE mode
+    lhe_mode = bytestream_get_byte(&lhe_data); 
+    
     width_Y  = bytestream_get_le32(&lhe_data);
     height_Y = bytestream_get_le32(&lhe_data);
     image_size_Y = width_Y * height_Y;
@@ -421,35 +502,111 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
     lhe_read_huffman_table(s, he_Y);
     lhe_read_huffman_table(s, he_UV);
     
-    lhe_read_file_symbols(s, he_Y, image_size_Y, hops_Y);
-    lhe_read_file_symbols(s, he_UV, image_size_UV, hops_U);
-    lhe_read_file_symbols(s, he_UV, image_size_UV, hops_V);
- 
-    if (total_blocks > 1 && OPENMP_FLAGS == CONFIG_OPENMP) 
-    {
+    if (lhe_mode == ADVANCED_LHE)
+    {      
+        perceptual_relevance_x = malloc(sizeof(float*) * (total_blocks_height+1));  
+    
+        for (int i=0; i<total_blocks_height+1; i++) 
+        {
+            perceptual_relevance_x[i] = malloc(sizeof(float) * (total_blocks_width+1));
+        }
+        
+        perceptual_relevance_y = malloc(sizeof(float*) * (total_blocks_height+1)); 
+        
+        for (int i=0; i<total_blocks_height+1; i++) 
+        {
+            perceptual_relevance_y[i] = malloc(sizeof(float) * (total_blocks_width+1));
+        }   
+        
+        
+        ppp_x = malloc(sizeof(float**) * (total_blocks_height+1));  
+    
+        for (i=0; i<total_blocks_height+1; i++) 
+        {
+            ppp_x[i] = malloc(sizeof(float*) * (total_blocks_width+1));
+            
+            for (j=0; j<total_blocks_width+1; j++) 
+            {
+                ppp_x[i][j] = malloc(sizeof(float) * CORNERS);
+            }
+        }
+        
+        ppp_y = malloc(sizeof(float**) * (total_blocks_height+1));  
+        
+        for (i=0; i<total_blocks_height+1; i++) 
+        {
+            ppp_y[i] = malloc(sizeof(float*) * (total_blocks_width+1));
+            
+            for (j=0; j<total_blocks_width+1; j++) 
+            {
+                ppp_y[i][j] = malloc(sizeof(float) * CORNERS);
+            }
+        }
+        
+        downsampled_side_x_array = malloc (sizeof(float*) * (total_blocks_height+1));
+        
+        for (int i=0; i<total_blocks_height+1; i++) 
+        {
+            downsampled_side_x_array[i] = malloc(sizeof(float) * (total_blocks_width+1));
+        }
+        
+        downsampled_side_y_array = malloc(sizeof(float*) * (total_blocks_height+1));
+        
+        for (int i=0; i<total_blocks_height+1; i++) 
+        {
+            downsampled_side_y_array [i] = malloc(sizeof(float) * (total_blocks_width+1));
+        }   
+        
         block_width_Y = (width_Y-1)/total_blocks_width + 1;
         block_height_Y = (height_Y-1)/total_blocks_height + 1;
-        block_width_UV = (width_UV-1)/total_blocks_width + 1;
-        block_height_UV = (height_UV-1)/total_blocks_height +1;
+        
+        ppp_max_theoric = block_width_Y/SIDE_MIN;
+        compression_factor = COMPRESSION_FACTOR;
 
-        lhe_basic_decode_frame_pararell (&s->prec, 
-                                         component_Y, component_U, component_V, 
-                                         hops_Y, hops_U, hops_V,
-                                         width_Y, height_Y, width_UV, height_UV, 
-                                         s->frame->linesize[0], s->frame->linesize[1], s->frame->linesize[2],
-                                         first_color_block_Y, first_color_block_U, first_color_block_V,
-                                         total_blocks_width, total_blocks_height,
-                                         block_width_Y, block_height_Y, block_width_UV, block_height_UV);                                
        
-    } else 
-    {      
-        lhe_basic_decode_frame_sequential (&s->prec, 
-                                           component_Y, component_U, component_V, 
-                                           hops_Y, hops_U, hops_V,
-                                           width_Y, height_Y, width_UV, height_UV, 
-                                           s->frame->linesize[0], s->frame->linesize[1], s->frame->linesize[2],
-                                           first_color_block_Y, first_color_block_U, first_color_block_V);    
+        lhe_advanced_read_mesh(s, 
+                               perceptual_relevance_x, perceptual_relevance_y,
+                               ppp_x, ppp_y,
+                               downsampled_side_x_array, downsampled_side_y_array,
+                               ppp_max_theoric, compression_factor,
+                               block_width_Y, block_height_Y, 
+                               total_blocks_width, total_blocks_height) ;  
+                               
     }
+    else 
+    {
+        lhe_basic_read_file_symbols(s, he_Y, image_size_Y, hops_Y);
+        lhe_basic_read_file_symbols(s, he_UV, image_size_UV, hops_U);
+        lhe_basic_read_file_symbols(s, he_UV, image_size_UV, hops_V);
+ 
+        if (total_blocks > 1 && OPENMP_FLAGS == CONFIG_OPENMP) 
+        {
+            block_width_Y = (width_Y-1)/total_blocks_width + 1;
+            block_height_Y = (height_Y-1)/total_blocks_height + 1;
+            block_width_UV = (width_UV-1)/total_blocks_width + 1;
+            block_height_UV = (height_UV-1)/total_blocks_height +1;
+
+            lhe_basic_decode_frame_pararell (&s->prec, 
+                                            component_Y, component_U, component_V, 
+                                            hops_Y, hops_U, hops_V,
+                                            width_Y, height_Y, width_UV, height_UV, 
+                                            s->frame->linesize[0], s->frame->linesize[1], s->frame->linesize[2],
+                                            first_color_block_Y, first_color_block_U, first_color_block_V,
+                                            total_blocks_width, total_blocks_height,
+                                            block_width_Y, block_height_Y, block_width_UV, block_height_UV);                                
+        
+        } else 
+        {      
+            lhe_basic_decode_frame_sequential (&s->prec, 
+                                            component_Y, component_U, component_V, 
+                                            hops_Y, hops_U, hops_V,
+                                            width_Y, height_Y, width_UV, height_UV, 
+                                            s->frame->linesize[0], s->frame->linesize[1], s->frame->linesize[2],
+                                            first_color_block_Y, first_color_block_U, first_color_block_V);    
+        }
+    }
+    
+    
     
     av_log(NULL, AV_LOG_INFO, "DECODING...Width %d Height %d \n", width_Y, height_Y);
 

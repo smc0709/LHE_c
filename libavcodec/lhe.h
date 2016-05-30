@@ -115,6 +115,9 @@
 #define PR_INTERVAL_BITS 3 
 #define PR_MESH_BITS 2*PR_INTERVAL_BITS
 
+//Compression
+#define COMPRESSION_FACTOR 1 //0.14675f//1.749534f
+
 //Offset file
 #define FILE_OFFSET_BYTES 4
 #define FILE_OFFSET_BITS 32
@@ -136,8 +139,22 @@ int lhe_generate_huffman_codes(LheHuffEntry *he);
 double time_diff(struct timeval x , struct timeval y);
 int count_bits (int num);
 
-
 /**
  * Calculates lhe init cache
  */
 void lhe_init_cache (LheBasicPrec *prec);
+
+/**
+ * ADVANCED_LHE
+ * Common functions encoder and decoder
+ */
+float lhe_advanced_perceptual_relevance_to_ppp (float *** ppp_x, float *** ppp_y, 
+                                                float ** perceptual_relevance_x, float ** perceptual_relevance_y,
+                                                float compression_factor,
+                                                uint32_t ppp_max_theoric,
+                                                int block_x, int block_y);
+
+void lhe_advanced_ppp_side_to_rectangle_shape (uint32_t **downsampled_side, float ***ppp,
+                                               uint8_t corner_0, uint8_t corner_1, uint8_t corner_2, uint8_t corner_3, 
+                                               int block_length, float ppp_max, 
+                                               int block_x, int block_y);

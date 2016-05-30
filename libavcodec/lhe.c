@@ -109,6 +109,204 @@ int lhe_generate_huffman_codes(LheHuffEntry *he)
 }
 
 /**
+ * ADVANCED LHE
+ * Coomon functions encoder and decoder 
+ * 
+ */
+
+
+float lhe_advanced_perceptual_relevance_to_ppp (float *** ppp_x, float *** ppp_y, 
+                                                float ** perceptual_relevance_x, float ** perceptual_relevance_y,
+                                                float compression_factor,
+                                                uint32_t ppp_max_theoric,
+                                                int block_x, int block_y) 
+{
+    float const1, const2, ppp_min, ppp_max;
+
+    ppp_min = PPP_MIN;
+    const1 = ppp_max_theoric - 1;
+    const2 = ppp_max_theoric * compression_factor;
+    
+    ppp_x[block_y][block_x][0] = const2 / (1.0 + const1 * perceptual_relevance_x[block_y][block_x]);
+    ppp_x[block_y][block_x][1] = const2 / (1.0 + const1 * perceptual_relevance_x[block_y][block_x+1]);     
+    ppp_x[block_y][block_x][2] = const2 / (1.0 + const1 * perceptual_relevance_x[block_y+1][block_x]);  
+    ppp_x[block_y][block_x][3] = const2 / (1.0 + const1 * perceptual_relevance_x[block_y+1][block_x+1]);
+    
+
+    ppp_y[block_y][block_x][0] = const2 / (1.0 + const1 * perceptual_relevance_y[block_y][block_x]);    
+    ppp_y[block_y][block_x][1] = const2 / (1.0 + const1 * perceptual_relevance_y[block_y][block_x+1]);   
+    ppp_y[block_y][block_x][2] = const2 / (1.0 + const1 * perceptual_relevance_y[block_y+1][block_x]);        
+    ppp_y[block_y][block_x][3] = const2 / (1.0 + const1 * perceptual_relevance_y[block_y+1][block_x+1]);
+    
+    
+        //Looks for ppp_min
+    if (ppp_x[block_y][block_x][0] < ppp_min) ppp_min = ppp_x[block_y][block_x][0];
+    if (ppp_x[block_y][block_x][1] < ppp_min) ppp_min = ppp_x[block_y][block_x][1];
+    if (ppp_x[block_y][block_x][2] < ppp_min) ppp_min = ppp_x[block_y][block_x][2];
+    if (ppp_x[block_y][block_x][3] < ppp_min) ppp_min = ppp_x[block_y][block_x][3];
+    if (ppp_y[block_y][block_x][0] < ppp_min) ppp_min = ppp_y[block_y][block_x][0];
+    if (ppp_y[block_y][block_x][1] < ppp_min) ppp_min = ppp_y[block_y][block_x][1];
+    if (ppp_y[block_y][block_x][2] < ppp_min) ppp_min = ppp_y[block_y][block_x][2];
+    if (ppp_y[block_y][block_x][3] < ppp_min) ppp_min = ppp_y[block_y][block_x][3];
+    
+    //Max elastic restriction
+    ppp_max = ppp_min * ELASTIC_MAX;
+    
+    if (ppp_max > ppp_max_theoric) ppp_max = ppp_max_theoric;
+    
+    //Adjust values
+    if (ppp_x[block_y][block_x][0]> ppp_max) ppp_x[block_y][block_x][0] = ppp_max;
+    if (ppp_x[block_y][block_x][0]< PPP_MIN) ppp_x[block_y][block_x][0] = PPP_MIN;
+    if (ppp_x[block_y][block_x][1]> ppp_max) ppp_x[block_y][block_x][1] = ppp_max;
+    if (ppp_x[block_y][block_x][1]< PPP_MIN) ppp_x[block_y][block_x][1] = PPP_MIN;
+    if (ppp_x[block_y][block_x][2]> ppp_max) ppp_x[block_y][block_x][2] = ppp_max;
+    if (ppp_x[block_y][block_x][2]< PPP_MIN) ppp_x[block_y][block_x][2] = PPP_MIN;
+    if (ppp_x[block_y][block_x][3]> ppp_max) ppp_x[block_y][block_x][3] = ppp_max;
+    if (ppp_x[block_y][block_x][3]< PPP_MIN) ppp_x[block_y][block_x][3] = PPP_MIN;   
+    if (ppp_y[block_y][block_x][0]> ppp_max) ppp_y[block_y][block_x][0] = ppp_max;
+    if (ppp_y[block_y][block_x][0]< PPP_MIN) ppp_y[block_y][block_x][0] = PPP_MIN;
+    if (ppp_y[block_y][block_x][1]> ppp_max) ppp_y[block_y][block_x][1] = ppp_max;
+    if (ppp_y[block_y][block_x][1]< PPP_MIN) ppp_y[block_y][block_x][1] = PPP_MIN;
+    if (ppp_y[block_y][block_x][2]> ppp_max) ppp_y[block_y][block_x][2] = ppp_max;
+    if (ppp_y[block_y][block_x][2]< PPP_MIN) ppp_y[block_y][block_x][2] = PPP_MIN;
+    if (ppp_y[block_y][block_x][3]> ppp_max) ppp_y[block_y][block_x][3] = ppp_max;
+    if (ppp_y[block_y][block_x][3]< PPP_MIN) ppp_y[block_y][block_x][3] = PPP_MIN;
+    
+    return ppp_max;
+}
+
+
+/**
+* This function transform PPP values at corners in order to generate a rectangle when
+* the block is downsampled.
+* 
+* However, at interpolation, this function does not assure that the block takes a rectangular shape at interpolation
+* A rectangular downsampled block, after interpolation, generates a poligonal shape (not parallelepiped)
+* 
+*                                                                   
+*         original                down             interpolated 
+*          side_0              
+*        +-------+               +----+                    +
+*        |       |         ----> |    |   ---->     +             
+* side 0 |       | side 1        +----+                                    
+*        |       |             rectangle                 +             
+*        +-------+                                +  
+*          side 1                                  any shape
+* 
+* 
+* Sides & corners labeling horizontal:                 Sides & corners labeling vertical
+*           Side 0                                              Side 0
+* Corner_0: TOP_LEFT_CORNER                            Corner_0: TOP_LEFT_CORNER
+* Corner_1: TOP_RIGHT_CORNER                           Corner_1: BOT_LEFT_CORNER
+*           Side 1                                              Side 1
+* Corner_2: BOT_LEFT_CORNER                            Corner_2: TOP_RIGHT_CORNER
+* Corner_3: BOT_RIGHT_CORNER                           Corner_3: BOT_RIGHT_CORNER                                      
+*                                       
+*/
+void lhe_advanced_ppp_side_to_rectangle_shape (uint32_t **downsampled_side, float ***ppp,
+                                               uint8_t corner_0, uint8_t corner_1, uint8_t corner_2, uint8_t corner_3, 
+                                               int block_length, float ppp_max, 
+                                               int block_x, int block_y) 
+{
+    float ppp_corner_0, ppp_corner_1, ppp_corner_2, ppp_corner_3, side_0, side_1, side_average, side_min, side_max, add;
+    
+    uint32_t downsampled_block;
+    
+    ppp_corner_0 = ppp[block_y][block_x][corner_0];
+    ppp_corner_1 = ppp[block_y][block_x][corner_1];
+    ppp_corner_2 = ppp[block_y][block_x][corner_2];
+    ppp_corner_3 = ppp[block_y][block_x][corner_3];
+  
+    side_0 = ppp_corner_0 + ppp_corner_1;
+    side_1 = ppp_corner_2 + ppp_corner_3;
+    
+    side_average = side_0;
+    
+    if (side_0 != side_1) {
+        
+        if (side_0 < side_1) {
+            side_min = side_1; //side_min is the side whose ppp summation is bigger 
+            side_max = side_0; //side max is the side whose resolution is bigger and ppp summation is lower
+        } else {
+            side_min = side_0;
+            side_max = side_1;
+        }
+        
+        side_average=side_max;
+    }
+    
+    downsampled_block = ((2 * block_length -1 ) / side_average) + 1;
+    
+    downsampled_side [block_y][block_x] = downsampled_block; 
+    
+    side_average=2*block_length/downsampled_block;
+    
+    
+    
+    //adjust side 0
+    //--------------
+    if (ppp_corner_0<=ppp_corner_1)
+    {       
+        ppp_corner_0=side_average*ppp_corner_0/side_0;
+
+        if (ppp_corner_0<PPP_MIN) {ppp_corner_0=PPP_MIN;}//PPPmin is 1 a PPP value <1 is not possible
+
+        add = 0;
+        ppp_corner_1=side_average-ppp_corner_0;
+        if (ppp_corner_1>ppp_max) {add=ppp_corner_1-ppp_max; ppp_corner_1=ppp_max;}
+
+        ppp_corner_0+=add;
+    }
+    else
+    {
+        ppp_corner_1=side_average*ppp_corner_1/side_0;
+
+        if (ppp_corner_1<PPP_MIN) { ppp_corner_1=PPP_MIN;}//PPPmin is 1 a PPP value <1 is not possible
+        
+        add=0;
+        ppp_corner_0=side_average-ppp_corner_1;
+        if (ppp_corner_0>ppp_max) {add=ppp_corner_0-ppp_max; ppp_corner_0=ppp_max;}
+
+        ppp_corner_1+=add;
+
+    }
+
+    //adjust side 1
+    if (ppp_corner_2<=ppp_corner_3)
+    {       
+        ppp_corner_2=side_average*ppp_corner_2/side_1;
+
+        
+        if (ppp_corner_2<PPP_MIN) {ppp_corner_2=PPP_MIN;}// PPP can not be <PPP_MIN
+        
+        add=0;
+        ppp_corner_3=side_average-ppp_corner_2;
+        if (ppp_corner_3>ppp_max) {add=ppp_corner_3-ppp_max; ppp_corner_3=ppp_max;}
+
+        ppp_corner_2+=add;
+    }
+    else
+    {
+        ppp_corner_3=side_average*ppp_corner_3/side_1;
+
+        if (ppp_corner_3<PPP_MIN) {ppp_corner_3=PPP_MIN;}
+
+        add=0;
+        ppp_corner_2=side_average-ppp_corner_3;
+        if (ppp_corner_2>ppp_max) {add=ppp_corner_2-ppp_max; ppp_corner_2=ppp_max;}
+        ppp_corner_3+=add;
+
+    }
+    
+    ppp[block_y][block_x][corner_0] = ppp_corner_0;
+    ppp[block_y][block_x][corner_1] = ppp_corner_1;
+    ppp[block_y][block_x][corner_2] = ppp_corner_2;
+    ppp[block_y][block_x][corner_3] = ppp_corner_3;
+  
+}
+
+
+/**
  * LHE Precomputation 
  * 
  * Precomputation methods for both LHE encoder and decoder .
