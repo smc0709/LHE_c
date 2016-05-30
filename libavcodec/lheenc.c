@@ -226,6 +226,37 @@ static uint64_t lhe_advanced_gen_huffman (LheHuffEntry *he_Y, LheHuffEntry *he_U
     
 }
 
+static uint8_t lhe_advanced_translate_pr_into_mesh (float perceptual_relevance) 
+{
+    uint8_t pr_interval;
+    if (perceptual_relevance == PR_QUANT_0) 
+    {
+        pr_interval = PR_INTERVAL_0;
+    } 
+    else if (perceptual_relevance == PR_QUANT_1) 
+    {
+        pr_interval = PR_INTERVAL_1;
+    }
+    else if (perceptual_relevance == PR_QUANT_2) 
+    {
+        pr_interval = PR_INTERVAL_2;
+    }
+    else if (perceptual_relevance == PR_QUANT_3) 
+    {
+        pr_interval = PR_INTERVAL_3;
+    }
+    else if (perceptual_relevance == PR_QUANT_4) 
+    {
+        pr_interval = PR_INTERVAL_4;
+    }
+    else if (perceptual_relevance == PR_QUANT_5) 
+    {
+        pr_interval = PR_INTERVAL_5;
+    }
+   
+    return pr_interval;
+}
+
 static int lhe_advanced_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
                                        int image_size_Y, int width_Y, int height_Y,
                                        int image_size_UV, int width_UV, int height_UV,
@@ -239,7 +270,7 @@ static int lhe_advanced_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
   
     uint8_t *buf;
     uint8_t lhe_mode;
-    uint64_t n_bits_hops, n_bytes, n_bytes_components, total_blocks;
+    uint64_t n_bits_hops, n_bytes, n_bytes_components, n_bytes_mesh, total_blocks;
     uint32_t downsampled_side_x_Y, downsampled_side_x_UV, downsampled_side_y_Y, downsampled_side_y_UV;
     uint32_t xini_Y, xfin_downsampled_Y, yini_Y, yfin_downsampled_Y, xini_UV, xfin_downsampled_UV, yini_UV, yfin_downsampled_UV; 
     uint64_t pix;
@@ -308,9 +339,10 @@ static int lhe_advanced_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
     {
         bytestream_put_byte(&buf, first_pixel_blocks_V[i]);
     }
-    
+          
+    n_bytes_mesh = (PR_MESH_BITS * (total_blocks_width + 1) * (total_blocks_height + 1)) / 8 + 1;
          
-    init_put_bits(&s->pb, buf, LHE_HUFFMAN_TABLE_BYTES + n_bytes_components + FILE_OFFSET_BYTES);
+    init_put_bits(&s->pb, buf, LHE_HUFFMAN_TABLE_BYTES + n_bytes_mesh + n_bytes_components + FILE_OFFSET_BYTES);
 
     //Write Huffman tables
     for (i=0; i<LHE_MAX_HUFF_SIZE; i++)
@@ -323,8 +355,17 @@ static int lhe_advanced_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
     {
         if (he_UV[i].len==255) he_UV[i].len=15;
         put_bits(&s->pb, LHE_HUFFMAN_NODE_BITS, he_UV[i].len);
-    }   
+    } 
     
+    for (int j=0; j<total_blocks_height+1; j++) 
+    {
+        for (int i=0; i<total_blocks_width+1; i++) 
+        { 
+            put_bits(&s->pb, PR_INTERVAL_BITS, lhe_advanced_translate_pr_into_mesh(perceptual_relevance_x[j][i]));
+            put_bits(&s->pb, PR_INTERVAL_BITS, lhe_advanced_translate_pr_into_mesh(perceptual_relevance_y[j][i]));
+
+        }
+    }
     
     //Write file
     for (int block_y=0; block_y<total_blocks_height; block_y++) 
