@@ -143,6 +143,56 @@ static void lhe_basic_read_file_symbols (LheState *s, LheHuffEntry *he, uint32_t
     }
 }
 
+static void lhe_advanced_read_file_symbols (LheState *s, LheHuffEntry *he, uint8_t *symbols, 
+                                            uint32_t width_image, uint32_t height_image, 
+                                            uint32_t block_width, uint32_t block_height,
+                                            uint32_t downsampled_x_side, uint32_t downsampled_y_side,
+                                            uint32_t block_x, uint32_t block_y) 
+{
+    uint8_t symbol, count_bits;
+    int huffman_symbol;
+    uint32_t xini, xfin_downsampled, yini, yfin_downsampled;
+    uint32_t pix;
+    
+    symbol = NO_SYMBOL;
+    huffman_symbol = 0;
+    
+    xini = block_x * block_width;
+
+    xfin_downsampled = xini + downsampled_x_side;
+    if (xfin_downsampled>width_image) 
+    {
+        xfin_downsampled = width_image;
+    }
+    yini = block_y * block_height;
+    yfin_downsampled = yini + downsampled_y_side;
+    if (yfin_downsampled > height_image) 
+    {
+        yfin_downsampled = height_image;
+    }
+
+    for (int y=yini; y<yfin_downsampled;y++) 
+    {
+        for(int x=xini; x<xfin_downsampled;) 
+        {
+            pix = y * width_image + x;
+
+            huffman_symbol = (huffman_symbol<<1) | get_bits(&s->gb, 1);
+            count_bits++;
+            
+            symbol = lhe_translate_huffman_into_symbol(huffman_symbol, he, pix, count_bits);        
+            
+            if (symbol != NO_SYMBOL) 
+            {
+                symbols[pix] = symbol;
+                x++;
+                huffman_symbol = 0;
+                count_bits = 0;
+            }
+        }
+    }
+}
+
 static float lhe_advance_translate_pr_interval_to_pr_quant (uint8_t perceptual_relevance_interval)
 {
     float perceptual_relevance_quant;
@@ -193,12 +243,21 @@ static void lhe_advanced_read_mesh (LheState *s,
                         
             perceptual_relevance_x[block_y][block_x] = lhe_advance_translate_pr_interval_to_pr_quant(perceptual_relevance_x_interval);
             perceptual_relevance_y[block_y][block_x] = lhe_advance_translate_pr_interval_to_pr_quant(perceptual_relevance_y_interval);
-            /*
+            
+        }
+    }
+    
+
+    for (int block_y=0; block_y<total_blocks_height; block_y++)
+    {
+        for (int block_x=0; block_x<total_blocks_width; block_x++)
+        {
+
             ppp_max = lhe_advanced_perceptual_relevance_to_ppp(ppp_x, ppp_y, 
                                                                perceptual_relevance_x, perceptual_relevance_y, 
                                                                compression_factor, ppp_max_theoric, 
                                                                block_x, block_y);
-            
+             
             //Adjust horizontal side
             lhe_advanced_ppp_side_to_rectangle_shape (downsampled_side_x_array, ppp_x,
                                                       TOP_LEFT_CORNER, TOP_RIGHT_CORNER, BOT_LEFT_CORNER, BOT_RIGHT_CORNER,
@@ -210,9 +269,30 @@ static void lhe_advanced_read_mesh (LheState *s,
                                                      TOP_LEFT_CORNER, BOT_LEFT_CORNER, TOP_RIGHT_CORNER, BOT_RIGHT_CORNER,
                                                      block_height, ppp_max_theoric,
                                                      block_x, block_y);
-                                                     */
+     
         }
+    }
+    /*
+    av_log(NULL, AV_LOG_INFO, "DOWNSAMPLED X \n");
+    
+    for (int i=0; i<total_blocks_height; i++) {
+        for (int j=0; j<total_blocks_width; j++) {
+            av_log(NULL, AV_LOG_INFO, "%d;", downsampled_side_x_array[i][j]);
+        }
+        av_log(NULL, AV_LOG_INFO, "\n");
+
     }  
+    
+    av_log(NULL, AV_LOG_INFO, "DOWNSAMPLED Y \n");
+    
+    for (int i=0; i<total_blocks_height; i++) {
+        for (int j=0; j<total_blocks_width; j++) {
+            av_log(NULL, AV_LOG_INFO, "%d;", downsampled_side_y_array[i][j]);
+        }
+        av_log(NULL, AV_LOG_INFO, "\n");
+
+    } 
+    */
 }
 
 
@@ -434,6 +514,7 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
     float ***ppp_x, ***ppp_y;
     float ppp_max_theoric, compression_factor;
     uint32_t **downsampled_side_x_array, **downsampled_side_y_array;
+    uint32_t downsampled_side_x_Y, downsampled_side_x_UV, downsampled_side_y_Y, downsampled_side_y_UV;
 
     LheHuffEntry he_Y[LHE_MAX_HUFF_SIZE];
     LheHuffEntry he_UV[LHE_MAX_HUFF_SIZE];
@@ -560,6 +641,9 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
         block_width_Y = (width_Y-1)/total_blocks_width + 1;
         block_height_Y = (height_Y-1)/total_blocks_height + 1;
         
+        block_width_UV = (block_width_Y - 1)/CHROMA_FACTOR_WIDTH + 1;
+        block_height_UV = (block_height_Y - 1)/CHROMA_FACTOR_HEIGHT + 1;
+        
         ppp_max_theoric = block_width_Y/SIDE_MIN;
         compression_factor = COMPRESSION_FACTOR;
 
@@ -570,7 +654,73 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
                                downsampled_side_x_array, downsampled_side_y_array,
                                ppp_max_theoric, compression_factor,
                                block_width_Y, block_height_Y, 
-                               total_blocks_width, total_blocks_height) ;  
+                               total_blocks_width, total_blocks_height) ; 
+        
+                          
+        for (int block_y=0; block_y<total_blocks_height; block_y++)
+        {
+            for (int block_x=0; block_x<total_blocks_width; block_x++)
+            {
+                downsampled_side_x_Y = downsampled_side_x_array[block_y][block_x];
+                downsampled_side_y_Y = downsampled_side_y_array[block_y][block_x];
+            
+                downsampled_side_x_UV = (downsampled_side_x_Y - 1) / CHROMA_FACTOR_WIDTH + 1;
+                downsampled_side_y_UV = (downsampled_side_y_Y - 1) / CHROMA_FACTOR_HEIGHT + 1;
+            
+                lhe_advanced_read_file_symbols (s, he_Y, hops_Y, 
+                                                width_Y, height_Y, 
+                                                block_width_Y, block_height_Y,
+                                                downsampled_side_x_Y, downsampled_side_y_Y,
+                                                block_x, block_y) ;                                             
+                                               
+                lhe_advanced_read_file_symbols (s, he_UV, hops_U, 
+                                                width_UV, height_UV, 
+                                                block_width_UV, block_height_UV,
+                                                downsampled_side_x_UV, downsampled_side_y_UV,
+                                                block_x, block_y) ;                                             
+                                              
+                lhe_advanced_read_file_symbols (s, he_UV, hops_V, 
+                                                width_UV, height_UV, 
+                                                block_width_UV, block_height_UV,
+                                                downsampled_side_x_UV, downsampled_side_y_UV,
+                                                block_x, block_y) ;
+                                                
+            }
+        }
+        
+        /*
+        av_log(NULL, AV_LOG_INFO, "HOPS Y \n");
+        
+        for (int i=0; i<height_Y; i++) {
+            for (int j=0; j<width_Y; j++) {
+                av_log(NULL, AV_LOG_INFO, "%d;", hops_Y[j*width_Y + i]);
+            }
+            av_log(NULL, AV_LOG_INFO, "\n");
+
+        }  
+        
+        
+        av_log(NULL, AV_LOG_INFO, "HOPS U \n");
+        
+        for (int i=0; i<height_UV; i++) {
+            for (int j=0; j<width_UV; j++) {
+                av_log(NULL, AV_LOG_INFO, "%d;", hops_U[j*width_UV + i]);
+            }
+            av_log(NULL, AV_LOG_INFO, "\n");
+
+        } 
+        
+         av_log(NULL, AV_LOG_INFO, "HOPS V \n");
+        
+        for (int i=0; i<height_UV; i++) {
+            for (int j=0; j<width_UV; j++) {
+                av_log(NULL, AV_LOG_INFO, "%d;", hops_V[j*width_UV + i]);
+            }
+            av_log(NULL, AV_LOG_INFO, "\n");
+
+        } 
+        */
+
                                
     }
     else 

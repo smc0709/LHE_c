@@ -414,8 +414,8 @@ static int lhe_advanced_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
                     pix = y*width_Y + x;
                     put_bits(&s->pb, he_Y[hops_Y[pix]].len , he_Y[hops_Y[pix]].code);
                 }
-            }  
-            
+            }            
+           
             //CHROMINANCE U
             for (int y=yini_UV; y<yfin_downsampled_UV; y++) 
             {
@@ -424,7 +424,7 @@ static int lhe_advanced_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
                     put_bits(&s->pb, he_UV[hops_U[pix]].len , he_UV[hops_U[pix]].code);
                 }
             } 
-            
+             
             //CHROMINANCE_V
             for (int y=yini_UV; y<yfin_downsampled_UV; y++) 
             {
@@ -432,7 +432,8 @@ static int lhe_advanced_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
                     pix = y*width_UV + x;
                     put_bits(&s->pb, he_UV[hops_V[pix]].len , he_UV[hops_V[pix]].code);
                 }
-            } 
+            }
+            
         }
     }
   
@@ -1798,6 +1799,48 @@ static void lhe_advanced_encode (LheContext *s, const AVFrame *frame,
     }
     
     /*
+     * 
+    av_log(NULL, AV_LOG_INFO, "HOPS Y \n");
+
+    for (int i=0; i<height_Y; i++) {
+        for (int j=0; j<width_Y; j++) {
+            av_log(NULL, AV_LOG_INFO, "%d;", hops_Y[j*width_Y + i]);
+        }
+    av_log(NULL, AV_LOG_INFO, "\n");
+
+    }  
+ 
+    av_log(NULL, AV_LOG_INFO, "HOPS U \n");
+
+    for (int i=0; i<height_UV; i++) {
+        for (int j=0; j<width_UV; j++) {
+            av_log(NULL, AV_LOG_INFO, "%d;", hops_U[j*width_UV + i]);
+        }
+        av_log(NULL, AV_LOG_INFO, "\n");
+
+    } 
+
+    av_log(NULL, AV_LOG_INFO, "HOPS V \n");
+
+    for (int i=0; i<height_UV; i++) {
+        for (int j=0; j<width_UV; j++) {
+            av_log(NULL, AV_LOG_INFO, "%d;", hops_V[j*width_UV + i]);
+        }
+        av_log(NULL, AV_LOG_INFO, "\n");
+
+    } 
+    
+    
+    av_log(NULL, AV_LOG_INFO, "DOWNSAMPLED X \n");
+    
+    for (int i=0; i<total_blocks_height; i++) {
+        for (int j=0; j<total_blocks_width; j++) {
+            av_log(NULL, AV_LOG_INFO, "%d;", downsampled_side_x_array[i][j]);
+        }
+        av_log(NULL, AV_LOG_INFO, "\n");
+
+    } 
+    
     av_log(NULL, AV_LOG_INFO, "PERCEPTUAL RELEVANCE X \n");
     
     for (int i=0; i<total_blocks_height+1; i++) {
@@ -1816,18 +1859,7 @@ static void lhe_advanced_encode (LheContext *s, const AVFrame *frame,
         }
         av_log(NULL, AV_LOG_INFO, "\n");
 
-    }  
-    
-    
-    av_log(NULL, AV_LOG_INFO, "HOPS Y \n");
-    
-    for (int i=0; i<height_Y; i++) {
-        for (int j=0; j<width_Y; j++) {
-            av_log(NULL, AV_LOG_INFO, "%d;", hops_Y[i*width_Y + j]);
-        }
-        av_log(NULL, AV_LOG_INFO, "\n");
-
-    }  
+    }   
     */
  
 }
