@@ -272,27 +272,95 @@ static void lhe_advanced_read_mesh (LheState *s,
      
         }
     }
-    /*
-    av_log(NULL, AV_LOG_INFO, "DOWNSAMPLED X \n");
-    
-    for (int i=0; i<total_blocks_height; i++) {
-        for (int j=0; j<total_blocks_width; j++) {
-            av_log(NULL, AV_LOG_INFO, "%d;", downsampled_side_x_array[i][j]);
-        }
-        av_log(NULL, AV_LOG_INFO, "\n");
+}
 
-    }  
+static void lhe_advanced_decode_one_hop_per_pixel_block (LheBasicPrec *prec, uint8_t *hops, uint8_t *image,
+                                                         uint32_t width, uint32_t height, int linesize,
+                                                         uint8_t *first_color_block, uint32_t total_blocks_width,
+                                                         uint32_t downsampled_x_side, uint32_t downsampled_y_side,
+                                                         uint32_t block_x, uint32_t block_y,
+                                                         uint32_t block_width, uint32_t block_height) 
+{
+       
+    //Hops computation.
+    uint32_t xini, xfin_downsampled, yini, yfin_downsampled;
+    bool small_hop, last_small_hop;
+    uint8_t hop, predicted_luminance, hop_1, r_max; 
+    uint32_t pix, pix_hops_data, dif_pix, dif_hops, num_block;
     
-    av_log(NULL, AV_LOG_INFO, "DOWNSAMPLED Y \n");
+    num_block = block_y * total_blocks_width + block_x;
     
-    for (int i=0; i<total_blocks_height; i++) {
-        for (int j=0; j<total_blocks_width; j++) {
-            av_log(NULL, AV_LOG_INFO, "%d;", downsampled_side_y_array[i][j]);
-        }
-        av_log(NULL, AV_LOG_INFO, "\n");
+    xini = block_x * block_width;
+    xfin_downsampled = xini + downsampled_x_side;
+    if (xfin_downsampled>width) 
+    {
+        xfin_downsampled = width;
+    }
+    yini = block_y * block_height;
+    yfin_downsampled = yini + downsampled_y_side;
+    if (yfin_downsampled>height)
+    {
+        yfin_downsampled = height;
+    }
+    
+    small_hop           = false;
+    last_small_hop      = false;        // indicates if last hop is small
+    predicted_luminance = 0;            // predicted signal
+    hop_1               = START_HOP_1;
+    pix                 = 0;            // pixel possition, from 0 to image size        
+    r_max               = PARAM_R;        
+    
+ 
+    pix = yini*linesize + xini; 
+    pix_hops_data = yini*width + xini;
+    dif_pix = linesize - xfin_downsampled + xini;
+    dif_hops = width - xfin_downsampled + xini;
+    
+    for (int y=yini; y < yfin_downsampled; y++)  {
+        for (int x=xini; x < xfin_downsampled; x++)     {
+            
+            hop = hops[pix_hops_data]; 
+  
+            if (x == xini && y==yini) 
+            {
+                predicted_luminance=first_color_block[num_block];//first pixel always is perfectly predicted! :-)  
+            } 
+            else if (y == yini) 
+            {
+                predicted_luminance=image[pix-1];
+            } 
+            else if (x == xini) 
+            {
+                predicted_luminance=image[pix-linesize];
+                last_small_hop=false;
+                hop_1=START_HOP_1;
+            } else if (x == xfin_downsampled -1) 
+            {
+                predicted_luminance=(image[pix-1]+image[pix-linesize])>>1;                                                             
+            } 
+            else 
+            {
+                predicted_luminance=(image[pix-1]+image[pix+1-linesize])>>1;     
+            }
+            
+          
+            //assignment of component_prediction
+            //This is the uncompressed image
+            image[pix]= prec -> prec_luminance[predicted_luminance][r_max][hop_1][hop];
+            
+            //tunning hop1 for the next hop ( "h1 adaptation")
+            //------------------------------------------------
+            H1_ADAPTATION;
 
-    } 
-    */
+            //lets go for the next pixel
+            //--------------------------
+            pix++;
+            pix_hops_data++;
+        }// for x
+        pix+=dif_pix;
+        pix_hops_data+=dif_hops;
+    }// for y
+    
 }
 
 
@@ -508,7 +576,7 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
     uint8_t *component_Y, *component_U, *component_V, *hops_Y, *hops_U, *hops_V;
     uint8_t *first_color_block_Y, *first_color_block_U, *first_color_block_V;
     int  block_width_Y, block_width_UV, block_height_Y, block_height_UV, total_blocks, total_blocks_width, total_blocks_height;
-    int ret, i,j;
+    int ret;
     
     float **perceptual_relevance_x, **perceptual_relevance_y;
     float ***ppp_x, ***ppp_y;
@@ -552,19 +620,19 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
     first_color_block_U = malloc(sizeof(uint8_t) * image_size_UV);
     first_color_block_V = malloc(sizeof(uint8_t) * image_size_UV);
     
-    for (i=0; i<total_blocks; i++) 
+    for (int i=0; i<total_blocks; i++) 
     {
         first_color_block_Y[i] = bytestream_get_byte(&lhe_data); 
     }
 
     
-    for (i=0; i<total_blocks; i++) 
+    for (int i=0; i<total_blocks; i++) 
     {
         first_color_block_U[i] = bytestream_get_byte(&lhe_data); 
     }
     
         
-    for (i=0; i<total_blocks; i++) 
+    for (int i=0; i<total_blocks; i++) 
     {
         first_color_block_V[i] = bytestream_get_byte(&lhe_data); 
     }
@@ -602,11 +670,11 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
         
         ppp_x = malloc(sizeof(float**) * (total_blocks_height+1));  
     
-        for (i=0; i<total_blocks_height+1; i++) 
+        for (int i=0; i<total_blocks_height+1; i++) 
         {
             ppp_x[i] = malloc(sizeof(float*) * (total_blocks_width+1));
             
-            for (j=0; j<total_blocks_width+1; j++) 
+            for (int j=0; j<total_blocks_width+1; j++) 
             {
                 ppp_x[i][j] = malloc(sizeof(float) * CORNERS);
             }
@@ -614,11 +682,11 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
         
         ppp_y = malloc(sizeof(float**) * (total_blocks_height+1));  
         
-        for (i=0; i<total_blocks_height+1; i++) 
+        for (int i=0; i<total_blocks_height+1; i++) 
         {
             ppp_y[i] = malloc(sizeof(float*) * (total_blocks_width+1));
             
-            for (j=0; j<total_blocks_width+1; j++) 
+            for (int j=0; j<total_blocks_width+1; j++) 
             {
                 ppp_y[i][j] = malloc(sizeof(float) * CORNERS);
             }
@@ -666,62 +734,65 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
             
                 downsampled_side_x_UV = (downsampled_side_x_Y - 1) / CHROMA_FACTOR_WIDTH + 1;
                 downsampled_side_y_UV = (downsampled_side_y_Y - 1) / CHROMA_FACTOR_HEIGHT + 1;
+                
             
                 lhe_advanced_read_file_symbols (s, he_Y, hops_Y, 
                                                 width_Y, height_Y, 
                                                 block_width_Y, block_height_Y,
                                                 downsampled_side_x_Y, downsampled_side_y_Y,
-                                                block_x, block_y) ;                                             
-                                               
+                                                block_x, block_y) ;   
+                                      
+                                            
                 lhe_advanced_read_file_symbols (s, he_UV, hops_U, 
                                                 width_UV, height_UV, 
                                                 block_width_UV, block_height_UV,
                                                 downsampled_side_x_UV, downsampled_side_y_UV,
-                                                block_x, block_y) ;                                             
-                                              
+                                                block_x, block_y) ;
+
                 lhe_advanced_read_file_symbols (s, he_UV, hops_V, 
                                                 width_UV, height_UV, 
                                                 block_width_UV, block_height_UV,
                                                 downsampled_side_x_UV, downsampled_side_y_UV,
-                                                block_x, block_y) ;
-                                                
+                                                block_x, block_y) ;                                                        
             }
         }
         
-        /*
-        av_log(NULL, AV_LOG_INFO, "HOPS Y \n");
-        
-        for (int i=0; i<height_Y; i++) {
-            for (int j=0; j<width_Y; j++) {
-                av_log(NULL, AV_LOG_INFO, "%d;", hops_Y[j*width_Y + i]);
+          
+        for (int block_y=0; block_y<total_blocks_height; block_y++)
+        {
+            for (int block_x=0; block_x<total_blocks_width; block_x++)
+            {
+                
+                downsampled_side_x_Y = downsampled_side_x_array[block_y][block_x];
+                downsampled_side_y_Y = downsampled_side_y_array[block_y][block_x];
+            
+                downsampled_side_x_UV = (downsampled_side_x_Y - 1) / CHROMA_FACTOR_WIDTH + 1;
+                downsampled_side_y_UV = (downsampled_side_y_Y - 1) / CHROMA_FACTOR_HEIGHT + 1;
+                        
+                //Luminance
+                lhe_advanced_decode_one_hop_per_pixel_block(&s->prec, hops_Y, component_Y, 
+                                                            width_Y, height_Y, s->frame->linesize[0], 
+                                                            first_color_block_Y, total_blocks_width, 
+                                                            downsampled_side_x_Y, downsampled_side_y_Y,
+                                                            block_x, block_y, block_width_Y, block_height_Y);               
+
+                //Chrominance U
+                lhe_advanced_decode_one_hop_per_pixel_block(&s->prec, hops_U, component_U, 
+                                                            width_UV, height_UV, s->frame->linesize[1],
+                                                            first_color_block_U, total_blocks_width, 
+                                                            downsampled_side_x_UV, downsampled_side_y_UV,
+                                                            block_x, block_y, block_width_UV, block_height_UV);
+           
+                //Chrominance V
+                lhe_advanced_decode_one_hop_per_pixel_block(&s->prec, hops_V, component_V, 
+                                                            width_UV, height_UV, s->frame->linesize[2],
+                                                            first_color_block_V, total_blocks_width, 
+                                                            downsampled_side_x_UV, downsampled_side_y_UV,
+                                                            block_x, block_y, block_width_UV, block_height_UV);
+                                                            
+                                                    
             }
-            av_log(NULL, AV_LOG_INFO, "\n");
-
-        }  
-        
-        
-        av_log(NULL, AV_LOG_INFO, "HOPS U \n");
-        
-        for (int i=0; i<height_UV; i++) {
-            for (int j=0; j<width_UV; j++) {
-                av_log(NULL, AV_LOG_INFO, "%d;", hops_U[j*width_UV + i]);
-            }
-            av_log(NULL, AV_LOG_INFO, "\n");
-
-        } 
-        
-         av_log(NULL, AV_LOG_INFO, "HOPS V \n");
-        
-        for (int i=0; i<height_UV; i++) {
-            for (int j=0; j<width_UV; j++) {
-                av_log(NULL, AV_LOG_INFO, "%d;", hops_V[j*width_UV + i]);
-            }
-            av_log(NULL, AV_LOG_INFO, "\n");
-
-        } 
-        */
-
-                               
+        }      
     }
     else 
     {
@@ -756,8 +827,7 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
         }
     }
     
-    
-    
+  
     av_log(NULL, AV_LOG_INFO, "DECODING...Width %d Height %d \n", width_Y, height_Y);
 
     if ((ret = av_frame_ref(data, s->frame)) < 0)

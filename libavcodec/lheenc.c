@@ -367,6 +367,7 @@ static int lhe_advanced_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
 
         }
     }
+
     
     //Write file
     for (int block_y=0; block_y<total_blocks_height; block_y++) 
@@ -406,7 +407,7 @@ static int lhe_advanced_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
             {
                 yfin_downsampled_UV = height_UV;
             }
-            
+         
             //LUMINANCE
             for (int y=yini_Y; y<yfin_downsampled_Y; y++) 
             {
@@ -414,8 +415,8 @@ static int lhe_advanced_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
                     pix = y*width_Y + x;
                     put_bits(&s->pb, he_Y[hops_Y[pix]].len , he_Y[hops_Y[pix]].code);
                 }
-            }            
-           
+            }                    
+            
             //CHROMINANCE U
             for (int y=yini_UV; y<yfin_downsampled_UV; y++) 
             {
@@ -424,7 +425,7 @@ static int lhe_advanced_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
                     put_bits(&s->pb, he_UV[hops_U[pix]].len , he_UV[hops_U[pix]].code);
                 }
             } 
-             
+            
             //CHROMINANCE_V
             for (int y=yini_UV; y<yfin_downsampled_UV; y++) 
             {
@@ -1539,6 +1540,7 @@ static void lhe_advanced_encode_block (LheBasicPrec *prec, uint8_t *downsampled_
        
     dif_pix = width_image - xfin_downsampled + xini;
     dif_line = linesize - xfin_downsampled + xini;   
+    
 
 
     for (int y=yini; y < yfin_downsampled; y++)  {
@@ -1576,7 +1578,7 @@ static void lhe_advanced_encode_block (LheBasicPrec *prec, uint8_t *downsampled_
             hop_number = prec->best_hop[r_max][hop_1][original_color][predicted_luminance]; 
             hops[pix]= hop_number;
             component_prediction[pix]=prec -> prec_luminance[predicted_luminance][r_max][hop_1][hop_number];
-            
+
             //tunning hop1 for the next hop ( "h1 adaptation")
             //------------------------------------------------
             H1_ADAPTATION;
@@ -1735,7 +1737,8 @@ static void lhe_advanced_encode (LheContext *s, const AVFrame *frame,
             ppp_x_1_Y=ppp_x[block_y][block_x][TOP_RIGHT_CORNER];   
             ppp_y_0_Y=ppp_y[block_y][block_x][TOP_LEFT_CORNER];
             ppp_y_1_Y=ppp_y[block_y][block_x][BOT_LEFT_CORNER];
-                      
+            
+            
             //Downsamples using component original data
             lhe_advanced_downsample_sps (ppp_x_0_Y, ppp_x_1_Y, ppp_y_0_Y, ppp_y_1_Y,
                                          downsampled_side_x_Y, downsampled_side_y_Y,
@@ -1762,6 +1765,7 @@ static void lhe_advanced_encode (LheContext *s, const AVFrame *frame,
             ppp_y_0_UV= (ppp_y_0_Y - 1) / CHROMA_FACTOR_HEIGHT + 1; 
             ppp_y_1_UV= (ppp_y_1_Y - 1) / CHROMA_FACTOR_HEIGHT + 1; 
             
+
             //CHROMINANCE U
             lhe_advanced_downsample_sps (ppp_x_0_UV, ppp_x_1_UV, ppp_y_0_UV, ppp_y_1_UV,
                                          downsampled_side_x_UV, downsampled_side_y_UV,
@@ -1777,7 +1781,6 @@ static void lhe_advanced_encode (LheContext *s, const AVFrame *frame,
                                        first_color_block_U, total_blocks_width,
                                        block_x,  block_y,
                                        block_width_UV,  block_height_UV);
-           
              
             //CHROMINANCE_V
             lhe_advanced_downsample_sps (ppp_x_0_UV, ppp_x_1_UV, ppp_y_0_UV, ppp_y_1_UV,
@@ -1797,71 +1800,26 @@ static void lhe_advanced_encode (LheContext *s, const AVFrame *frame,
                                        block_width_UV,  block_height_UV);                                
         }
     }
-    
     /*
-     * 
     av_log(NULL, AV_LOG_INFO, "HOPS Y \n");
+
+        for (int i=0; i<height_Y; i++) {
+            for (int j=0; j<width_Y; j++) {
+                av_log(NULL, AV_LOG_INFO, "%d;", hops_Y[i*width_Y + j]);
+            }
+        av_log(NULL, AV_LOG_INFO, "\n");
+        }
+    
+    av_log(NULL, AV_LOG_INFO, "COMPONENT PREDICTION Y \n");
 
     for (int i=0; i<height_Y; i++) {
         for (int j=0; j<width_Y; j++) {
-            av_log(NULL, AV_LOG_INFO, "%d;", hops_Y[j*width_Y + i]);
+            av_log(NULL, AV_LOG_INFO, "%d;", component_prediction_Y[j*width_Y + i]);
         }
     av_log(NULL, AV_LOG_INFO, "\n");
 
-    }  
- 
-    av_log(NULL, AV_LOG_INFO, "HOPS U \n");
-
-    for (int i=0; i<height_UV; i++) {
-        for (int j=0; j<width_UV; j++) {
-            av_log(NULL, AV_LOG_INFO, "%d;", hops_U[j*width_UV + i]);
-        }
-        av_log(NULL, AV_LOG_INFO, "\n");
-
     } 
-
-    av_log(NULL, AV_LOG_INFO, "HOPS V \n");
-
-    for (int i=0; i<height_UV; i++) {
-        for (int j=0; j<width_UV; j++) {
-            av_log(NULL, AV_LOG_INFO, "%d;", hops_V[j*width_UV + i]);
-        }
-        av_log(NULL, AV_LOG_INFO, "\n");
-
-    } 
-    
-    
-    av_log(NULL, AV_LOG_INFO, "DOWNSAMPLED X \n");
-    
-    for (int i=0; i<total_blocks_height; i++) {
-        for (int j=0; j<total_blocks_width; j++) {
-            av_log(NULL, AV_LOG_INFO, "%d;", downsampled_side_x_array[i][j]);
-        }
-        av_log(NULL, AV_LOG_INFO, "\n");
-
-    } 
-    
-    av_log(NULL, AV_LOG_INFO, "PERCEPTUAL RELEVANCE X \n");
-    
-    for (int i=0; i<total_blocks_height+1; i++) {
-        for (int j=0; j<total_blocks_width+1; j++) {
-            av_log(NULL, AV_LOG_INFO, "%.4f;", perceptual_relevance_x[i][j]);
-        }
-        av_log(NULL, AV_LOG_INFO, "\n");
-
-    }  
-    
-    av_log(NULL, AV_LOG_INFO, "PERCEPTUAL RELEVANCE Y \n");
-    
-    for (int i=0; i<total_blocks_height+1; i++) {
-        for (int j=0; j<total_blocks_width+1; j++) {
-            av_log(NULL, AV_LOG_INFO, "%.4f;", perceptual_relevance_y[i][j]);
-        }
-        av_log(NULL, AV_LOG_INFO, "\n");
-
-    }   
     */
- 
 }
 
 
@@ -2004,7 +1962,8 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
             perceptual_relevance_y[i] = malloc(sizeof(float) * (total_blocks_width+1));
         }   
     
-    
+   
+
         lhe_advanced_encode (s, frame,
                              component_original_data_Y, component_original_data_U, component_original_data_V,
                              perceptual_relevance_x, perceptual_relevance_y,
@@ -2018,7 +1977,8 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
                              block_width_Y, block_height_Y, block_width_UV, block_height_UV);
         
         gettimeofday(&after , NULL);
- 
+
+        
         n_bytes = lhe_advanced_write_lhe_file(avctx, pkt,
                                               image_size_Y, width_Y, height_Y,
                                               image_size_UV, width_UV, height_UV,
@@ -2027,7 +1987,15 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
                                               first_color_block_Y, first_color_block_U, first_color_block_V,
                                               perceptual_relevance_x, perceptual_relevance_y,
                                               downsampled_side_x_array, downsampled_side_y_array,
-                                              hops_Y, hops_U, hops_V);                                                
+                                              hops_Y, hops_U, hops_V);   
+                  /*                            
+        n_bytes = lhe_basic_write_lhe_file(avctx, pkt,image_size_Y,  width_Y,  height_Y,
+                                           image_size_UV,  width_UV,  height_UV,
+                                           total_blocks_width, total_blocks_height,
+                                           first_color_block_Y, first_color_block_U, first_color_block_V, 
+                                           hops_Y, hops_U, hops_V); 
+                                           */
+                                             
     }
 
      
