@@ -1242,29 +1242,29 @@ static void lhe_advanced_downsample_sps (float ppp_x_0, float ppp_x_1, float ppp
     
     
     xini = block_x * block_width;
-    xfin = xini + downsampled_x_side -1; 
+    xfin = xini + downsampled_x_side; 
     if (xfin >= width_image) {
-        xfin = width_image - 1;
+        xfin = width_image;
     }
     
-    xfin_downsampled = xini + downsampled_x_side - 1;
+    xfin_downsampled = xini + downsampled_x_side;
     if (xfin_downsampled >= width_image)
     {
-        xfin_downsampled = width_image-1;
+        xfin_downsampled = width_image;
     }
     
     yini = block_y * block_height;
-    yfin = yini + block_height - 1;
+    yfin = yini + block_height;
     
     if (yfin >= height_image)
     {
-        yfin = height_image-1;
+        yfin = height_image;
     }
     
-    yfin_downsampled = yini + downsampled_y_side - 1;  
+    yfin_downsampled = yini + downsampled_y_side;  
     if (yfin_downsampled >= height_image)
     {
-        yfin_downsampled = height_image-1;
+        yfin_downsampled = height_image;
     }
       
     ppp_x = (ppp_x_0 + ppp_x_1) / 2.0;
@@ -1273,15 +1273,15 @@ static void lhe_advanced_downsample_sps (float ppp_x_0, float ppp_x_1, float ppp
     ppp_x_medium = ppp_x / 2.0;
     ppp_y_medium = ppp_y / 2.0;
 
-    y_float = yini + ppp_y_medium + 0.5; 
+    y_float = yini + ppp_y_medium ; 
     y = (uint32_t) y_float;
 
-    for (int y_sc=yini;y_sc<=yfin_downsampled;y_sc++)
+    for (int y_sc=yini;y_sc < yfin_downsampled;y_sc++)
     {
-        x_float = xini + ppp_x_medium + 0.5;
+        x_float = xini + ppp_x_medium;
         x = (uint32_t) x_float;
             
-        for (int x_sc=xini;x_sc<=xfin_downsampled;x_sc++)
+        for (int x_sc=xini;x_sc < xfin_downsampled;x_sc++)
         {
             downsampled_data[y_sc*width_image+x_sc]=component_original_data[y*width_image+x];
          
@@ -1809,7 +1809,8 @@ static void lhe_advanced_encode (LheContext *s, const AVFrame *frame,
             }
         av_log(NULL, AV_LOG_INFO, "\n");
         }
-    
+    */
+    /*
     av_log(NULL, AV_LOG_INFO, "COMPONENT PREDICTION Y \n");
 
     for (int i=0; i<height_Y; i++) {
@@ -1820,6 +1821,7 @@ static void lhe_advanced_encode (LheContext *s, const AVFrame *frame,
 
     } 
     */
+    
 }
 
 
@@ -1978,7 +1980,7 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
         
         gettimeofday(&after , NULL);
 
-        
+        /*
         n_bytes = lhe_advanced_write_lhe_file(avctx, pkt,
                                               image_size_Y, width_Y, height_Y,
                                               image_size_UV, width_UV, height_UV,
@@ -1987,15 +1989,13 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
                                               first_color_block_Y, first_color_block_U, first_color_block_V,
                                               perceptual_relevance_x, perceptual_relevance_y,
                                               downsampled_side_x_array, downsampled_side_y_array,
-                                              hops_Y, hops_U, hops_V);   
-                  /*                            
-        n_bytes = lhe_basic_write_lhe_file(avctx, pkt,image_size_Y,  width_Y,  height_Y,
+                                              hops_Y, hops_U, hops_V);    
+                                              */
+         n_bytes = lhe_basic_write_lhe_file(avctx, pkt,image_size_Y,  width_Y,  height_Y,
                                            image_size_UV,  width_UV,  height_UV,
                                            total_blocks_width, total_blocks_height,
                                            first_color_block_Y, first_color_block_U, first_color_block_V, 
-                                           hops_Y, hops_U, hops_V); 
-                                           */
-                                             
+                                           hops_Y, hops_U, hops_V);  
     }
 
      
