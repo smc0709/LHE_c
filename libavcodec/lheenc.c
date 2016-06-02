@@ -1980,7 +1980,7 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
         
         gettimeofday(&after , NULL);
 
-        /*
+        
         n_bytes = lhe_advanced_write_lhe_file(avctx, pkt,
                                               image_size_Y, width_Y, height_Y,
                                               image_size_UV, width_UV, height_UV,
@@ -1990,16 +1990,8 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
                                               perceptual_relevance_x, perceptual_relevance_y,
                                               downsampled_side_x_array, downsampled_side_y_array,
                                               hops_Y, hops_U, hops_V);    
-                                              */
-         n_bytes = lhe_basic_write_lhe_file(avctx, pkt,image_size_Y,  width_Y,  height_Y,
-                                           image_size_UV,  width_UV,  height_UV,
-                                           total_blocks_width, total_blocks_height,
-                                           first_color_block_Y, first_color_block_U, first_color_block_V, 
-                                           hops_Y, hops_U, hops_V);  
     }
 
-     
-   
     if(avctx->flags&AV_CODEC_FLAG_PSNR){
         lhe_compute_error_for_psnr (avctx, frame,
                                     height_Y, width_Y, height_UV, width_UV,
