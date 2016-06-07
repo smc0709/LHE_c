@@ -207,26 +207,30 @@ void lhe_advanced_ppp_side_to_rectangle_shape (uint32_t **downsampled_side, floa
                                                int block_length, float ppp_max, 
                                                int block_x, int block_y) 
 {
-    float ppp_corner_0, ppp_corner_1, ppp_corner_2, ppp_corner_3, side_0, side_1, side_average, side_min, side_max, add;
+    float ppp_0, ppp_1, ppp_2, ppp_3, side_0, side_1, side_average, side_min, side_max, add;
     
     uint32_t downsampled_block;
     
-    ppp_corner_0 = ppp[block_y][block_x][corner_0];
-    ppp_corner_1 = ppp[block_y][block_x][corner_1];
-    ppp_corner_2 = ppp[block_y][block_x][corner_2];
-    ppp_corner_3 = ppp[block_y][block_x][corner_3];
+    ppp_0 = ppp[block_y][block_x][corner_0];
+    ppp_1 = ppp[block_y][block_x][corner_1];
+    ppp_2 = ppp[block_y][block_x][corner_2];
+    ppp_3 = ppp[block_y][block_x][corner_3];
   
-    side_0 = ppp_corner_0 + ppp_corner_1;
-    side_1 = ppp_corner_2 + ppp_corner_3;
+    side_0 = ppp_0 + ppp_1;
+    side_1 = ppp_2 + ppp_3;
     
     side_average = side_0;
     
-    if (side_0 != side_1) {
+    if (side_0 != side_1) 
+    {
         
-        if (side_0 < side_1) {
+        if (side_0 < side_1) 
+        {
             side_min = side_1; //side_min is the side whose ppp summation is bigger 
             side_max = side_0; //side max is the side whose resolution is bigger and ppp summation is lower
-        } else {
+        } 
+        else 
+        {
             side_min = side_0;
             side_max = side_1;
         }
@@ -239,68 +243,98 @@ void lhe_advanced_ppp_side_to_rectangle_shape (uint32_t **downsampled_side, floa
     downsampled_side [block_y][block_x] = downsampled_block; 
     
     side_average=2*block_length/downsampled_block;
-    
-    
+       
     
     //adjust side 0
     //--------------
-    if (ppp_corner_0<=ppp_corner_1)
+    if (ppp_0<=ppp_1)
     {       
-        ppp_corner_0=side_average*ppp_corner_0/side_0;
+        ppp_0=side_average*ppp_0/side_0;
 
-        if (ppp_corner_0<PPP_MIN) {ppp_corner_0=PPP_MIN;}//PPPmin is 1 a PPP value <1 is not possible
+        if (ppp_0<PPP_MIN) 
+        {
+            ppp_0=PPP_MIN;
+            
+        }//PPPmin is 1 a PPP value <1 is not possible
 
         add = 0;
-        ppp_corner_1=side_average-ppp_corner_0;
-        if (ppp_corner_1>ppp_max) {add=ppp_corner_1-ppp_max; ppp_corner_1=ppp_max;}
+        ppp_1=side_average-ppp_0;
+        if (ppp_1>ppp_max) 
+        {
+            add=ppp_1-ppp_max; 
+            ppp_1=ppp_max;       
+        }
 
-        ppp_corner_0+=add;
+        ppp_0+=add;
     }
     else
     {
-        ppp_corner_1=side_average*ppp_corner_1/side_0;
+        ppp_1=side_average*ppp_1/side_0;
 
-        if (ppp_corner_1<PPP_MIN) { ppp_corner_1=PPP_MIN;}//PPPmin is 1 a PPP value <1 is not possible
+        if (ppp_1<PPP_MIN) 
+        { 
+            ppp_1=PPP_MIN;    
+        }//PPPmin is 1 a PPP value <1 is not possible
         
         add=0;
-        ppp_corner_0=side_average-ppp_corner_1;
-        if (ppp_corner_0>ppp_max) {add=ppp_corner_0-ppp_max; ppp_corner_0=ppp_max;}
+        ppp_0=side_average-ppp_1;
+        if (ppp_0>ppp_max) 
+        {
+            add=ppp_0-ppp_max; 
+            ppp_0=ppp_max;          
+        }
 
-        ppp_corner_1+=add;
+        ppp_1+=add;
 
     }
 
     //adjust side 1
-    if (ppp_corner_2<=ppp_corner_3)
+    if (ppp_2<=ppp_3)
     {       
-        ppp_corner_2=side_average*ppp_corner_2/side_1;
+        ppp_2=side_average*ppp_2/side_1;
 
         
-        if (ppp_corner_2<PPP_MIN) {ppp_corner_2=PPP_MIN;}// PPP can not be <PPP_MIN
+        if (ppp_2<PPP_MIN) 
+        {
+            ppp_2=PPP_MIN;
+            
+        }// PPP can not be <PPP_MIN
         
         add=0;
-        ppp_corner_3=side_average-ppp_corner_2;
-        if (ppp_corner_3>ppp_max) {add=ppp_corner_3-ppp_max; ppp_corner_3=ppp_max;}
+        ppp_3=side_average-ppp_2;
+        if (ppp_3>ppp_max) 
+        {
+            add=ppp_3-ppp_max; 
+            ppp_3=ppp_max;
+        }
 
-        ppp_corner_2+=add;
+        ppp_2+=add;
     }
     else
     {
-        ppp_corner_3=side_average*ppp_corner_3/side_1;
+        ppp_3=side_average*ppp_3/side_1;
 
-        if (ppp_corner_3<PPP_MIN) {ppp_corner_3=PPP_MIN;}
+        if (ppp_3<PPP_MIN) 
+        {
+            ppp_3=PPP_MIN;
+            
+        }
 
         add=0;
-        ppp_corner_2=side_average-ppp_corner_3;
-        if (ppp_corner_2>ppp_max) {add=ppp_corner_2-ppp_max; ppp_corner_2=ppp_max;}
-        ppp_corner_3+=add;
+        ppp_2=side_average-ppp_3;
+        if (ppp_2>ppp_max) 
+        {
+            add=ppp_2-ppp_max; 
+            ppp_2=ppp_max;           
+        }
+        ppp_3+=add;
 
     }
     
-    ppp[block_y][block_x][corner_0] = ppp_corner_0;
-    ppp[block_y][block_x][corner_1] = ppp_corner_1;
-    ppp[block_y][block_x][corner_2] = ppp_corner_2;
-    ppp[block_y][block_x][corner_3] = ppp_corner_3;
+    ppp[block_y][block_x][corner_0] = ppp_0;
+    ppp[block_y][block_x][corner_1] = ppp_1;
+    ppp[block_y][block_x][corner_2] = ppp_2;
+    ppp[block_y][block_x][corner_3] = ppp_3;
   
 }
 
