@@ -29,6 +29,7 @@
 #define BASIC_LHE 0
 #define ADVANCED_LHE 1
 #define MIDDLE_VALUE false
+#define LUMINANCE_FACTOR 1
 #define CHROMA_FACTOR_WIDTH 2
 #define CHROMA_FACTOR_HEIGHT 1
 #define BLOCK_WIDTH_Y 64
@@ -116,7 +117,7 @@
 #define PR_MESH_BITS 2*PR_INTERVAL_BITS
 
 //Compression
-#define COMPRESSION_FACTOR 0.7//0.14675f//1.749534f
+#define COMPRESSION_FACTOR 0.3//0.14675f//1.749534f
 
 //Offset file
 #define FILE_OFFSET_BYTES 4
@@ -134,6 +135,17 @@ typedef struct LheHuffEntry {
     uint32_t code;
     uint64_t count;
 } LheHuffEntry;
+
+typedef struct AdvancedLheBlock {
+    uint32_t x_ini;
+    uint32_t x_fin;
+    uint32_t x_fin_downsampled;
+    uint32_t y_ini;
+    uint32_t y_fin;
+    uint32_t y_fin_downsampled;
+    uint32_t downsampled_x_side;
+    uint32_t downsampled_y_side;
+} AdvancedLheBlock;
 
 int lhe_generate_huffman_codes(LheHuffEntry *he);
 double time_diff(struct timeval x , struct timeval y);
@@ -158,3 +170,8 @@ void lhe_advanced_ppp_side_to_rectangle_shape (uint32_t **downsampled_side, floa
                                                uint8_t corner_0, uint8_t corner_1, uint8_t corner_2, uint8_t corner_3, 
                                                int block_length, float ppp_max, 
                                                int block_x, int block_y);
+
+void lhe_advanced_ppp_side_to_rectangle_shape_test (AdvancedLheBlock **array_block_Y, AdvancedLheBlock **array_block_UV,
+                                                    float ***ppp_x, float ***ppp_y,
+                                                    int block_length, float ppp_max, 
+                                                    int block_x, int block_y);

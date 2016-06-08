@@ -826,7 +826,34 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
                                             first_color_block_Y, first_color_block_U, first_color_block_V);    
         }
     }
+    /*
+        av_log(NULL, AV_LOG_INFO, "HOPS Y \n");
+
+        for (int i=0; i<height_Y; i++) {
+            for (int j=0; j<width_Y; j++) {
+                av_log(NULL, AV_LOG_INFO, "%d;", hops_Y[i*width_Y + j]);
+            }
+        av_log(NULL, AV_LOG_INFO, "\n");
+    }
+        
+    av_log(NULL, AV_LOG_INFO, "HOPS U \n");
+
+        for (int i=0; i<height_UV; i++) {
+            for (int j=0; j<width_UV; j++) {
+                av_log(NULL, AV_LOG_INFO, "%d;", hops_U[i*width_UV + j]);
+            }
+        av_log(NULL, AV_LOG_INFO, "\n");
+    }
     
+    av_log(NULL, AV_LOG_INFO, "HOPS V \n");
+
+        for (int i=0; i<height_UV; i++) {
+            for (int j=0; j<width_UV; j++) {
+                av_log(NULL, AV_LOG_INFO, "%d;", hops_V[i*width_UV + j]);
+            }
+        av_log(NULL, AV_LOG_INFO, "\n");
+    }
+    */
   
     av_log(NULL, AV_LOG_INFO, "DECODING...Width %d Height %d \n", width_Y, height_Y);
 

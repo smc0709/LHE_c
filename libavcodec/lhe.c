@@ -338,6 +338,279 @@ void lhe_advanced_ppp_side_to_rectangle_shape (uint32_t **downsampled_side, floa
   
 }
 
+void lhe_advanced_ppp_side_to_rectangle_shape_test (AdvancedLheBlock **array_block_Y, AdvancedLheBlock **array_block_UV,
+                                                    float ***ppp_x, float ***ppp_y,
+                                                    int block_length, float ppp_max, 
+                                                    int block_x, int block_y) 
+{
+    float ppp_x_0, ppp_x_1, ppp_x_2, ppp_x_3, ppp_y_0, ppp_y_1, ppp_y_2, ppp_y_3, side_a, side_b, side_c, side_d, side_average, side_min, side_max, add;
+    
+    uint32_t downsampled_block_Y, downsampled_block_UV;
+    
+    //HORIZONTAL ADJUSTMENT
+    ppp_x_0 = ppp_x[block_y][block_x][TOP_LEFT_CORNER];
+    ppp_x_1 = ppp_x[block_y][block_x][TOP_RIGHT_CORNER];
+    ppp_x_2 = ppp_x[block_y][block_x][BOT_LEFT_CORNER];
+    ppp_x_3 = ppp_x[block_y][block_x][BOT_RIGHT_CORNER];
+    
+    side_c = ppp_x_0 + ppp_x_1;
+    side_d = ppp_x_2 + ppp_x_3;
+    
+    side_average = side_c;
+    
+    if (side_c != side_d) 
+    {
+        
+        if (side_c < side_d) 
+        {
+            side_min = side_d; //side_min is the side whose ppp summation is bigger 
+            side_max = side_c; //side max is the side whose resolution is bigger and ppp summation is lower
+        } 
+        else 
+        {
+            side_min = side_c;
+            side_max = side_d;
+        }
+        
+        side_average=side_max;
+    }
+    
+    downsampled_block_Y = ((2 * block_length -1 ) / side_average) + 1;
+    downsampled_block_UV = (downsampled_block_Y - 1) / CHROMA_FACTOR_WIDTH + 1;
+        
+    array_block_Y[block_y][block_x].downsampled_x_side = downsampled_block_Y;
+    array_block_Y[block_y][block_x].x_fin_downsampled = array_block_Y[block_y][block_x].x_ini + downsampled_block_Y;
+
+    array_block_UV[block_y][block_x].downsampled_x_side = downsampled_block_UV;
+    array_block_UV[block_y][block_x].x_fin_downsampled = array_block_UV[block_y][block_x].x_ini + downsampled_block_UV;
+    
+    side_average=2*block_length/downsampled_block_Y;
+       
+    //adjust side c
+    //--------------
+    if (ppp_x_0<=ppp_x_1)
+    {       
+        ppp_x_0=side_average*ppp_x_0/side_c;
+
+        if (ppp_x_0<PPP_MIN) 
+        {
+            ppp_x_0=PPP_MIN;
+            
+        }//PPPmin is 1 a PPP value <1 is not possible
+
+        add = 0;
+        ppp_x_1=side_average-ppp_x_0;
+        if (ppp_x_1>ppp_max) 
+        {
+            add=ppp_x_1-ppp_max; 
+            ppp_x_1=ppp_max;       
+        }
+
+        ppp_x_0+=add;
+    }
+    else
+    {
+        ppp_x_1=side_average*ppp_x_1/side_c;
+
+        if (ppp_x_1<PPP_MIN) 
+        { 
+            ppp_x_1=PPP_MIN;    
+        }//PPPmin is 1 a PPP value <1 is not possible
+        
+        add=0;
+        ppp_x_0=side_average-ppp_x_1;
+        if (ppp_x_0>ppp_max) 
+        {
+            add=ppp_x_0-ppp_max; 
+            ppp_x_0=ppp_max;          
+        }
+
+        ppp_x_1+=add;
+
+    }
+
+    //adjust side d
+    //--------------
+    if (ppp_x_2<=ppp_x_3)
+    {       
+        ppp_x_2=side_average*ppp_x_2/side_d;
+
+        
+        if (ppp_x_2<PPP_MIN) 
+        {
+            ppp_x_2=PPP_MIN;
+            
+        }// PPP can not be <PPP_MIN
+        
+        add=0;
+        ppp_x_3=side_average-ppp_x_2;
+        if (ppp_x_3>ppp_max) 
+        {
+            add=ppp_x_3-ppp_max; 
+            ppp_x_3=ppp_max;
+        }
+
+        ppp_x_2+=add;
+    }
+    else
+    {
+        ppp_x_3=side_average*ppp_x_3/side_d;
+
+        if (ppp_x_3<PPP_MIN) 
+        {
+            ppp_x_3=PPP_MIN;
+            
+        }
+
+        add=0;
+        ppp_x_2=side_average-ppp_x_3;
+        if (ppp_x_2>ppp_max) 
+        {
+            add=ppp_x_2-ppp_max; 
+            ppp_x_2=ppp_max;           
+        }
+        ppp_x_3+=add;
+
+    }
+    
+    ppp_x[block_y][block_x][TOP_LEFT_CORNER] = ppp_x_0;
+    ppp_x[block_y][block_x][TOP_RIGHT_CORNER] = ppp_x_1;
+    ppp_x[block_y][block_x][BOT_LEFT_CORNER] = ppp_x_2;
+    ppp_x[block_y][block_x][BOT_RIGHT_CORNER] = ppp_x_3;
+    
+    //VERTICAL ADJUSTMENT
+    ppp_y_0 = ppp_y[block_y][block_x][TOP_LEFT_CORNER];
+    ppp_y_1 = ppp_y[block_y][block_x][TOP_RIGHT_CORNER];
+    ppp_y_2 = ppp_y[block_y][block_x][BOT_LEFT_CORNER];
+    ppp_y_3 = ppp_y[block_y][block_x][BOT_RIGHT_CORNER];
+    
+    side_a = ppp_y_0 + ppp_y_2;
+    side_b = ppp_y_1 + ppp_y_3;
+    
+    side_average = side_a;
+    
+    if (side_a != side_b) 
+    {
+        
+        if (side_a < side_b) 
+        {
+            side_min = side_b; //side_min is the side whose ppp summation is bigger 
+            side_max = side_a; //side max is the side whose resolution is bigger and ppp summation is lower
+        } 
+        else 
+        {
+            side_min = side_a;
+            side_max = side_b;
+        }
+        
+        side_average=side_max;
+    }
+    
+    downsampled_block_Y = ((2 * block_length -1 ) / side_average) + 1;    
+    downsampled_block_UV = (downsampled_block_Y - 1) / CHROMA_FACTOR_HEIGHT + 1;
+
+    array_block_Y[block_y][block_x].downsampled_y_side = downsampled_block_Y;
+    array_block_Y[block_y][block_x].y_fin_downsampled = array_block_Y[block_y][block_x].y_ini + downsampled_block_Y;
+
+    array_block_UV[block_y][block_x].downsampled_y_side = downsampled_block_UV;
+    array_block_UV[block_y][block_x].y_fin_downsampled = array_block_UV[block_y][block_x].y_ini + downsampled_block_UV;
+
+    
+    side_average=2*block_length/downsampled_block_Y;
+       
+    
+    //adjust side a
+    //--------------
+    if (ppp_y_0<=ppp_y_2)
+    {       
+        ppp_y_0=side_average*ppp_y_0/side_a;
+
+        if (ppp_y_0<PPP_MIN) 
+        {
+            ppp_y_0=PPP_MIN;
+            
+        }//PPPmin is 1 a PPP value <1 is not possible
+
+        add = 0;
+        ppp_y_2=side_average-ppp_y_0;
+        if (ppp_y_2>ppp_max) 
+        {
+            add=ppp_y_2-ppp_max; 
+            ppp_y_2=ppp_max;       
+        }
+
+        ppp_y_0+=add;
+    }
+    else
+    {
+        ppp_y_2=side_average*ppp_y_2/side_a;
+
+        if (ppp_y_2<PPP_MIN) 
+        { 
+            ppp_y_2=PPP_MIN;    
+        }//PPPmin is 1 a PPP value <1 is not possible
+        
+        add=0;
+        ppp_y_0=side_average-ppp_y_2;
+        if (ppp_y_0>ppp_max) 
+        {
+            add=ppp_y_0-ppp_max; 
+            ppp_y_0=ppp_max;          
+        }
+
+        ppp_y_2+=add;
+
+    }
+
+     //adjust side b
+    //--------------
+    if (ppp_y_1<=ppp_y_3)
+    {       
+        ppp_y_1=side_average*ppp_y_1/side_b;
+
+        
+        if (ppp_y_1<PPP_MIN) 
+        {
+            ppp_y_1=PPP_MIN;
+            
+        }// PPP can not be <PPP_MIN
+        
+        add=0;
+        ppp_y_3=side_average-ppp_y_1;
+        if (ppp_y_3>ppp_max) 
+        {
+            add=ppp_y_3-ppp_max; 
+            ppp_y_3=ppp_max;
+        }
+
+        ppp_y_1+=add;
+    }
+    else
+    {
+        ppp_y_3=side_average*ppp_y_3/side_b;
+
+        if (ppp_y_3<PPP_MIN) 
+        {
+            ppp_y_3=PPP_MIN;
+            
+        }
+
+        add=0;
+        ppp_y_1=side_average-ppp_y_3;
+        if (ppp_y_1>ppp_max) 
+        {
+            add=ppp_y_1-ppp_max; 
+            ppp_y_1=ppp_max;           
+        }
+        ppp_y_3+=add;
+
+    }
+    
+    ppp_y[block_y][block_x][TOP_LEFT_CORNER] = ppp_y_0;
+    ppp_y[block_y][block_x][TOP_RIGHT_CORNER] = ppp_y_1;
+    ppp_y[block_y][block_x][BOT_LEFT_CORNER] = ppp_y_2;
+    ppp_y[block_y][block_x][BOT_RIGHT_CORNER] = ppp_y_3;
+}
 
 /**
  * LHE Precomputation 
