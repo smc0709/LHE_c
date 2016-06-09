@@ -1649,56 +1649,7 @@ static void lhe_advanced_encode_block (LheBasicPrec *prec, AdvancedLheBlock **bl
     }//for y    
 }
 
-static void calculate_block_coordinates (AdvancedLheBlock **block_array_Y, AdvancedLheBlock **block_array_UV,
-                                         uint32_t block_width_Y, uint32_t block_height_Y,                             
-                                         uint32_t block_width_UV, uint32_t block_height_UV, 
-                                         uint32_t width_image_Y, uint32_t height_image_Y,
-                                         uint32_t width_image_UV, uint32_t height_image_UV,
-                                         int block_x, int block_y)
-{
-    uint32_t xini_Y, xfin_Y, yini_Y, yfin_Y;
-    uint32_t xini_UV, xfin_UV, yini_UV, yfin_UV;
 
-    //LUMINANCE
-    xini_Y = block_x * block_width_Y;
-    xfin_Y = xini_Y + block_width_Y;
-    if (xfin_Y > width_image_Y) {
-        xfin_Y = width_image_Y;
-    }
-    
-    yini_Y = block_y * block_height_Y;
-    yfin_Y = yini_Y + block_height_Y ;
-    
-    if (yfin_Y > height_image_Y)
-    {
-        yfin_Y = height_image_Y;
-    }
-    
-    //CHROMINANCE U
-    xini_UV = block_x * block_width_UV;
-    xfin_UV = xini_UV + block_width_UV;
-    if (xfin_UV > width_image_UV) {
-        xfin_UV = width_image_UV;
-    }
-    
-    yini_UV = block_y * block_height_UV;
-    yfin_UV = yini_UV + block_height_UV ;
-    
-    if (yfin_UV > height_image_UV)
-    {
-        yfin_UV = height_image_UV;
-    }
-
-    block_array_Y[block_y][block_x].x_ini = xini_Y;
-    block_array_Y[block_y][block_x].x_fin = xfin_Y;
-    block_array_Y[block_y][block_x].y_ini = yini_Y;
-    block_array_Y[block_y][block_x].y_fin = yfin_Y;
-    
-    block_array_UV[block_y][block_x].x_ini = xini_UV;
-    block_array_UV[block_y][block_x].x_fin = xfin_UV;
-    block_array_UV[block_y][block_x].y_ini = yini_UV;
-    block_array_UV[block_y][block_x].y_fin = yfin_UV;
-}
 
 /**
  * LHE advanced encoding
@@ -1726,11 +1677,27 @@ static void lhe_advanced_encode (LheContext *s, const AVFrame *frame, AdvancedLh
     uint8_t *component_original_data_flhe, *component_prediction_flhe, *hops_flhe;
     int width_flhe, height_flhe, image_size_flhe, block_width_flhe, block_height_flhe;
     
+    uint32_t **downsample_side_x, **downsample_side_y;
+    
     image_size_Y = width_Y * height_Y;
     image_size_UV = width_UV * height_UV;
     
     ppp_max_theoric = block_width_Y/SIDE_MIN;
     compression_factor = COMPRESSION_FACTOR;
+    
+     downsample_side_x= malloc (sizeof(float*) * (total_blocks_height+1));
+        
+        for (int i=0; i<total_blocks_height+1; i++) 
+        {
+            downsample_side_x[i] = malloc(sizeof(float) * (total_blocks_width+1));
+        }
+        
+        downsample_side_y = malloc(sizeof(float*) * (total_blocks_height+1));
+        
+        for (int i=0; i<total_blocks_height+1; i++) 
+        {
+            downsample_side_y [i] = malloc(sizeof(float) * (total_blocks_width+1));
+        }   
         
     downsampled_data_Y = malloc (sizeof(uint8_t) * image_size_Y);
     intermediate_downsample_Y = malloc (sizeof(uint8_t) * image_size_Y);
@@ -1828,11 +1795,10 @@ static void lhe_advanced_encode (LheContext *s, const AVFrame *frame, AdvancedLh
                                                                compression_factor, ppp_max_theoric, 
                                                                block_x, block_y);
             
-            //Adjust horizontal side
-            lhe_advanced_ppp_side_to_rectangle_shape_test (block_array_Y, block_array_UV,
-                                                           ppp_x, ppp_y,
-                                                           block_width_Y, ppp_max_theoric,
-                                                           block_x, block_y);
+            lhe_advanced_ppp_side_to_rectangle_shape (block_array_Y, block_array_UV, downsample_side_x, downsample_side_y,
+                                                      ppp_x, ppp_y,
+                                                      block_width_Y, ppp_max_theoric,
+                                                      block_x, block_y);
 
             
             //LUMINANCE

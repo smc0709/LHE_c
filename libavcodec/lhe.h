@@ -117,7 +117,7 @@
 #define PR_MESH_BITS 2*PR_INTERVAL_BITS
 
 //Compression
-#define COMPRESSION_FACTOR 0.3//0.14675f//1.749534f
+#define COMPRESSION_FACTOR 0.1//0.14675f//1.749534f
 
 //Offset file
 #define FILE_OFFSET_BYTES 4
@@ -160,18 +160,20 @@ void lhe_init_cache (LheBasicPrec *prec);
  * ADVANCED_LHE
  * Common functions encoder and decoder
  */
+void calculate_block_coordinates (AdvancedLheBlock **block_array_Y, AdvancedLheBlock **block_array_UV,
+                                  uint32_t block_width_Y, uint32_t block_height_Y,                             
+                                  uint32_t block_width_UV, uint32_t block_height_UV, 
+                                  uint32_t width_image_Y, uint32_t height_image_Y,
+                                  uint32_t width_image_UV, uint32_t height_image_UV,
+                                  int block_x, int block_y);
+
 float lhe_advanced_perceptual_relevance_to_ppp (float *** ppp_x, float *** ppp_y, 
                                                 float ** perceptual_relevance_x, float ** perceptual_relevance_y,
                                                 float compression_factor,
                                                 uint32_t ppp_max_theoric,
                                                 int block_x, int block_y);
 
-void lhe_advanced_ppp_side_to_rectangle_shape (uint32_t **downsampled_side, float ***ppp,
-                                               uint8_t corner_0, uint8_t corner_1, uint8_t corner_2, uint8_t corner_3, 
-                                               int block_length, float ppp_max, 
+void lhe_advanced_ppp_side_to_rectangle_shape (AdvancedLheBlock **array_block_Y, AdvancedLheBlock **array_block_UV, uint32_t **downsample_side_x, uint32_t **downsample_side_y,
+                                               float ***ppp_x, float ***ppp_y,
+                                               uint32_t block_length, float ppp_max, 
                                                int block_x, int block_y);
-
-void lhe_advanced_ppp_side_to_rectangle_shape_test (AdvancedLheBlock **array_block_Y, AdvancedLheBlock **array_block_UV,
-                                                    float ***ppp_x, float ***ppp_y,
-                                                    int block_length, float ppp_max, 
-                                                    int block_x, int block_y);

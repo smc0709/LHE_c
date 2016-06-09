@@ -114,6 +114,57 @@ int lhe_generate_huffman_codes(LheHuffEntry *he)
  * 
  */
 
+void calculate_block_coordinates (AdvancedLheBlock **block_array_Y, AdvancedLheBlock **block_array_UV,
+                                  uint32_t block_width_Y, uint32_t block_height_Y,                             
+                                  uint32_t block_width_UV, uint32_t block_height_UV, 
+                                  uint32_t width_image_Y, uint32_t height_image_Y,
+                                  uint32_t width_image_UV, uint32_t height_image_UV,
+                                  int block_x, int block_y)
+{
+    uint32_t xini_Y, xfin_Y, yini_Y, yfin_Y;
+    uint32_t xini_UV, xfin_UV, yini_UV, yfin_UV;
+
+    //LUMINANCE
+    xini_Y = block_x * block_width_Y;
+    xfin_Y = xini_Y + block_width_Y;
+    if (xfin_Y > width_image_Y) {
+        xfin_Y = width_image_Y;
+    }
+    
+    yini_Y = block_y * block_height_Y;
+    yfin_Y = yini_Y + block_height_Y ;
+    
+    if (yfin_Y > height_image_Y)
+    {
+        yfin_Y = height_image_Y;
+    }
+    
+    //CHROMINANCE U
+    xini_UV = block_x * block_width_UV;
+    xfin_UV = xini_UV + block_width_UV;
+    if (xfin_UV > width_image_UV) {
+        xfin_UV = width_image_UV;
+    }
+    
+    yini_UV = block_y * block_height_UV;
+    yfin_UV = yini_UV + block_height_UV ;
+    
+    if (yfin_UV > height_image_UV)
+    {
+        yfin_UV = height_image_UV;
+    }
+
+    block_array_Y[block_y][block_x].x_ini = xini_Y;
+    block_array_Y[block_y][block_x].x_fin = xfin_Y;
+    block_array_Y[block_y][block_x].y_ini = yini_Y;
+    block_array_Y[block_y][block_x].y_fin = yfin_Y;
+    
+    block_array_UV[block_y][block_x].x_ini = xini_UV;
+    block_array_UV[block_y][block_x].x_fin = xfin_UV;
+    block_array_UV[block_y][block_x].y_ini = yini_UV;
+    block_array_UV[block_y][block_x].y_fin = yfin_UV;
+}
+
 
 float lhe_advanced_perceptual_relevance_to_ppp (float *** ppp_x, float *** ppp_y, 
                                                 float ** perceptual_relevance_x, float ** perceptual_relevance_y,
@@ -202,146 +253,10 @@ float lhe_advanced_perceptual_relevance_to_ppp (float *** ppp_x, float *** ppp_y
 * Corner_3: BOT_RIGHT_CORNER                           Corner_3: BOT_RIGHT_CORNER                                      
 *                                       
 */
-void lhe_advanced_ppp_side_to_rectangle_shape (uint32_t **downsampled_side, float ***ppp,
-                                               uint8_t corner_0, uint8_t corner_1, uint8_t corner_2, uint8_t corner_3, 
-                                               int block_length, float ppp_max, 
+void lhe_advanced_ppp_side_to_rectangle_shape (AdvancedLheBlock **array_block_Y, AdvancedLheBlock **array_block_UV, uint32_t **downsample_side_x, uint32_t **downsample_side_y,
+                                               float ***ppp_x, float ***ppp_y,
+                                               uint32_t block_length, float ppp_max, 
                                                int block_x, int block_y) 
-{
-    float ppp_0, ppp_1, ppp_2, ppp_3, side_0, side_1, side_average, side_min, side_max, add;
-    
-    uint32_t downsampled_block;
-    
-    ppp_0 = ppp[block_y][block_x][corner_0];
-    ppp_1 = ppp[block_y][block_x][corner_1];
-    ppp_2 = ppp[block_y][block_x][corner_2];
-    ppp_3 = ppp[block_y][block_x][corner_3];
-  
-    side_0 = ppp_0 + ppp_1;
-    side_1 = ppp_2 + ppp_3;
-    
-    side_average = side_0;
-    
-    if (side_0 != side_1) 
-    {
-        
-        if (side_0 < side_1) 
-        {
-            side_min = side_1; //side_min is the side whose ppp summation is bigger 
-            side_max = side_0; //side max is the side whose resolution is bigger and ppp summation is lower
-        } 
-        else 
-        {
-            side_min = side_0;
-            side_max = side_1;
-        }
-        
-        side_average=side_max;
-    }
-    
-    downsampled_block = ((2 * block_length -1 ) / side_average) + 1;
-    
-    downsampled_side [block_y][block_x] = downsampled_block; 
-    
-    side_average=2*block_length/downsampled_block;
-       
-    
-    //adjust side 0
-    //--------------
-    if (ppp_0<=ppp_1)
-    {       
-        ppp_0=side_average*ppp_0/side_0;
-
-        if (ppp_0<PPP_MIN) 
-        {
-            ppp_0=PPP_MIN;
-            
-        }//PPPmin is 1 a PPP value <1 is not possible
-
-        add = 0;
-        ppp_1=side_average-ppp_0;
-        if (ppp_1>ppp_max) 
-        {
-            add=ppp_1-ppp_max; 
-            ppp_1=ppp_max;       
-        }
-
-        ppp_0+=add;
-    }
-    else
-    {
-        ppp_1=side_average*ppp_1/side_0;
-
-        if (ppp_1<PPP_MIN) 
-        { 
-            ppp_1=PPP_MIN;    
-        }//PPPmin is 1 a PPP value <1 is not possible
-        
-        add=0;
-        ppp_0=side_average-ppp_1;
-        if (ppp_0>ppp_max) 
-        {
-            add=ppp_0-ppp_max; 
-            ppp_0=ppp_max;          
-        }
-
-        ppp_1+=add;
-
-    }
-
-    //adjust side 1
-    if (ppp_2<=ppp_3)
-    {       
-        ppp_2=side_average*ppp_2/side_1;
-
-        
-        if (ppp_2<PPP_MIN) 
-        {
-            ppp_2=PPP_MIN;
-            
-        }// PPP can not be <PPP_MIN
-        
-        add=0;
-        ppp_3=side_average-ppp_2;
-        if (ppp_3>ppp_max) 
-        {
-            add=ppp_3-ppp_max; 
-            ppp_3=ppp_max;
-        }
-
-        ppp_2+=add;
-    }
-    else
-    {
-        ppp_3=side_average*ppp_3/side_1;
-
-        if (ppp_3<PPP_MIN) 
-        {
-            ppp_3=PPP_MIN;
-            
-        }
-
-        add=0;
-        ppp_2=side_average-ppp_3;
-        if (ppp_2>ppp_max) 
-        {
-            add=ppp_2-ppp_max; 
-            ppp_2=ppp_max;           
-        }
-        ppp_3+=add;
-
-    }
-    
-    ppp[block_y][block_x][corner_0] = ppp_0;
-    ppp[block_y][block_x][corner_1] = ppp_1;
-    ppp[block_y][block_x][corner_2] = ppp_2;
-    ppp[block_y][block_x][corner_3] = ppp_3;
-  
-}
-
-void lhe_advanced_ppp_side_to_rectangle_shape_test (AdvancedLheBlock **array_block_Y, AdvancedLheBlock **array_block_UV,
-                                                    float ***ppp_x, float ***ppp_y,
-                                                    int block_length, float ppp_max, 
-                                                    int block_x, int block_y) 
 {
     float ppp_x_0, ppp_x_1, ppp_x_2, ppp_x_3, ppp_y_0, ppp_y_1, ppp_y_2, ppp_y_3, side_a, side_b, side_c, side_d, side_average, side_min, side_max, add;
     
@@ -377,6 +292,8 @@ void lhe_advanced_ppp_side_to_rectangle_shape_test (AdvancedLheBlock **array_blo
     
     downsampled_block_Y = ((2 * block_length -1 ) / side_average) + 1;
     downsampled_block_UV = (downsampled_block_Y - 1) / CHROMA_FACTOR_WIDTH + 1;
+    
+    downsample_side_x[block_y][block_x] = downsampled_block_Y;
         
     array_block_Y[block_y][block_x].downsampled_x_side = downsampled_block_Y;
     array_block_Y[block_y][block_x].x_fin_downsampled = array_block_Y[block_y][block_x].x_ini + downsampled_block_Y;
@@ -508,6 +425,8 @@ void lhe_advanced_ppp_side_to_rectangle_shape_test (AdvancedLheBlock **array_blo
     
     downsampled_block_Y = ((2 * block_length -1 ) / side_average) + 1;    
     downsampled_block_UV = (downsampled_block_Y - 1) / CHROMA_FACTOR_HEIGHT + 1;
+        downsample_side_y[block_y][block_x] = downsampled_block_Y;
+
 
     array_block_Y[block_y][block_x].downsampled_y_side = downsampled_block_Y;
     array_block_Y[block_y][block_x].y_fin_downsampled = array_block_Y[block_y][block_x].y_ini + downsampled_block_Y;
