@@ -117,7 +117,7 @@
 #define PR_MESH_BITS 2*PR_INTERVAL_BITS
 
 //Compression
-#define COMPRESSION_FACTOR 0.1//0.14675f//1.749534f
+#define COMPRESSION_FACTOR 0.7//0.14675f//1.749534f
 
 //Offset file
 #define FILE_OFFSET_BYTES 4
@@ -173,7 +173,9 @@ float lhe_advanced_perceptual_relevance_to_ppp (float *** ppp_x, float *** ppp_y
                                                 uint32_t ppp_max_theoric,
                                                 int block_x, int block_y);
 
-void lhe_advanced_ppp_side_to_rectangle_shape (AdvancedLheBlock **array_block_Y, AdvancedLheBlock **array_block_UV, uint32_t **downsample_side_x, uint32_t **downsample_side_y,
+void lhe_advanced_ppp_side_to_rectangle_shape (AdvancedLheBlock **array_block_Y, AdvancedLheBlock **array_block_UV,
                                                float ***ppp_x, float ***ppp_y,
+                                               uint32_t width_image_Y, uint32_t height_image_Y, 
+                                               uint32_t width_image_UV, uint32_t height_image_UV,
                                                uint32_t block_length, float ppp_max, 
                                                int block_x, int block_y);

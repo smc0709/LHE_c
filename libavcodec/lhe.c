@@ -253,14 +253,17 @@ float lhe_advanced_perceptual_relevance_to_ppp (float *** ppp_x, float *** ppp_y
 * Corner_3: BOT_RIGHT_CORNER                           Corner_3: BOT_RIGHT_CORNER                                      
 *                                       
 */
-void lhe_advanced_ppp_side_to_rectangle_shape (AdvancedLheBlock **array_block_Y, AdvancedLheBlock **array_block_UV, uint32_t **downsample_side_x, uint32_t **downsample_side_y,
+void lhe_advanced_ppp_side_to_rectangle_shape (AdvancedLheBlock **array_block_Y, AdvancedLheBlock **array_block_UV,
                                                float ***ppp_x, float ***ppp_y,
+                                               uint32_t width_image_Y, uint32_t height_image_Y, 
+                                               uint32_t width_image_UV, uint32_t height_image_UV,
                                                uint32_t block_length, float ppp_max, 
                                                int block_x, int block_y) 
 {
     float ppp_x_0, ppp_x_1, ppp_x_2, ppp_x_3, ppp_y_0, ppp_y_1, ppp_y_2, ppp_y_3, side_a, side_b, side_c, side_d, side_average, side_min, side_max, add;
     
     uint32_t downsampled_block_Y, downsampled_block_UV;
+    uint32_t x_fin_downsampled_Y, x_fin_downsampled_UV, y_fin_downsampled_Y, y_fin_downsampled_UV;
     
     //HORIZONTAL ADJUSTMENT
     ppp_x_0 = ppp_x[block_y][block_x][TOP_LEFT_CORNER];
@@ -293,13 +296,23 @@ void lhe_advanced_ppp_side_to_rectangle_shape (AdvancedLheBlock **array_block_Y,
     downsampled_block_Y = ((2 * block_length -1 ) / side_average) + 1;
     downsampled_block_UV = (downsampled_block_Y - 1) / CHROMA_FACTOR_WIDTH + 1;
     
-    downsample_side_x[block_y][block_x] = downsampled_block_Y;
-        
     array_block_Y[block_y][block_x].downsampled_x_side = downsampled_block_Y;
-    array_block_Y[block_y][block_x].x_fin_downsampled = array_block_Y[block_y][block_x].x_ini + downsampled_block_Y;
+    
+    x_fin_downsampled_Y = array_block_Y[block_y][block_x].x_ini + downsampled_block_Y;
+    if (x_fin_downsampled_Y > width_image_Y) 
+    {
+        x_fin_downsampled_Y = width_image_Y;
+    }
+    array_block_Y[block_y][block_x].x_fin_downsampled = x_fin_downsampled_Y;
 
     array_block_UV[block_y][block_x].downsampled_x_side = downsampled_block_UV;
-    array_block_UV[block_y][block_x].x_fin_downsampled = array_block_UV[block_y][block_x].x_ini + downsampled_block_UV;
+    
+    x_fin_downsampled_UV = array_block_UV[block_y][block_x].x_ini + downsampled_block_UV;
+    if (x_fin_downsampled_UV > width_image_UV) 
+    {
+        x_fin_downsampled_UV = width_image_UV;
+    }
+    array_block_UV[block_y][block_x].x_fin_downsampled = x_fin_downsampled_UV;
     
     side_average=2*block_length/downsampled_block_Y;
        
@@ -425,14 +438,22 @@ void lhe_advanced_ppp_side_to_rectangle_shape (AdvancedLheBlock **array_block_Y,
     
     downsampled_block_Y = ((2 * block_length -1 ) / side_average) + 1;    
     downsampled_block_UV = (downsampled_block_Y - 1) / CHROMA_FACTOR_HEIGHT + 1;
-        downsample_side_y[block_y][block_x] = downsampled_block_Y;
-
-
+    
     array_block_Y[block_y][block_x].downsampled_y_side = downsampled_block_Y;
-    array_block_Y[block_y][block_x].y_fin_downsampled = array_block_Y[block_y][block_x].y_ini + downsampled_block_Y;
+    y_fin_downsampled_Y = array_block_Y[block_y][block_x].y_ini + downsampled_block_Y;
+    if (y_fin_downsampled_Y > height_image_Y)
+    {
+        y_fin_downsampled_Y = height_image_Y;
+    }
+    array_block_Y[block_y][block_x].y_fin_downsampled = y_fin_downsampled_Y;
 
     array_block_UV[block_y][block_x].downsampled_y_side = downsampled_block_UV;
-    array_block_UV[block_y][block_x].y_fin_downsampled = array_block_UV[block_y][block_x].y_ini + downsampled_block_UV;
+    y_fin_downsampled_UV = array_block_UV[block_y][block_x].y_ini + downsampled_block_UV;
+    if (y_fin_downsampled_UV > height_image_UV)
+    {
+        y_fin_downsampled_UV = height_image_UV;
+    }
+    array_block_UV[block_y][block_x].y_fin_downsampled = y_fin_downsampled_UV;
 
     
     side_average=2*block_length/downsampled_block_Y;

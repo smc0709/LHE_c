@@ -217,7 +217,6 @@ static float lhe_advance_translate_pr_interval_to_pr_quant (uint8_t perceptual_r
 static void lhe_advanced_read_mesh (LheState *s, AdvancedLheBlock **block_array_Y, AdvancedLheBlock **block_array_UV,
                                     float ** perceptual_relevance_x, float ** perceptual_relevance_y,
                                     float ***ppp_x, float ***ppp_y,
-                                    uint32_t **downsampled_side_x_array, uint32_t **downsampled_side_y_array,
                                     float ppp_max_theoric, float compression_factor,
                                     uint32_t width_Y, uint32_t height_Y, uint32_t width_UV, uint32_t height_UV,
                                     uint32_t block_width_Y, uint32_t block_height_Y, uint32_t block_width_UV, uint32_t block_height_UV,
@@ -256,8 +255,10 @@ static void lhe_advanced_read_mesh (LheState *s, AdvancedLheBlock **block_array_
                                                                compression_factor, ppp_max_theoric, 
                                                                block_x, block_y);
              
-            lhe_advanced_ppp_side_to_rectangle_shape (block_array_Y, block_array_UV, downsampled_side_x_array, downsampled_side_y_array,
+            lhe_advanced_ppp_side_to_rectangle_shape (block_array_Y, block_array_UV,
                                                       ppp_x, ppp_y,
+                                                      width_Y, height_Y, 
+                                                      width_UV, height_UV,
                                                       block_width_Y, ppp_max_theoric,
                                                       block_x, block_y);
      
@@ -566,8 +567,6 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
     float **perceptual_relevance_x, **perceptual_relevance_y;
     float ***ppp_x, ***ppp_y;
     float ppp_max_theoric, compression_factor;
-    uint32_t **downsampled_side_x_array, **downsampled_side_y_array;
-    uint32_t downsampled_side_x_Y, downsampled_side_x_UV, downsampled_side_y_Y, downsampled_side_y_UV;
 
     AdvancedLheBlock **block_array_Y;
     AdvancedLheBlock **block_array_UV;
@@ -679,21 +678,7 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
                 ppp_y[i][j] = malloc(sizeof(float) * CORNERS);
             }
         }
-        
-        downsampled_side_x_array = malloc (sizeof(float*) * (total_blocks_height+1));
-        
-        for (int i=0; i<total_blocks_height+1; i++) 
-        {
-            downsampled_side_x_array[i] = malloc(sizeof(float) * (total_blocks_width+1));
-        }
-        
-        downsampled_side_y_array = malloc(sizeof(float*) * (total_blocks_height+1));
-        
-        for (int i=0; i<total_blocks_height+1; i++) 
-        {
-            downsampled_side_y_array [i] = malloc(sizeof(float) * (total_blocks_width+1));
-        }   
-        
+
         block_array_Y = malloc(sizeof(AdvancedLheBlock *) * total_blocks_height);
         
         for (int i=0; i < total_blocks_height; i++)
@@ -720,7 +705,6 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
         lhe_advanced_read_mesh(s, block_array_Y, block_array_UV,
                                perceptual_relevance_x, perceptual_relevance_y,
                                ppp_x, ppp_y,
-                               downsampled_side_x_array, downsampled_side_y_array,
                                ppp_max_theoric, compression_factor,
                                width_Y, height_Y, width_UV, height_UV,
                                block_width_Y, block_height_Y, block_width_UV, block_height_UV,
@@ -811,48 +795,12 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
                                             first_color_block_Y, first_color_block_U, first_color_block_V);    
         }
     }
-    /*
-    av_log(NULL, AV_LOG_INFO, "COMPONENT Y Y \n");
-
-        for (int i=0; i<height_Y; i++) {
-            for (int j=0; j<width_Y; j++) {
-                av_log(NULL, AV_LOG_INFO, "%d;", component_Y[i*width_Y + j]);
-            }
-        av_log(NULL, AV_LOG_INFO, "\n");
-    }
-    
-    av_log(NULL, AV_LOG_INFO, "DOWNSAMPLED \n");
-
-        for (int i=0; i<total_blocks_height; i++) {
-            for (int j=0; j<total_blocks_width; j++) {
-                av_log(NULL, AV_LOG_INFO, "%d;", block_array_Y[i][j].downsampled_x_side);
-            }
-        av_log(NULL, AV_LOG_INFO, "\n");
-    }
-    
+    /*  
         av_log(NULL, AV_LOG_INFO, "HOPS Y \n");
 
         for (int i=0; i<height_Y; i++) {
             for (int j=0; j<width_Y; j++) {
                 av_log(NULL, AV_LOG_INFO, "%d;", hops_Y[i*width_Y + j]);
-            }
-        av_log(NULL, AV_LOG_INFO, "\n");
-    }
-        
-    av_log(NULL, AV_LOG_INFO, "HOPS U \n");
-
-        for (int i=0; i<height_UV; i++) {
-            for (int j=0; j<width_UV; j++) {
-                av_log(NULL, AV_LOG_INFO, "%d;", hops_U[i*width_UV + j]);
-            }
-        av_log(NULL, AV_LOG_INFO, "\n");
-    }
-    
-    av_log(NULL, AV_LOG_INFO, "HOPS V \n");
-
-        for (int i=0; i<height_UV; i++) {
-            for (int j=0; j<width_UV; j++) {
-                av_log(NULL, AV_LOG_INFO, "%d;", hops_V[i*width_UV + j]);
             }
         av_log(NULL, AV_LOG_INFO, "\n");
     }
