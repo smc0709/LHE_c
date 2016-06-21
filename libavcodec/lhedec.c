@@ -111,13 +111,9 @@ static uint8_t lhe_translate_huffman_into_symbol (uint32_t huffman_symbol, LheHu
         symbol = HOP_NEG_4;
     } 
     
-    av_log (NULL, AV_LOG_INFO, "");
-
-    
     return symbol;
     
 }
-
 
 static void lhe_basic_read_file_symbols (LheState *s, LheHuffEntry *he, uint32_t image_size, uint8_t *symbols) 
 {
@@ -127,6 +123,7 @@ static void lhe_basic_read_file_symbols (LheState *s, LheHuffEntry *he, uint32_t
     symbol = NO_SYMBOL;
     decoded_symbols = 0;
     huffman_symbol = 0;
+    count_bits = 0;
     
     while (decoded_symbols<image_size) {
         
@@ -147,18 +144,12 @@ static void lhe_basic_read_file_symbols (LheState *s, LheHuffEntry *he, uint32_t
 
 static void lhe_advanced_read_file_symbols (LheState *s, LheHuffEntry *he, AdvancedLheBlock **block_array,
                                             uint8_t *symbols, 
-                                            uint32_t width_image, uint32_t height_image, 
-                                            uint32_t block_width, uint32_t block_height,
-                                            uint32_t downsampled_x_side, uint32_t downsampled_y_side,
-                                            uint32_t block_x, uint32_t block_y) 
+                                            uint32_t width, uint32_t height, 
+                                            int block_x, int block_y, bool notoquenada) 
 {
     uint8_t symbol, count_bits;
     uint32_t huffman_symbol, pix;
     uint32_t xini, xfin_downsampled, yini, yfin_downsampled;
-    
-    symbol = NO_SYMBOL;
-    huffman_symbol = 0;
-    
     
     xini = block_array[block_y][block_x].x_ini;
     xfin_downsampled = block_array[block_y][block_x].x_fin_downsampled; 
@@ -166,26 +157,16 @@ static void lhe_advanced_read_file_symbols (LheState *s, LheHuffEntry *he, Advan
     yini = block_array[block_y][block_x].y_ini;
     yfin_downsampled = block_array[block_y][block_x].y_fin_downsampled;
     
-    /*
-    xini = block_x * block_width;
-    xfin_downsampled = xini + downsampled_x_side;
-    if (xfin_downsampled>width_image) 
-    {
-        xfin_downsampled = width_image;
-    }
-    yini = block_y * block_height;
-    yfin_downsampled = yini + downsampled_y_side;
-    if (yfin_downsampled > height_image) 
-    {
-        yfin_downsampled = height_image;
-    }
-    */
+    symbol = NO_SYMBOL;
+    pix = 0;
+    huffman_symbol = 0;
+    count_bits = 0;
 
     for (int y=yini; y<yfin_downsampled;y++) 
     {
         for(int x=xini; x<xfin_downsampled;) 
         {
-            pix = y * width_image + x;
+            pix = y * width + x;
 
             huffman_symbol = (huffman_symbol<<1) | get_bits(&s->gb, 1);
             count_bits++;
@@ -587,10 +568,10 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
     float ppp_max_theoric, compression_factor;
     uint32_t **downsampled_side_x_array, **downsampled_side_y_array;
     uint32_t downsampled_side_x_Y, downsampled_side_x_UV, downsampled_side_y_Y, downsampled_side_y_UV;
-    
+
     AdvancedLheBlock **block_array_Y;
     AdvancedLheBlock **block_array_UV;
-
+    
     LheHuffEntry he_Y[LHE_MAX_HUFF_SIZE];
     LheHuffEntry he_UV[LHE_MAX_HUFF_SIZE];
    
@@ -652,7 +633,7 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
       
     hops_Y = malloc(sizeof(uint8_t) * image_size_Y);      
     hops_U = malloc(sizeof(uint8_t) * image_size_UV);    
-    hops_V = malloc(sizeof(uint8_t) * image_size_UV);      
+    hops_V = malloc(sizeof(uint8_t) * image_size_UV);  
            
     init_get_bits(&s->gb, lhe_data, avpkt->size * 8);
 
@@ -744,44 +725,30 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
                                width_Y, height_Y, width_UV, height_UV,
                                block_width_Y, block_height_Y, block_width_UV, block_height_UV,
                                total_blocks_width, total_blocks_height) ; 
-        
-                          
+                              
         for (int block_y=0; block_y<total_blocks_height; block_y++)
         {
             for (int block_x=0; block_x<total_blocks_width; block_x++)
-            {            
-                downsampled_side_x_Y = downsampled_side_x_array[block_y][block_x];
-                downsampled_side_y_Y = downsampled_side_y_array[block_y][block_x];
-            
-                downsampled_side_x_UV = (downsampled_side_x_Y - 1) / CHROMA_FACTOR_WIDTH + 1;
-                downsampled_side_y_UV = (downsampled_side_y_Y - 1) / CHROMA_FACTOR_HEIGHT + 1;
-                
-            
+            {          
+ 
                 lhe_advanced_read_file_symbols (s, he_Y, block_array_Y,
-                                                hops_Y, 
-                                                width_Y, height_Y, 
-                                                block_width_Y, block_height_Y,
-                                                downsampled_side_x_Y, downsampled_side_y_Y,
-                                                block_x, block_y) ;   
-                                      
-                                            
+                                                hops_Y,
+                                                width_Y, height_Y,
+                                                block_x, block_y, true);  
+                                                
                 lhe_advanced_read_file_symbols (s, he_UV, block_array_UV,
-                                                hops_U, 
-                                                width_UV, height_UV, 
-                                                block_width_UV, block_height_UV,
-                                                downsampled_side_x_UV, downsampled_side_y_UV,
-                                                block_x, block_y) ;
-
-                lhe_advanced_read_file_symbols (s, he_UV, block_array_UV,
+                                                hops_U,
+                                                width_UV, height_UV,
+                                                block_x, block_y, true);
+                
+                lhe_advanced_read_file_symbols (s, he_UV, block_array_UV, 
                                                 hops_V, 
-                                                width_UV, height_UV, 
-                                                block_width_UV, block_height_UV,
-                                                downsampled_side_x_UV, downsampled_side_y_UV,
-                                                block_x, block_y) ;                                                        
+                                                width_UV, height_UV,
+                                                block_x, block_y, true);
+
             }
         }
-        
-        
+ 
         for (int block_y=0; block_y<total_blocks_height; block_y++)
         {
             for (int block_x=0; block_x<total_blocks_width; block_x++)

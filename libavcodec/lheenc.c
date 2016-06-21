@@ -340,9 +340,7 @@ static int lhe_advanced_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt, Adv
 
         }
     }
-
     
-    //Write file
     for (int block_y=0; block_y<total_blocks_height; block_y++) 
     {
         for (int block_x=0; block_x<total_blocks_width; block_x++)
@@ -366,16 +364,16 @@ static int lhe_advanced_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt, Adv
                     pix = y*width_Y + x;
                     put_bits(&s->pb, he_Y[hops_Y[pix]].len , he_Y[hops_Y[pix]].code);
                 }
-            }                    
+            }
             
-            //CHROMINANCE U
+              //CHROMINANCE U
             for (int y=yini_UV; y<yfin_downsampled_UV; y++) 
             {
                 for (int x=xini_UV; x<xfin_downsampled_UV; x++) {
                     pix = y*width_UV + x;
                     put_bits(&s->pb, he_UV[hops_U[pix]].len , he_UV[hops_U[pix]].code);
                 }
-            } 
+            }
             
             //CHROMINANCE_V
             for (int y=yini_UV; y<yfin_downsampled_UV; y++) 
@@ -385,10 +383,9 @@ static int lhe_advanced_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt, Adv
                     put_bits(&s->pb, he_UV[hops_V[pix]].len , he_UV[hops_V[pix]].code);
                 }
             }
-            
         }
     }
-  
+
     put_bits(&s->pb, FILE_OFFSET_BITS , 0);
     
     gettimeofday(&after , NULL);

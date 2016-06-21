@@ -622,9 +622,7 @@ static void lhe_init_hop_color_component_value (LheBasicPrec *prec, int hop0_Y, 
                                                 uint8_t hop_pos_2 [Y_MAX_COMPONENT][H1_RANGE],
                                                 uint8_t hop_pos_3 [Y_MAX_COMPONENT][H1_RANGE],
                                                 uint8_t hop_pos_4 [Y_MAX_COMPONENT][H1_RANGE])
-{
-    //From most negative hop (pccr[hop1][hop0_Y][HOP_NEG_4]) to most possitive hop (pccr[hop1][hop0_Y][HOP_POS_4])
-    
+{    
     //HOP -4
     prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_NEG_4]= hop0_Y  - (uint8_t) hop_neg_4[hop0_Y][hop1] ; 
     
