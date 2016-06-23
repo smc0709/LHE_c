@@ -1548,25 +1548,25 @@ static void lhe_advanced_encode (LheContext *s, const AVFrame *frame, AdvancedLh
     downsampled_data_V = malloc (sizeof(uint8_t) * image_size_UV);
     intermediate_downsample_V = malloc (sizeof(uint8_t) * image_size_UV);
  
-    ppp_x = malloc(sizeof(float**) * (total_blocks_height+1));  
+    ppp_x = malloc(sizeof(float**) * total_blocks_height);  
     
-    for (i=0; i<total_blocks_height+1; i++) 
+    for (i=0; i<total_blocks_height; i++) 
     {
-        ppp_x[i] = malloc(sizeof(float*) * (total_blocks_width+1));
+        ppp_x[i] = malloc(sizeof(float*) * total_blocks_width);
         
-        for (j=0; j<total_blocks_width+1; j++) 
+        for (j=0; j<total_blocks_width; j++) 
         {
             ppp_x[i][j] = malloc(sizeof(float) * CORNERS);
         }
     }
     
-    ppp_y = malloc(sizeof(float**) * (total_blocks_height+1));  
+    ppp_y = malloc(sizeof(float**) * (total_blocks_height));  
     
-    for (i=0; i<total_blocks_height+1; i++) 
+    for (i=0; i<total_blocks_height; i++) 
     {
-        ppp_y[i] = malloc(sizeof(float*) * (total_blocks_width+1));
+        ppp_y[i] = malloc(sizeof(float*) * (total_blocks_width));
         
-        for (j=0; j<total_blocks_width+1; j++) 
+        for (j=0; j<total_blocks_width; j++) 
         {
             ppp_y[i][j] = malloc(sizeof(float) * CORNERS);
         }
