@@ -19,6 +19,11 @@
         hop_1=MAX_HOP_1;                                \
     }                                                   \
     last_small_hop=small_hop;
+    
+    
+//==================================================================
+// AUXILIAR FUNCTIONS
+//==================================================================
 
 /**
  * Count bits function
@@ -45,24 +50,33 @@ double time_diff(struct timeval x , struct timeval y)
     return timediff;
 }
 
-/**
- * 
- * Huffman
- */
+//==================================================================
+// HUFFMAN FUNCTIONS
+//==================================================================
 
+/* 
+ * Compare huffentry lengths
+ */
 static int huff_cmp_len(const void *a, const void *b)
 {
     const LheHuffEntry *aa = a, *bb = b;
     return (aa->len - bb->len)*LHE_MAX_HUFF_SIZE + aa->sym - bb->sym;
 }
 
-/* Compare huffentry symbols */
+/* 
+ * Compare huffentry symbols 
+ */
 static int huff_cmp_sym(const void *a, const void *b)
 {
     const LheHuffEntry *aa = a, *bb = b;
     return aa->sym - bb->sym;
 }
 
+/**
+ * Generates Huffman codes using Huffman tree
+ * 
+ * @param *he Huffman parameters (Huffman tree)
+ */
 int lhe_generate_huffman_codes(LheHuffEntry *he)
 {
     int len, i, last;
@@ -73,32 +87,44 @@ int lhe_generate_huffman_codes(LheHuffEntry *he)
     code = 1;
     last = LHE_MAX_HUFF_SIZE-1;
 
-    qsort(he, LHE_MAX_HUFF_SIZE, sizeof(*he), huff_cmp_len); 
+    //Sorts Huffman table from less occurrence symbols to greater occurrence symbols
+    qsort(he, LHE_MAX_HUFF_SIZE, sizeof(*he), huff_cmp_len);  
 
-    
+    //Deletes symbols with no occurrence in model
     while (he[last].len == 255 && last)
         last--;
     
+    //Initializes code to 11...11, the length of code depends on number of symbols with occurrence in model
+    //For example, if there are 6 different symbols in model (some symbols may not appear), code = 111111
     for (i=0; i<he[last].len; i++)
     {
         code|= 1 << i;
     }      
-        
+    
+    //From maximum length to 0
     for (len= he[last].len; len > 0; len--) {
+        //From 0 to LHE_MAX_HUFF_SIZE (all Huffman codes)
         for (i = 0; i <= last; i++) {
+            //Checks if lengths are the same
             if (he[i].len == len)
             {
+                //Assigns code
                 he[i].code = code;
+                //Substracts 1 to code. If another symbol has the same length, codes will be different
+                //For example, 1111 (15), 1110 (14), 1101 (13)... all 4 bits length
                 code--;
             }          
         }
         
+        //Moves 1 bit to the right (Division by two)
+        //For example 1111(15) - 111(7) ... 110(6)-11(3)
         code >>= 1;
     }
 
-    
+    //Sorts symbols from 0 to LHE_MAX_HUFF_SIZE
     qsort(he, LHE_MAX_HUFF_SIZE, sizeof(*he), huff_cmp_sym);
     
+    //Calculates number of bits
     for (i=0; i<LHE_MAX_HUFF_SIZE; i++) 
     {
         bits += (he[i].len * he[i].count); //bits number is symbol occurrence * symbol bits
@@ -108,12 +134,28 @@ int lhe_generate_huffman_codes(LheHuffEntry *he)
 
 }
 
-/**
- * ADVANCED LHE
- * Coomon functions encoder and decoder 
- * 
- */
 
+//==================================================================
+// ADVANCED LHE
+// Common functions encoder and decoder 
+//==================================================================
+
+/**
+ * Calculates init x, init y, final x, final y for each block of luminance and chrominance signals.
+ * 
+ * @param block_array_Y Block parameters for luminance
+ * @param block_array_UV Block parameters for chrominances
+ * @param block_width_Y Block width for luminance
+ * @param block_height_Y Block height for luminance
+ * @param block_width_UV Block width for chrominances
+ * @param block_height_UV Block height for chrominances
+ * @param width_image_Y Image width for luminance
+ * @param height_image_Y Image height for luminance
+ * @param width_image_UV Image width for chrominances
+ * @param height_image_UV Image height for chrominances 
+ * @param block_x block x index
+ * @param block_y block y index
+ */
 void calculate_block_coordinates (AdvancedLheBlock **block_array_Y, AdvancedLheBlock **block_array_UV,
                                   uint32_t block_width_Y, uint32_t block_height_Y,                             
                                   uint32_t block_width_UV, uint32_t block_height_UV, 
@@ -165,7 +207,18 @@ void calculate_block_coordinates (AdvancedLheBlock **block_array_Y, AdvancedLheB
     block_array_UV[block_y][block_x].y_fin = yfin_UV;
 }
 
-
+/**
+ * Transforms perceptual relevance to pixels per pixels
+ * 
+ * @param ***ppp_x pixels per pixel in x coordinate
+ * @param ***ppp_y pixels per pixel in y coordinate
+ * @param **perceptual_relevance_x perceptual relevance in x coordinate
+ * @param **perceptual_relevance_y perceptual relevance in y coordinate
+ * @param compression_factor compression factor 
+ * @param ppp_max_theoric maximum number of pixels per pixel
+ * @param block_x block x index
+ * @param block_y block y index
+ */
 float lhe_advanced_perceptual_relevance_to_ppp (float *** ppp_x, float *** ppp_y, 
                                                 float ** perceptual_relevance_x, float ** perceptual_relevance_y,
                                                 float compression_factor,
@@ -227,32 +280,35 @@ float lhe_advanced_perceptual_relevance_to_ppp (float *** ppp_x, float *** ppp_y
 
 
 /**
-* This function transform PPP values at corners in order to generate a rectangle when
-* the block is downsampled.
-* 
-* However, at interpolation, this function does not assure that the block takes a rectangular shape at interpolation
-* A rectangular downsampled block, after interpolation, generates a poligonal shape (not parallelepiped)
-* 
-*                                                                   
-*         original                down             interpolated 
-*          side_0              
-*        +-------+               +----+                    +
-*        |       |         ----> |    |   ---->     +             
-* side 0 |       | side 1        +----+                                    
-*        |       |             rectangle                 +             
-*        +-------+                                +  
-*          side 1                                  any shape
-* 
-* 
-* Sides & corners labeling horizontal:                 Sides & corners labeling vertical
-*           Side 0                                              Side 0
-* Corner_0: TOP_LEFT_CORNER                            Corner_0: TOP_LEFT_CORNER
-* Corner_1: TOP_RIGHT_CORNER                           Corner_1: BOT_LEFT_CORNER
-*           Side 1                                              Side 1
-* Corner_2: BOT_LEFT_CORNER                            Corner_2: TOP_RIGHT_CORNER
-* Corner_3: BOT_RIGHT_CORNER                           Corner_3: BOT_RIGHT_CORNER                                      
-*                                       
-*/
+ * This function transform PPP values at corners in order to generate a rectangle when 
+ * the block is downsampled.
+ * 
+ * However, this function does not assure that the block takes a rectangular shape when image is interpolated.
+ * A rectangular downsampled block, after interpolation, generates a poligonal shape (not parallelepiped)
+ * 
+ *                                                                   
+ *         original                down             interpolated 
+ *          side_c              
+ *     0  +-------+  1            +----+                    +
+ *        |       |         ----> |    |   ---->     +             
+ * side a |       | side b        +----+                                    
+ *        |       |             rectangle                 +             
+ *     2  +-------+  3                             +  
+ *          side d                                  any shape
+ * 
+ * @param **array_block_Y Block parameters for luminance
+ * @param block_array_UV Block parameters for chrominances
+ * @param ***ppp_x pixels per pixel in x coordinate
+ * @param ***ppp_y Pixels per pixel in y coordinate
+ * @param width_image_Y Image width for luminance
+ * @param height_image_Y Image height for luminance
+ * @param width_image_UV Image width for chrominances 
+ * @param height_image_UV Image height for chrominances
+ * @param block_length Block length
+ * @param ppp_max Maximum number of pixels per pixel
+ * @param block_x Block x index
+ * @param block_y Block y index                                                        
+ */
 void lhe_advanced_ppp_side_to_rectangle_shape (AdvancedLheBlock **array_block_Y, AdvancedLheBlock **array_block_UV,
                                                float ***ppp_x, float ***ppp_y,
                                                uint32_t width_image_Y, uint32_t height_image_Y, 
@@ -552,26 +608,20 @@ void lhe_advanced_ppp_side_to_rectangle_shape (AdvancedLheBlock **array_block_Y,
     ppp_y[block_y][block_x][BOT_RIGHT_CORNER] = ppp_y_3;
 }
 
-/**
- * LHE Precomputation 
- * 
- * Precomputation methods for both LHE encoder and decoder .
- */
+
+//==================================================================
+// LHE PRECOMPUTATION
+// Precomputation methods for both LHE encoder and decoder .
+//==================================================================
 
 /**
  * Calculates color component value in the middle of the interval for each hop.
- * This method improves quality. Bassically this method init the value
- * of luminance of hops by the intermediate value between hops frontiers.
+ * Bassically this method inits the luminance value of each hop with the intermediate 
+ * value between hops frontiers.
  *
  * h0--)(-----h1----center-------------)(---------h2--------center----------------)
  */
-static void lhe_init_hop_center_color_component_value (LheBasicPrec *prec, int hop0_Y, int hop1, int rmax,
-                                                    uint8_t hop_neg_4 [Y_MAX_COMPONENT][H1_RANGE], 
-                                                    uint8_t hop_neg_3 [Y_MAX_COMPONENT][H1_RANGE], 
-                                                    uint8_t hop_neg_2 [Y_MAX_COMPONENT][H1_RANGE],
-                                                    uint8_t hop_pos_2 [Y_MAX_COMPONENT][H1_RANGE],
-                                                    uint8_t hop_pos_3 [Y_MAX_COMPONENT][H1_RANGE],
-                                                    uint8_t hop_pos_4 [Y_MAX_COMPONENT][H1_RANGE])
+static void lhe_init_hop_center_color_component_value (LheBasicPrec *prec, int hop0_Y, int hop1, int rmax)
 {
     
     //MIDDLE VALUE LUMINANCE
@@ -629,6 +679,7 @@ static void lhe_init_hop_center_color_component_value (LheBasicPrec *prec, int h
 }
     
 /**
+ * Inits precalculated luminance cache
  * Calculates color component value for each hop.
  * Final color component ( luminance or chrominance) depends on hop1
  * Color component for negative hops is calculated as: hopi_Y = hop0_Y - hi
@@ -637,15 +688,11 @@ static void lhe_init_hop_center_color_component_value (LheBasicPrec *prec, int h
  * and hi is the luminance distance from hop0_Y to hopi_Y
  */
 static void lhe_init_hop_color_component_value (LheBasicPrec *prec, int hop0_Y, int hop1, int rmax,
-                                                uint8_t hop_neg_4 [Y_MAX_COMPONENT][H1_RANGE], 
-                                                uint8_t hop_neg_3 [Y_MAX_COMPONENT][H1_RANGE], 
-                                                uint8_t hop_neg_2 [Y_MAX_COMPONENT][H1_RANGE],
-                                                uint8_t hop_pos_2 [Y_MAX_COMPONENT][H1_RANGE],
-                                                uint8_t hop_pos_3 [Y_MAX_COMPONENT][H1_RANGE],
-                                                uint8_t hop_pos_4 [Y_MAX_COMPONENT][H1_RANGE])
+                                                uint8_t hop_neg_4, uint8_t hop_neg_3, uint8_t hop_neg_2,
+                                                uint8_t hop_pos_2, uint8_t hop_pos_3, uint8_t hop_pos_4)
 {    
     //HOP -4
-    prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_NEG_4]= hop0_Y  - (uint8_t) hop_neg_4[hop0_Y][hop1] ; 
+    prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_NEG_4]= hop0_Y  - hop_neg_4; 
     
     if (prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_NEG_4]<=MIN_COMPONENT_VALUE) 
     { 
@@ -653,7 +700,7 @@ static void lhe_init_hop_color_component_value (LheBasicPrec *prec, int hop0_Y, 
     }
 
     //HOP-3
-    prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_NEG_3]= hop0_Y  - (uint8_t) hop_neg_3[hop0_Y][hop1]; 
+    prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_NEG_3]= hop0_Y  - hop_neg_3; 
 
     if (prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_NEG_3] <= MIN_COMPONENT_VALUE) 
     {
@@ -662,7 +709,7 @@ static void lhe_init_hop_color_component_value (LheBasicPrec *prec, int hop0_Y, 
     }
 
     //HOP-2
-    prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_NEG_2]= hop0_Y  - (uint8_t) hop_neg_2[hop0_Y][hop1]; 
+    prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_NEG_2]= hop0_Y  - hop_neg_2; 
 
     if (prec-> prec_luminance [hop0_Y][rmax][hop1][HOP_NEG_2] <= MIN_COMPONENT_VALUE) 
     { 
@@ -700,7 +747,7 @@ static void lhe_init_hop_color_component_value (LheBasicPrec *prec, int hop0_Y, 
     }
 
     //HOP2
-    prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_POS_2]= hop0_Y  + (uint8_t) hop_pos_2[hop0_Y][hop1]; 
+    prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_POS_2]= hop0_Y  + hop_pos_2; 
 
     if (prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_POS_2]>MAX_COMPONENT_VALUE) 
     {
@@ -709,7 +756,7 @@ static void lhe_init_hop_color_component_value (LheBasicPrec *prec, int hop0_Y, 
     }
 
     //HOP3
-    prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_POS_3]= hop0_Y  + (uint8_t) hop_pos_3[hop0_Y][hop1]; 
+    prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_POS_3]= hop0_Y  + hop_pos_3; 
 
     if (prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_POS_3]>MAX_COMPONENT_VALUE) 
     {
@@ -718,7 +765,7 @@ static void lhe_init_hop_color_component_value (LheBasicPrec *prec, int hop0_Y, 
     }
 
     //HOP4
-    prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_POS_4]= hop0_Y  + (uint8_t) hop_pos_4[hop0_Y][hop1]; 
+    prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_POS_4]= hop0_Y  + hop_pos_4; 
 
     if (prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_POS_4]>MAX_COMPONENT_VALUE) 
     {
@@ -726,6 +773,9 @@ static void lhe_init_hop_color_component_value (LheBasicPrec *prec, int hop0_Y, 
     }             
 }
 
+/**
+ * Inits best hop cache
+ */
 static void lhe_init_best_hop(LheBasicPrec* prec, int hop0_Y, int hop_1, int r_max)
 {
 
@@ -788,6 +838,11 @@ static void lhe_init_best_hop(LheBasicPrec* prec, int hop0_Y, int hop_1, int r_m
     }
 }
 
+/**
+ * @deprecated
+ * 
+ * Inits h1 cache 
+ */
 static void lhe_init_h1_adaptation (LheBasicPrec* prec) 
 {
     uint8_t hop_prev, hop, x, hop_1; 
@@ -816,27 +871,21 @@ static void lhe_init_h1_adaptation (LheBasicPrec* prec)
 }
 
 /**
- * Calculates lhe init cache
+ * Inits lhe cache
  */
 void lhe_init_cache (LheBasicPrec *prec) 
 { 
     
-    float cache_ratio[Y_MAX_COMPONENT][RATIO][H1_RANGE][SIGN]; //pow functions
+    float positive_ratio, negative_ratio; //pow functions
 
     //NEGATIVE HOPS
-    uint8_t hop_neg_4 [Y_MAX_COMPONENT][H1_RANGE]; // h-4 value 
-    uint8_t hop_neg_3 [Y_MAX_COMPONENT][H1_RANGE]; // h-3 value 
-    uint8_t hop_neg_2 [Y_MAX_COMPONENT][H1_RANGE]; // h-2 value 
+    uint8_t hop_neg_4, hop_neg_3, hop_neg_2;
     
     //POSITIVE HOPS
-    uint8_t hop_pos_2 [Y_MAX_COMPONENT][H1_RANGE]; // h2 value 
-    uint8_t hop_pos_3 [Y_MAX_COMPONENT][H1_RANGE]; // h3 value 
-    uint8_t hop_pos_4 [Y_MAX_COMPONENT][H1_RANGE]; // h4 value
+    uint8_t hop_pos_2, hop_pos_3, hop_pos_4;
     
     const float percent_range=0.8f;//0.8 is the  80%
     const float pow_index = 1.0f/3;
-    float ratio_pos;
-    float ratio_neg;
 
     //hop0_Y is hop0 component color value
     for (int hop0_Y = 0; hop0_Y<Y_MAX_COMPONENT; hop0_Y++)
@@ -852,52 +901,42 @@ void lhe_init_cache (LheBasicPrec *prec)
                 float max= rmax/10.0;// control of limits if rmax is 25 then max is 2.5f;
                               
                 // r values for possitive hops  
-                cache_ratio[hop0_Y][rmax][hop1][POSITIVE]=(float)pow(percent_range*(255-hop0_Y)/(hop1), pow_index);
+                positive_ratio=(float)pow(percent_range*(255-hop0_Y)/(hop1), pow_index);
 
-                if (cache_ratio[hop0_Y][rmax][hop1][POSITIVE]>max) 
+                if (positive_ratio>max) 
                 {
-                    cache_ratio[hop0_Y][rmax][hop1][POSITIVE]=max;
+                    positive_ratio=max;
                 }
                 
                 // r' values for negative hops
-                cache_ratio[hop0_Y][rmax][hop1][NEGATIVE]=(float)pow(percent_range*(hop0_Y)/(hop1), pow_index);
+                negative_ratio=(float)pow(percent_range*(hop0_Y)/(hop1), pow_index);
 
-                if (cache_ratio[hop0_Y][rmax][hop1][NEGATIVE]>max) 
+                if (negative_ratio>max) 
                 {
-                    cache_ratio[hop0_Y][rmax][hop1][NEGATIVE]=max;
+                    negative_ratio=max;
                 }
                 
-                //get r value for possitive hops from cache_ratio       
-                ratio_pos=cache_ratio[hop0_Y][rmax][hop1][POSITIVE];
-
-                //get r' value for negative hops from cache_ratio
-                ratio_neg=cache_ratio[hop0_Y][rmax][hop1][NEGATIVE];
-
                 // COMPUTATION OF HOPS
                 
                 //  Possitive hops luminance
-                hop_pos_2[hop0_Y][hop1] = hop1*ratio_pos;
-                hop_pos_3[hop0_Y][hop1] = hop_pos_2[hop0_Y][hop1]*ratio_pos;
-                hop_pos_4[hop0_Y][hop1] = hop_pos_3[hop0_Y][hop1]*ratio_pos;
+                hop_pos_2 = hop1*positive_ratio;
+                hop_pos_3 = hop_pos_2*positive_ratio;
+                hop_pos_4 = hop_pos_3*positive_ratio;
 
                 //Negative hops luminance                        
-                hop_neg_2[hop0_Y][hop1] = hop1*ratio_neg;
-                hop_neg_3[hop0_Y][hop1] = hop_neg_2[hop0_Y][hop1]*ratio_neg;
-                hop_neg_4[hop0_Y][hop1] = hop_neg_3[hop0_Y][hop1]*ratio_neg;
+                hop_neg_2 = hop1*negative_ratio;
+                hop_neg_3 = hop_neg_2*negative_ratio;
+                hop_neg_4 = hop_neg_3*negative_ratio;
 
                 lhe_init_hop_color_component_value (prec, hop0_Y, hop1, rmax, hop_neg_4, hop_neg_3, 
                                                     hop_neg_2, hop_pos_2, hop_pos_3, hop_pos_4);
                 
                 if (MIDDLE_VALUE) {
-                    lhe_init_hop_center_color_component_value(prec, hop0_Y, hop1, rmax, hop_neg_4, hop_neg_3, 
-                                                              hop_neg_2, hop_pos_2, hop_pos_3, hop_pos_4);
+                    lhe_init_hop_center_color_component_value(prec, hop0_Y, hop1, rmax);
                 }
                 
                 lhe_init_best_hop(prec, hop0_Y, hop1, rmax );
             }
         }
     }
-    
-    //h1 adaptation cache
-    lhe_init_h1_adaptation (prec);
 }

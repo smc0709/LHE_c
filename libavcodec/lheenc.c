@@ -502,7 +502,7 @@ static uint64_t lhe_advanced_gen_huffman (LheHuffEntry *he_Y, LheHuffEntry *he_U
  * Translates Perceptual relevance values into perceptual relevance interval number 
  * to save it on advanced lhe file.
  * 
- *    Interval   -  Value - Interval number
+ *    Interval   -  Quant - Interval number
  * [0.0, 0.125)  -  0.0   -         0
  * [0.125, 0.25) -  0.125 -         1
  * [0.25, 0.5)   -  0.25  -         2

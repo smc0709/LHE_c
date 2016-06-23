@@ -49,6 +49,12 @@ static av_cold int lhe_decode_init(AVCodecContext *avctx)
     return 0;
 }
 
+//==================================================================
+// HUFFMAN FUNCTIONS
+//==================================================================
+/**
+ * Reads Huffman table
+ */
 static void lhe_read_huffman_table (LheState *s, LheHuffEntry *he) 
 {   
     int i;
@@ -68,6 +74,14 @@ static void lhe_read_huffman_table (LheState *s, LheHuffEntry *he)
        
 }
 
+/**
+ * Translates Huffman into symbols (hops)
+ * 
+ * @huffman_symbol huffman symbol
+ * @he Huffman entry, Huffman parameters
+ * @pix Image pix index
+ * @count_bits Number of bits of huffman symbol 
+ */
 static uint8_t lhe_translate_huffman_into_symbol (uint32_t huffman_symbol, LheHuffEntry *he, uint32_t pix, uint8_t count_bits) 
 {
     uint8_t symbol;
@@ -115,6 +129,16 @@ static uint8_t lhe_translate_huffman_into_symbol (uint32_t huffman_symbol, LheHu
     
 }
 
+//==================================================================
+// BASIC LHE FILE
+//==================================================================
+/**
+ * Reads file symbols of basic lhe file
+ * 
+ * @s Lhe parameters
+ * @he Huffman entry, Huffman parameters
+ * @image_size image size
+ */
 static void lhe_basic_read_file_symbols (LheState *s, LheHuffEntry *he, uint32_t image_size, uint8_t *symbols) 
 {
     uint8_t symbol, count_bits;
@@ -142,10 +166,25 @@ static void lhe_basic_read_file_symbols (LheState *s, LheHuffEntry *he, uint32_t
     }
 }
 
+//==================================================================
+// ADVANCED LHE FILE
+//==================================================================
+/**
+ * Reads file symbols of advanced lhe file
+ * 
+ * @param s Lhe parameters
+ * @param he Huffman entry, Huffman parameters
+ * @param block_array Advanced Lhe parameters
+ * @param symbols symbols array (hops)
+ * @param width image width
+ * @param height image height
+ * @param block_x block x index
+ * @param block_y block y index
+ */
 static void lhe_advanced_read_file_symbols (LheState *s, LheHuffEntry *he, AdvancedLheBlock **block_array,
                                             uint8_t *symbols, 
                                             uint32_t width, uint32_t height, 
-                                            int block_x, int block_y, bool notoquenada) 
+                                            int block_x, int block_y) 
 {
     uint8_t symbol, count_bits;
     uint32_t huffman_symbol, pix;
@@ -184,6 +223,18 @@ static void lhe_advanced_read_file_symbols (LheState *s, LheHuffEntry *he, Advan
     }
 }
 
+/**
+ * Translates perceptual relevance intervals to perceptual relevance quants
+ * 
+ *    Interval   -  Quant - Interval number
+ * [0.0, 0.125)  -  0.0   -         0
+ * [0.125, 0.25) -  0.125 -         1
+ * [0.25, 0.5)   -  0.25  -         2
+ * [0.5, 0.75)   -  0.5   -         3
+ * [0.75, 1]     -  1.0   -         4
+ * 
+ * @param perceptual_relevance_interval perceptual relevance interval number
+ */
 static float lhe_advance_translate_pr_interval_to_pr_quant (uint8_t perceptual_relevance_interval)
 {
     float perceptual_relevance_quant;
@@ -210,6 +261,31 @@ static float lhe_advance_translate_pr_interval_to_pr_quant (uint8_t perceptual_r
     return perceptual_relevance_quant;
 }
 
+/**
+ * Reads perceptual intervals and translates them to perceptual relevance quants.
+ * Calculates block coordinates according to perceptual relevance values.
+ * Calculates pixels per pixel according to perceptual relevance values.
+ * 
+ * @param *s Lhe params
+ * @param **block_array_Y Block parameters for luminance signal
+ * @param **block_array_UV Block parameters for chrominance signals
+ * @param **perceptual_relevance_x Perceptual relevance array for x coordinate
+ * @param **perceptual_relevance_y Perceptual relevance array for y coordinate
+ * @param ***ppp_x Pixels per pixel array for x coordinate
+ * @param ***ppp_y Pixels per pixel array for y coordinate
+ * @param ppp_max_theoric Maximum number of pixels per pixel
+ * @param compression_factor Compression factor number
+ * @param width_Y luminance width
+ * @param height_Y luminance height
+ * @param width_UV chrominance width
+ * @param height_UV chrominance height
+ * @param block_width_Y luminance block width
+ * @param block_height_Y luminance block height
+ * @param block_width_UV chrominance block width
+ * @param block_height_UV chrominance block height
+ * @param total_blocks_width Number of blocks widthwise
+ * @param total_blocks_height Number of blocks heightwise
+ */
 static void lhe_advanced_read_mesh (LheState *s, AdvancedLheBlock **block_array_Y, AdvancedLheBlock **block_array_UV,
                                     float ** perceptual_relevance_x, float ** perceptual_relevance_y,
                                     float ***ppp_x, float ***ppp_y,
@@ -225,6 +301,7 @@ static void lhe_advanced_read_mesh (LheState *s, AdvancedLheBlock **block_array_
     {
         for (int block_x=0; block_x<total_blocks_width+1; block_x++) 
         { 
+            //Reads from file
             perceptual_relevance_x_interval = get_bits(&s->gb, PR_INTERVAL_BITS); 
             perceptual_relevance_y_interval = get_bits(&s->gb, PR_INTERVAL_BITS); 
                         
@@ -250,7 +327,7 @@ static void lhe_advanced_read_mesh (LheState *s, AdvancedLheBlock **block_array_
                                                                perceptual_relevance_x, perceptual_relevance_y, 
                                                                compression_factor, ppp_max_theoric, 
                                                                block_x, block_y);
-             
+            //Adjusts ppp to rectangle shape
             lhe_advanced_ppp_side_to_rectangle_shape (block_array_Y, block_array_UV,
                                                       ppp_x, ppp_y,
                                                       width_Y, height_Y, 
@@ -262,89 +339,26 @@ static void lhe_advanced_read_mesh (LheState *s, AdvancedLheBlock **block_array_
     }
 }
 
-static void lhe_advanced_decode_one_hop_per_pixel_block (LheBasicPrec *prec, AdvancedLheBlock **block_array,
-                                                         uint8_t *hops, uint8_t *image,
-                                                         uint32_t width, uint32_t height, int linesize,
-                                                         uint8_t *first_color_block, uint32_t total_blocks_width,
-                                                         uint32_t block_x, uint32_t block_y,
-                                                         uint32_t block_width, uint32_t block_height) 
-{
-       
-    //Hops computation.
-    uint32_t xini, xfin_downsampled, yini, yfin_downsampled;
-    bool small_hop, last_small_hop;
-    uint8_t hop, predicted_luminance, hop_1, r_max; 
-    uint32_t pix, pix_hops_data, dif_pix, dif_hops, num_block;
-    
-    num_block = block_y * total_blocks_width + block_x;
-    
-    xini = block_array[block_y][block_x].x_ini;
-    xfin_downsampled = block_array[block_y][block_x].x_fin_downsampled; 
- 
-    yini = block_array[block_y][block_x].y_ini;
-    yfin_downsampled = block_array[block_y][block_x].y_fin_downsampled;
-    
-    small_hop           = false;
-    last_small_hop      = false;        // indicates if last hop is small
-    predicted_luminance = 0;            // predicted signal
-    hop_1               = START_HOP_1;
-    pix                 = 0;            // pixel possition, from 0 to image size        
-    r_max               = PARAM_R;        
-    
- 
-    pix = yini*linesize + xini; 
-    pix_hops_data = yini*width + xini;
-    dif_pix = linesize - xfin_downsampled + xini;
-    dif_hops = width - xfin_downsampled + xini;
-    
-    for (int y=yini; y < yfin_downsampled; y++)  {
-        for (int x=xini; x < xfin_downsampled; x++)     {
-            
-            hop = hops[pix_hops_data]; 
-  
-            if (x == xini && y==yini) 
-            {
-                predicted_luminance=first_color_block[num_block];//first pixel always is perfectly predicted! :-)  
-            } 
-            else if (y == yini) 
-            {
-                predicted_luminance=image[pix-1];
-            } 
-            else if (x == xini) 
-            {
-                predicted_luminance=image[pix-linesize];
-                last_small_hop=false;
-                hop_1=START_HOP_1;
-            } else if (x == xfin_downsampled -1) 
-            {
-                predicted_luminance=(image[pix-1]+image[pix-linesize])>>1;                                                             
-            } 
-            else 
-            {
-                predicted_luminance=(image[pix-1]+image[pix+1-linesize])>>1;     
-            }
-            
-          
-            //assignment of component_prediction
-            //This is the uncompressed image
-            image[pix]= prec -> prec_luminance[predicted_luminance][r_max][hop_1][hop];
-            
-            //tunning hop1 for the next hop ( "h1 adaptation")
-            //------------------------------------------------
-            H1_ADAPTATION;
 
-            //lets go for the next pixel
-            //--------------------------
-            pix++;
-            pix_hops_data++;
-        }// for x
-        pix+=dif_pix;
-        pix_hops_data+=dif_hops;
-    }// for y
-    
-}
-
-
+//==================================================================
+// BASIC LHE DECODING
+//==================================================================
+/**
+ * Decodes one hop per pixel in a block
+ * 
+ * @param *prec Pointer to Lhe precalculated data
+ * @param *hops array of hops 
+ * @param *image image result
+ * @param width image width
+ * @param height image height
+ * @param linesize rectangle images create a square image in ffmpeg memory. Linesize is width used by ffmpeg in memory
+ * @param *first_color_block first component value for each block
+ * @param total_blocks_width number of blocks widthwise
+ * @param block_x block x index
+ * @param block_y block y index
+ * @param block_width block width
+ * @param block_height block height
+ */
 static void lhe_basic_decode_one_hop_per_pixel_block (LheBasicPrec *prec, uint8_t *hops, uint8_t *image,
                                                       uint32_t width, uint32_t height, int linesize,
                                                       uint8_t *first_color_block, uint32_t total_blocks_width,
@@ -432,6 +446,17 @@ static void lhe_basic_decode_one_hop_per_pixel_block (LheBasicPrec *prec, uint8_
     
 }
 
+/**
+ * Decodes one hop per pixel
+ * 
+ * @param *prec precalculated lhe data
+ * @param *hops hops array
+ * @param *image final result
+ * @param first_color First pixel component
+ * @param width image width
+ * @param height image height
+ * @param linesize rectangle images create a square image in ffmpeg memory. Linesize is width used by ffmpeg in memory
+ */
 static void lhe_basic_decode_one_hop_per_pixel (LheBasicPrec *prec, uint8_t *hops, uint8_t *image,
                                                 uint8_t first_color, uint32_t width, uint32_t height, 
                                                 int linesize) {
@@ -495,6 +520,9 @@ static void lhe_basic_decode_one_hop_per_pixel (LheBasicPrec *prec, uint8_t *hop
     
 }
 
+/**
+ * Calls methods to decode sequentially
+ */
 static void lhe_basic_decode_frame_sequential (LheBasicPrec *prec, 
                                                uint8_t *component_Y, uint8_t *component_U, uint8_t *component_V,
                                                uint8_t *hops_Y, uint8_t *hops_U, uint8_t *hops_V,
@@ -512,7 +540,9 @@ static void lhe_basic_decode_frame_sequential (LheBasicPrec *prec,
     lhe_basic_decode_one_hop_per_pixel(prec, hops_V, component_V, first_color_block_V[0], width_UV, height_UV, linesize_V);
 }
 
-
+/**
+ * Calls methods to decode pararell
+ */
 static void lhe_basic_decode_frame_pararell (LheBasicPrec *prec, 
                                              uint8_t *component_Y, uint8_t *component_U, uint8_t *component_V,
                                              uint8_t *hops_Y, uint8_t *hops_U, uint8_t *hops_V,
@@ -550,6 +580,111 @@ static void lhe_basic_decode_frame_pararell (LheBasicPrec *prec,
     }
 }
 
+//==================================================================
+// ADVANCED LHE DECODING
+//==================================================================
+/**
+ * Decodes one hop per pixel in a block
+ * 
+ * @param *prec Pointer to precalculated lhe data
+ * @param **block_array block 
+ * @param *hops array of hops
+ * @param *image final image
+ * @param width image width
+ * @param height image height
+ * @param linesize rectangle images create a square image in ffmpeg memory. Linesize is width used by ffmpeg in memory
+ * @param *first_color_block first component value for each block
+ * @param total_blocks_width number of blocks widthwise
+ * @param block_x block x index
+ * @param block_y block y index
+ * @param block_width block width
+ * @param block_height block height
+ */
+static void lhe_advanced_decode_one_hop_per_pixel_block (LheBasicPrec *prec, AdvancedLheBlock **block_array,
+                                                         uint8_t *hops, uint8_t *image,
+                                                         uint32_t width, uint32_t height, int linesize,
+                                                         uint8_t *first_color_block, uint32_t total_blocks_width,
+                                                         uint32_t block_x, uint32_t block_y,
+                                                         uint32_t block_width, uint32_t block_height) 
+{
+       
+    //Hops computation.
+    uint32_t xini, xfin_downsampled, yini, yfin_downsampled;
+    bool small_hop, last_small_hop;
+    uint8_t hop, predicted_luminance, hop_1, r_max; 
+    uint32_t pix, pix_hops_data, dif_pix, dif_hops, num_block;
+    
+    num_block = block_y * total_blocks_width + block_x;
+    
+    xini = block_array[block_y][block_x].x_ini;
+    xfin_downsampled = block_array[block_y][block_x].x_fin_downsampled; 
+ 
+    yini = block_array[block_y][block_x].y_ini;
+    yfin_downsampled = block_array[block_y][block_x].y_fin_downsampled;
+    
+    small_hop           = false;
+    last_small_hop      = false;        // indicates if last hop is small
+    predicted_luminance = 0;            // predicted signal
+    hop_1               = START_HOP_1;
+    pix                 = 0;            // pixel possition, from 0 to image size        
+    r_max               = PARAM_R;        
+    
+ 
+    pix = yini*linesize + xini; 
+    pix_hops_data = yini*width + xini;
+    dif_pix = linesize - xfin_downsampled + xini;
+    dif_hops = width - xfin_downsampled + xini;
+    
+    for (int y=yini; y < yfin_downsampled; y++)  {
+        for (int x=xini; x < xfin_downsampled; x++)     {
+            
+            hop = hops[pix_hops_data]; 
+  
+            if (x == xini && y==yini) 
+            {
+                predicted_luminance=first_color_block[num_block];//first pixel always is perfectly predicted! :-)  
+            } 
+            else if (y == yini) 
+            {
+                predicted_luminance=image[pix-1];
+            } 
+            else if (x == xini) 
+            {
+                predicted_luminance=image[pix-linesize];
+                last_small_hop=false;
+                hop_1=START_HOP_1;
+            } else if (x == xfin_downsampled -1) 
+            {
+                predicted_luminance=(image[pix-1]+image[pix-linesize])>>1;                                                             
+            } 
+            else 
+            {
+                predicted_luminance=(image[pix-1]+image[pix+1-linesize])>>1;     
+            }
+            
+          
+            //assignment of component_prediction
+            //This is the uncompressed image
+            image[pix]= prec -> prec_luminance[predicted_luminance][r_max][hop_1][hop];
+            
+            //tunning hop1 for the next hop ( "h1 adaptation")
+            //------------------------------------------------
+            H1_ADAPTATION;
+
+            //lets go for the next pixel
+            //--------------------------
+            pix++;
+            pix_hops_data++;
+        }// for x
+        pix+=dif_pix;
+        pix_hops_data+=dif_hops;
+    }// for y
+    
+}
+
+//==================================================================
+// DECODE FRAME
+//==================================================================
 static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, AVPacket *avpkt)
 {
     uint8_t lhe_mode;
@@ -635,7 +770,9 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
     lhe_read_huffman_table(s, he_Y);
     lhe_read_huffman_table(s, he_UV);
     
+    
     if (lhe_mode == ADVANCED_LHE)
+        //ADVANCED LHE
     {      
         perceptual_relevance_x = malloc(sizeof(float*) * (total_blocks_height+1));  
     
@@ -714,17 +851,17 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
                 lhe_advanced_read_file_symbols (s, he_Y, block_array_Y,
                                                 hops_Y,
                                                 width_Y, height_Y,
-                                                block_x, block_y, true);  
+                                                block_x, block_y);  
                                                 
                 lhe_advanced_read_file_symbols (s, he_UV, block_array_UV,
                                                 hops_U,
                                                 width_UV, height_UV,
-                                                block_x, block_y, true);
+                                                block_x, block_y);
                 
                 lhe_advanced_read_file_symbols (s, he_UV, block_array_UV, 
                                                 hops_V, 
                                                 width_UV, height_UV,
-                                                block_x, block_y, true);
+                                                block_x, block_y);
 
             }
         }
@@ -759,7 +896,8 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
             }
         } 
     }
-    else 
+    else
+            //BASIC LHE
     {
         lhe_basic_read_file_symbols(s, he_Y, image_size_Y, hops_Y);
         lhe_basic_read_file_symbols(s, he_UV, image_size_UV, hops_U);
