@@ -203,12 +203,8 @@ static float lhe_advance_translate_pr_interval_to_pr_quant (uint8_t perceptual_r
             perceptual_relevance_quant = PR_QUANT_3;
             break;
         case PR_INTERVAL_4:
-            perceptual_relevance_quant = PR_QUANT_4;
-            break;
-        case PR_INTERVAL_5:
             perceptual_relevance_quant = PR_QUANT_5;
-            break;
-            
+            break;     
     }
     
     return perceptual_relevance_quant;

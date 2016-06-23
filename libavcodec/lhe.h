@@ -112,7 +112,6 @@
 #define PR_INTERVAL_2 2
 #define PR_INTERVAL_3 3
 #define PR_INTERVAL_4 4
-#define PR_INTERVAL_5 5
 #define PR_INTERVAL_BITS 3 
 #define PR_MESH_BITS 2*PR_INTERVAL_BITS
 
