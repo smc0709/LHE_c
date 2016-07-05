@@ -1291,7 +1291,9 @@ static void lhe_advanced_horizontal_downsample_sps (AdvancedLheBlock **block_arr
     ppp_2=ppp_array[block_y][block_x][BOT_LEFT_CORNER];
     ppp_3=ppp_array[block_y][block_x][BOT_RIGHT_CORNER];
     
+    //gradient PPPx side a
     gradient_0=(ppp_2-ppp_0)/(block_height-1.0);   
+    //gradient PPPx side b
     gradient_1=(ppp_3-ppp_1)/(block_height-1.0);
 
     for (int y=yini; y<yfin; y++)
@@ -1361,7 +1363,9 @@ static void lhe_advanced_vertical_downsample_sps (AdvancedLheBlock **block_array
     ppp_2=ppp_array[block_y][block_x][BOT_LEFT_CORNER];
     ppp_3=ppp_array[block_y][block_x][BOT_RIGHT_CORNER];
 
+    //gradient PPPy side c
     gradient_0=(ppp_1-ppp_0)/(block_width-1.0);    
+    //gradient PPPy side d
     gradient_1=(ppp_3-ppp_2)/(block_width-1.0);
   
     for (int x=xini; x < xfin;x++)
