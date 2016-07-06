@@ -694,6 +694,7 @@ static void lhe_advanced_vertical_nearest_neighbour_interpolation (AdvancedLheBl
     uint32_t downsampled_y_side;
     float gradient, gradient_0, gradient_1, ppp_y, ppp_0, ppp_1, ppp_2, ppp_3;
     uint32_t xini, xfin_downsampled, yini, yfin, yprev_interpolated, yfin_interpolated, yfin_downsampled;
+    float yfin_interpolated_float;
     
     downsampled_y_side = block_array[block_y][block_x].downsampled_y_side;
     xini = block_array[block_y][block_x].x_ini;
@@ -723,20 +724,13 @@ static void lhe_advanced_vertical_nearest_neighbour_interpolation (AdvancedLheBl
 
             //Interpolated y coordinates
             yprev_interpolated = yini; 
-            yfin_interpolated= yini+ppp_y+0.5;
+            yfin_interpolated_float= yini+ppp_y;
 
             // bucle for horizontal scanline 
             // scans the downsampled image, pixel by pixel
             for (int y_sc=yini;y_sc<yfin_downsampled;y_sc++)
             {            
-                if (yfin_interpolated < yfin && y_sc == yfin_downsampled - 1)
-                {
-                    yfin_interpolated = yfin;
-                } else if (yfin_interpolated > yfin) 
-                {
-                    yfin_interpolated = yfin;
-                }    
-          
+                yfin_interpolated = yfin_interpolated_float + 0.5;  
                 
                 for (int i=yprev_interpolated;i < yfin_interpolated;i++)
                 {
@@ -745,7 +739,7 @@ static void lhe_advanced_vertical_nearest_neighbour_interpolation (AdvancedLheBl
           
                 yprev_interpolated=yfin_interpolated;
                 ppp_y+=gradient;
-                yfin_interpolated+=(ppp_y+0.5);               
+                yfin_interpolated_float+=ppp_y;               
                 
             }//y
             ppp_0+=gradient_0;
@@ -766,6 +760,7 @@ static void lhe_advanced_horizontal_nearest_neighbour_interpolation (AdvancedLhe
     uint32_t downsampled_x_side;
     float gradient, gradient_0, gradient_1, ppp_x, ppp_0, ppp_1, ppp_2, ppp_3;
     uint32_t xini, xfin, xfin_downsampled, xprev_interpolated, xfin_interpolated, yini, yfin;
+    float xfin_interpolated_float;
     
     downsampled_x_side = block_array[block_y][block_x].downsampled_x_side;
     xini = block_array[block_y][block_x].x_ini;
@@ -792,31 +787,26 @@ static void lhe_advanced_horizontal_nearest_neighbour_interpolation (AdvancedLhe
         
         //Interpolated x coordinates
         xprev_interpolated = xini; 
-        xfin_interpolated= xini+ppp_x+0.5;
+        xfin_interpolated_float= xini+ppp_x;
 
         for (int x_sc=xini; x_sc<xfin_downsampled; x_sc++)
         {
+            xfin_interpolated = xfin_interpolated_float + 0.5;
             
-            if (xfin_interpolated < xfin && x_sc == xfin_downsampled - 1)
+            if (xfin_interpolated>xfin) 
             {
-                xfin_interpolated = xfin;
-            } else if (xfin_interpolated > xfin) 
-            {
-                xfin_interpolated = xfin;
-            }    
-        
-            
+                xfin_interpolated = xfin; //this is a hot fix but it is not ok... it is needed to adapt ppp in chrominances
+            }
+   
             for (int i=xprev_interpolated;i < xfin_interpolated;i++)
             {
+                //if (block_y== 1 && block_x == 31 && xfin_interpolated == 258 && y==16) changes the value
                 component_Y[y*width+i]=intermediate_interpolated_image[y*width+x_sc];                  
             }
-            
-            
+                        
             xprev_interpolated=xfin_interpolated;
             ppp_x+=gradient;
-            xfin_interpolated+=(ppp_x+0.5);   
-           
-
+            xfin_interpolated_float+=ppp_x;   
         }//x
 
         ppp_0+=gradient_0;
@@ -1020,7 +1010,7 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
             }
         }
  
-         #pragma omp parallel for
+        #pragma omp parallel for
         for (int block_y=0; block_y<total_blocks_height; block_y++)
         {
             for (int block_x=0; block_x<total_blocks_width; block_x++)
@@ -1037,7 +1027,7 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
                                                                        ppp_y, 
                                                                        downsampled_image_Y, intermediate_interpolated_Y,
                                                                        width_Y, block_width_Y, block_height_Y,
-                                                                       block_x, block_y);
+                                                                       block_x, block_y);           
                 
                 lhe_advanced_horizontal_nearest_neighbour_interpolation (block_array_Y, 
                                                                          ppp_x, 
@@ -1082,7 +1072,7 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
                                                                          ppp_x, 
                                                                          intermediate_interpolated_V, component_V,
                                                                          width_UV, block_width_UV, block_height_UV,
-                                                                         block_x, block_y);
+                                                                         block_x, block_y);                                                                        
               
             }
         }    

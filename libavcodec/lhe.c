@@ -349,7 +349,7 @@ void lhe_advanced_ppp_side_to_rectangle_shape (AdvancedLheBlock **array_block_Y,
         side_average=side_max;
     }
     
-    downsampled_block_Y = ((2 * block_length -1 ) / side_average) + 1;
+    downsampled_block_Y = 2.0*block_length/ side_average + 0.5;
     downsampled_block_UV = (downsampled_block_Y - 1) / CHROMA_FACTOR_WIDTH + 1;
     
     array_block_Y[block_y][block_x].downsampled_x_side = downsampled_block_Y;
@@ -370,7 +370,7 @@ void lhe_advanced_ppp_side_to_rectangle_shape (AdvancedLheBlock **array_block_Y,
     }
     array_block_UV[block_y][block_x].x_fin_downsampled = x_fin_downsampled_UV;
     
-    side_average=2*block_length/downsampled_block_Y;
+    side_average=2.0*block_length/downsampled_block_Y;
        
     //adjust side c
     //--------------
@@ -492,7 +492,7 @@ void lhe_advanced_ppp_side_to_rectangle_shape (AdvancedLheBlock **array_block_Y,
         side_average=side_max;
     }
     
-    downsampled_block_Y = ((2 * block_length -1 ) / side_average) + 1;    
+    downsampled_block_Y = 2.0*block_length/ side_average + 0.5;    
     downsampled_block_UV = (downsampled_block_Y - 1) / CHROMA_FACTOR_HEIGHT + 1;
     
     array_block_Y[block_y][block_x].downsampled_y_side = downsampled_block_Y;
@@ -512,8 +512,7 @@ void lhe_advanced_ppp_side_to_rectangle_shape (AdvancedLheBlock **array_block_Y,
     array_block_UV[block_y][block_x].y_fin_downsampled = y_fin_downsampled_UV;
 
     
-    side_average=2*block_length/downsampled_block_Y;
-       
+    side_average=2.0*block_length/downsampled_block_Y;    
     
     //adjust side a
     //--------------

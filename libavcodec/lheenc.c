@@ -1274,7 +1274,8 @@ static void lhe_advanced_horizontal_downsample_sps (AdvancedLheBlock **block_arr
                                                     int width_image, int height_image, int block_width, int block_height,
                                                     int block_x, int block_y) 
 {
-    uint32_t downsampled_x_side, xini, x_down, xfin, xfin_downsampled, yini, yfin;
+    uint32_t downsampled_x_side, xini, xdown, xfin, xfin_downsampled, yini, yfin;
+    float xdown_float;
     float gradient, gradient_0, gradient_1, ppp_x, ppp_0, ppp_1, ppp_2, ppp_3, color, porcent;
     
     downsampled_x_side = block_array[block_y][block_x].downsampled_x_side;
@@ -1301,19 +1302,20 @@ static void lhe_advanced_horizontal_downsample_sps (AdvancedLheBlock **block_arr
         gradient=(ppp_1-ppp_0)/(downsampled_x_side-1.0); 
 
         ppp_x=ppp_0;
-        x_down=xini;
+        xdown_float=xini;
 
         for (int x=xini; x<xfin_downsampled; x++)
-        {    
-            if (x_down>xfin)
+        {
+            xdown = xdown_float + 0.5;
+            if (xdown>xfin)
             {
-                x_down = xfin;
+                xdown = xfin;
             }
             
-            downsampled_data[y*width_image+x]=component_original_data[y*width_image+x_down];
+            downsampled_data[y*width_image+x]=component_original_data[y*width_image+xdown];
 
             ppp_x+=gradient;
-            x_down+=(ppp_x+0.5);
+            xdown_float+=ppp_x;
 
         }//x
 
@@ -1346,7 +1348,8 @@ static void lhe_advanced_vertical_downsample_sps (AdvancedLheBlock **block_array
 {
     
     float ppp_y, ppp_0, ppp_1, ppp_2, ppp_3, gradient, gradient_0, gradient_1, color, percent;
-    uint32_t downsampled_x_side, downsampled_y_side, xini, xfin, yini, y_down, yfin, yfin_downsampled;
+    uint32_t downsampled_x_side, downsampled_y_side, xini, xfin, yini, ydown, yfin, yfin_downsampled;
+    float ydown_float;
     
     downsampled_x_side = block_array[block_y][block_x].downsampled_x_side;
     downsampled_y_side = block_array[block_y][block_x].downsampled_y_side;
@@ -1373,20 +1376,21 @@ static void lhe_advanced_vertical_downsample_sps (AdvancedLheBlock **block_array
         gradient=(ppp_2-ppp_0)/(downsampled_y_side-1.0);
         ppp_y=ppp_0; 
 
-        y_down=yini; 
+        ydown_float=yini; 
 
         for (int y=yini; y < yfin_downsampled; y++)
         {
+            ydown = ydown_float + 0.5;
             
-            if (y_down>yfin) 
+            if (ydown>yfin) 
             {
-                y_down = yfin;
+                ydown = yfin;
             }
 
-            downsampled_data[y*width_image+x]=intermediate_downsample[y_down*width_image+x];;
+            downsampled_data[y*width_image+x]=intermediate_downsample[ydown*width_image+x];;
                         
             ppp_y+=gradient;
-            y_down+=(ppp_y+0.5);
+            ydown_float+=ppp_y;
         }//ysc
         ppp_0+=gradient_0;
         ppp_2+=gradient_1;
