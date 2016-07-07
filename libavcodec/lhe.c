@@ -219,38 +219,39 @@ void calculate_block_coordinates (AdvancedLheBlock **block_array_Y, AdvancedLheB
  * @param block_x block x index
  * @param block_y block y index
  */
-float lhe_advanced_perceptual_relevance_to_ppp (float *** ppp_x, float *** ppp_y, 
+float lhe_advanced_perceptual_relevance_to_ppp (AdvancedLheBlock **array_block_Y,
                                                 float ** perceptual_relevance_x, float ** perceptual_relevance_y,
                                                 float compression_factor,
                                                 uint32_t ppp_max_theoric,
                                                 int block_x, int block_y) 
 {
     float const1, const2, ppp_min, ppp_max;
+    float ppp_x_0, ppp_x_1, ppp_x_2, ppp_x_3, ppp_y_0, ppp_y_1, ppp_y_2, ppp_y_3;
 
     ppp_min = PPP_MIN;
     const1 = ppp_max_theoric - 1;
     const2 = ppp_max_theoric * compression_factor;
     
-    ppp_x[block_y][block_x][0] = const2 / (1.0 + const1 * perceptual_relevance_x[block_y][block_x]);
-    ppp_x[block_y][block_x][1] = const2 / (1.0 + const1 * perceptual_relevance_x[block_y][block_x+1]);     
-    ppp_x[block_y][block_x][2] = const2 / (1.0 + const1 * perceptual_relevance_x[block_y+1][block_x]);  
-    ppp_x[block_y][block_x][3] = const2 / (1.0 + const1 * perceptual_relevance_x[block_y+1][block_x+1]);
+    ppp_x_0 = const2 / (1.0 + const1 * perceptual_relevance_x[block_y][block_x]);
+    ppp_x_1 = const2 / (1.0 + const1 * perceptual_relevance_x[block_y][block_x+1]);     
+    ppp_x_2 = const2 / (1.0 + const1 * perceptual_relevance_x[block_y+1][block_x]);  
+    ppp_x_3 = const2 / (1.0 + const1 * perceptual_relevance_x[block_y+1][block_x+1]);
     
 
-    ppp_y[block_y][block_x][0] = const2 / (1.0 + const1 * perceptual_relevance_y[block_y][block_x]);    
-    ppp_y[block_y][block_x][1] = const2 / (1.0 + const1 * perceptual_relevance_y[block_y][block_x+1]);   
-    ppp_y[block_y][block_x][2] = const2 / (1.0 + const1 * perceptual_relevance_y[block_y+1][block_x]);        
-    ppp_y[block_y][block_x][3] = const2 / (1.0 + const1 * perceptual_relevance_y[block_y+1][block_x+1]);
+    ppp_y_0 = const2 / (1.0 + const1 * perceptual_relevance_y[block_y][block_x]);    
+    ppp_y_1 = const2 / (1.0 + const1 * perceptual_relevance_y[block_y][block_x+1]);   
+    ppp_y_2 = const2 / (1.0 + const1 * perceptual_relevance_y[block_y+1][block_x]);        
+    ppp_y_3 = const2 / (1.0 + const1 * perceptual_relevance_y[block_y+1][block_x+1]);
     
         //Looks for ppp_min
-    if (ppp_x[block_y][block_x][0] < ppp_min) ppp_min = ppp_x[block_y][block_x][0];
-    if (ppp_x[block_y][block_x][1] < ppp_min) ppp_min = ppp_x[block_y][block_x][1];
-    if (ppp_x[block_y][block_x][2] < ppp_min) ppp_min = ppp_x[block_y][block_x][2];
-    if (ppp_x[block_y][block_x][3] < ppp_min) ppp_min = ppp_x[block_y][block_x][3];
-    if (ppp_y[block_y][block_x][0] < ppp_min) ppp_min = ppp_y[block_y][block_x][0];
-    if (ppp_y[block_y][block_x][1] < ppp_min) ppp_min = ppp_y[block_y][block_x][1];
-    if (ppp_y[block_y][block_x][2] < ppp_min) ppp_min = ppp_y[block_y][block_x][2];
-    if (ppp_y[block_y][block_x][3] < ppp_min) ppp_min = ppp_y[block_y][block_x][3];
+    if (ppp_x_0 < ppp_min) ppp_min = ppp_x_0;
+    if (ppp_x_1 < ppp_min) ppp_min = ppp_x_1;
+    if (ppp_x_2 < ppp_min) ppp_min = ppp_x_2;
+    if (ppp_x_3 < ppp_min) ppp_min = ppp_x_3;
+    if (ppp_y_0 < ppp_min) ppp_min = ppp_y_0;
+    if (ppp_y_1 < ppp_min) ppp_min = ppp_y_1;
+    if (ppp_y_2 < ppp_min) ppp_min = ppp_y_2;
+    if (ppp_y_3 < ppp_min) ppp_min = ppp_y_3;
     
     //Max elastic restriction
     ppp_max = ppp_min * ELASTIC_MAX;
@@ -258,22 +259,33 @@ float lhe_advanced_perceptual_relevance_to_ppp (float *** ppp_x, float *** ppp_y
     if (ppp_max > ppp_max_theoric) ppp_max = ppp_max_theoric;
     
     //Adjust values
-    if (ppp_x[block_y][block_x][0]> ppp_max) ppp_x[block_y][block_x][0] = ppp_max;
-    if (ppp_x[block_y][block_x][0]< PPP_MIN) ppp_x[block_y][block_x][0] = PPP_MIN;
-    if (ppp_x[block_y][block_x][1]> ppp_max) ppp_x[block_y][block_x][1] = ppp_max;
-    if (ppp_x[block_y][block_x][1]< PPP_MIN) ppp_x[block_y][block_x][1] = PPP_MIN;
-    if (ppp_x[block_y][block_x][2]> ppp_max) ppp_x[block_y][block_x][2] = ppp_max;
-    if (ppp_x[block_y][block_x][2]< PPP_MIN) ppp_x[block_y][block_x][2] = PPP_MIN;
-    if (ppp_x[block_y][block_x][3]> ppp_max) ppp_x[block_y][block_x][3] = ppp_max;
-    if (ppp_x[block_y][block_x][3]< PPP_MIN) ppp_x[block_y][block_x][3] = PPP_MIN;   
-    if (ppp_y[block_y][block_x][0]> ppp_max) ppp_y[block_y][block_x][0] = ppp_max;
-    if (ppp_y[block_y][block_x][0]< PPP_MIN) ppp_y[block_y][block_x][0] = PPP_MIN;
-    if (ppp_y[block_y][block_x][1]> ppp_max) ppp_y[block_y][block_x][1] = ppp_max;
-    if (ppp_y[block_y][block_x][1]< PPP_MIN) ppp_y[block_y][block_x][1] = PPP_MIN;
-    if (ppp_y[block_y][block_x][2]> ppp_max) ppp_y[block_y][block_x][2] = ppp_max;
-    if (ppp_y[block_y][block_x][2]< PPP_MIN) ppp_y[block_y][block_x][2] = PPP_MIN;
-    if (ppp_y[block_y][block_x][3]> ppp_max) ppp_y[block_y][block_x][3] = ppp_max;
-    if (ppp_y[block_y][block_x][3]< PPP_MIN) ppp_y[block_y][block_x][3] = PPP_MIN;
+    if (ppp_x_0> ppp_max) ppp_x_0 = ppp_max;
+    if (ppp_x_0< PPP_MIN) ppp_x_0 = PPP_MIN;
+    if (ppp_x_1> ppp_max) ppp_x_1 = ppp_max;
+    if (ppp_x_1< PPP_MIN) ppp_x_1 = PPP_MIN;
+    if (ppp_x_2> ppp_max) ppp_x_2 = ppp_max;
+    if (ppp_x_2< PPP_MIN) ppp_x_2 = PPP_MIN;
+    if (ppp_x_3> ppp_max) ppp_x_3 = ppp_max;
+    if (ppp_x_3< PPP_MIN) ppp_x_3 = PPP_MIN;   
+    if (ppp_y_0> ppp_max) ppp_y_0 = ppp_max;
+    if (ppp_y_0< PPP_MIN) ppp_y_0 = PPP_MIN;
+    if (ppp_y_1> ppp_max) ppp_y_1 = ppp_max;
+    if (ppp_y_1< PPP_MIN) ppp_y_1 = PPP_MIN;
+    if (ppp_y_2> ppp_max) ppp_y_2 = ppp_max;
+    if (ppp_y_2< PPP_MIN) ppp_y_2 = PPP_MIN;
+    if (ppp_y_3> ppp_max) ppp_y_3 = ppp_max;
+    if (ppp_y_3< PPP_MIN) ppp_y_3 = PPP_MIN;
+    
+    array_block_Y[block_y][block_x].ppp_x[TOP_LEFT_CORNER] = ppp_x_0;
+    array_block_Y[block_y][block_x].ppp_x[TOP_RIGHT_CORNER] = ppp_x_1;
+    array_block_Y[block_y][block_x].ppp_x[BOT_LEFT_CORNER] = ppp_x_2;
+    array_block_Y[block_y][block_x].ppp_x[BOT_RIGHT_CORNER] = ppp_x_3;
+    
+    array_block_Y[block_y][block_x].ppp_y[TOP_LEFT_CORNER] = ppp_y_0;
+    array_block_Y[block_y][block_x].ppp_y[TOP_RIGHT_CORNER] = ppp_y_1;
+    array_block_Y[block_y][block_x].ppp_y[BOT_LEFT_CORNER] = ppp_y_2;
+    array_block_Y[block_y][block_x].ppp_y[BOT_RIGHT_CORNER] = ppp_y_3;
+
     
     return ppp_max;
 }
@@ -310,7 +322,6 @@ float lhe_advanced_perceptual_relevance_to_ppp (float *** ppp_x, float *** ppp_y
  * @param block_y Block y index                                                        
  */
 void lhe_advanced_ppp_side_to_rectangle_shape (AdvancedLheBlock **array_block_Y, AdvancedLheBlock **array_block_UV,
-                                               float ***ppp_x, float ***ppp_y,
                                                uint32_t width_image_Y, uint32_t height_image_Y, 
                                                uint32_t width_image_UV, uint32_t height_image_UV,
                                                uint32_t block_length, float ppp_max, 
@@ -322,11 +333,11 @@ void lhe_advanced_ppp_side_to_rectangle_shape (AdvancedLheBlock **array_block_Y,
     uint32_t x_fin_downsampled_Y, x_fin_downsampled_UV, y_fin_downsampled_Y, y_fin_downsampled_UV;
     
     //HORIZONTAL ADJUSTMENT
-    ppp_x_0 = ppp_x[block_y][block_x][TOP_LEFT_CORNER];
-    ppp_x_1 = ppp_x[block_y][block_x][TOP_RIGHT_CORNER];
-    ppp_x_2 = ppp_x[block_y][block_x][BOT_LEFT_CORNER];
-    ppp_x_3 = ppp_x[block_y][block_x][BOT_RIGHT_CORNER];
-    
+    ppp_x_0 = array_block_Y[block_y][block_x].ppp_x[TOP_LEFT_CORNER];
+    ppp_x_1 = array_block_Y[block_y][block_x].ppp_x[TOP_RIGHT_CORNER];
+    ppp_x_2 = array_block_Y[block_y][block_x].ppp_x[BOT_LEFT_CORNER];
+    ppp_x_3 = array_block_Y[block_y][block_x].ppp_x[BOT_RIGHT_CORNER];
+
     side_c = ppp_x_0 + ppp_x_1;
     side_d = ppp_x_2 + ppp_x_3;
     
@@ -459,16 +470,21 @@ void lhe_advanced_ppp_side_to_rectangle_shape (AdvancedLheBlock **array_block_Y,
 
     }
     
-    ppp_x[block_y][block_x][TOP_LEFT_CORNER] = ppp_x_0;
-    ppp_x[block_y][block_x][TOP_RIGHT_CORNER] = ppp_x_1;
-    ppp_x[block_y][block_x][BOT_LEFT_CORNER] = ppp_x_2;
-    ppp_x[block_y][block_x][BOT_RIGHT_CORNER] = ppp_x_3;
+    array_block_Y[block_y][block_x].ppp_x[TOP_LEFT_CORNER] = ppp_x_0;
+    array_block_Y[block_y][block_x].ppp_x[TOP_RIGHT_CORNER] = ppp_x_1;
+    array_block_Y[block_y][block_x].ppp_x[BOT_LEFT_CORNER] = ppp_x_2;
+    array_block_Y[block_y][block_x].ppp_x[BOT_RIGHT_CORNER] = ppp_x_3;
+    
+    array_block_UV[block_y][block_x].ppp_x[TOP_LEFT_CORNER] = ppp_x_0;
+    array_block_UV[block_y][block_x].ppp_x[TOP_RIGHT_CORNER] = ppp_x_1;
+    array_block_UV[block_y][block_x].ppp_x[BOT_LEFT_CORNER] = ppp_x_2;
+    array_block_UV[block_y][block_x].ppp_x[BOT_RIGHT_CORNER] = ppp_x_3;
     
     //VERTICAL ADJUSTMENT
-    ppp_y_0 = ppp_y[block_y][block_x][TOP_LEFT_CORNER];
-    ppp_y_1 = ppp_y[block_y][block_x][TOP_RIGHT_CORNER];
-    ppp_y_2 = ppp_y[block_y][block_x][BOT_LEFT_CORNER];
-    ppp_y_3 = ppp_y[block_y][block_x][BOT_RIGHT_CORNER];
+    ppp_y_0 = array_block_Y[block_y][block_x].ppp_y[TOP_LEFT_CORNER];
+    ppp_y_1 = array_block_Y[block_y][block_x].ppp_y[TOP_RIGHT_CORNER];
+    ppp_y_2 = array_block_Y[block_y][block_x].ppp_y[BOT_LEFT_CORNER];
+    ppp_y_3 = array_block_Y[block_y][block_x].ppp_y[BOT_RIGHT_CORNER];
     
     side_a = ppp_y_0 + ppp_y_2;
     side_b = ppp_y_1 + ppp_y_3;
@@ -601,10 +617,15 @@ void lhe_advanced_ppp_side_to_rectangle_shape (AdvancedLheBlock **array_block_Y,
 
     }
     
-    ppp_y[block_y][block_x][TOP_LEFT_CORNER] = ppp_y_0;
-    ppp_y[block_y][block_x][TOP_RIGHT_CORNER] = ppp_y_1;
-    ppp_y[block_y][block_x][BOT_LEFT_CORNER] = ppp_y_2;
-    ppp_y[block_y][block_x][BOT_RIGHT_CORNER] = ppp_y_3;
+    array_block_Y[block_y][block_x].ppp_y[TOP_LEFT_CORNER] = ppp_y_0;
+    array_block_Y[block_y][block_x].ppp_y[TOP_RIGHT_CORNER] = ppp_y_1;
+    array_block_Y[block_y][block_x].ppp_y[BOT_LEFT_CORNER] = ppp_y_2;
+    array_block_Y[block_y][block_x].ppp_y[BOT_RIGHT_CORNER] = ppp_y_3;
+    
+    array_block_UV[block_y][block_x].ppp_y[TOP_LEFT_CORNER] = ppp_y_0;
+    array_block_UV[block_y][block_x].ppp_y[TOP_RIGHT_CORNER] = ppp_y_1;
+    array_block_UV[block_y][block_x].ppp_y[BOT_LEFT_CORNER] = ppp_y_2;
+    array_block_UV[block_y][block_x].ppp_y[BOT_RIGHT_CORNER] = ppp_y_3;
 }
 
 

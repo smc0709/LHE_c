@@ -144,6 +144,8 @@ typedef struct AdvancedLheBlock {
     uint32_t y_fin_downsampled;
     uint32_t downsampled_x_side;
     uint32_t downsampled_y_side;
+    float ppp_x[CORNERS];
+    float ppp_y[CORNERS];
 } AdvancedLheBlock;
 
 int lhe_generate_huffman_codes(LheHuffEntry *he);
@@ -166,14 +168,13 @@ void calculate_block_coordinates (AdvancedLheBlock **block_array_Y, AdvancedLheB
                                   uint32_t width_image_UV, uint32_t height_image_UV,
                                   int block_x, int block_y);
 
-float lhe_advanced_perceptual_relevance_to_ppp (float *** ppp_x, float *** ppp_y, 
+float lhe_advanced_perceptual_relevance_to_ppp (AdvancedLheBlock **array_block_Y,
                                                 float ** perceptual_relevance_x, float ** perceptual_relevance_y,
                                                 float compression_factor,
                                                 uint32_t ppp_max_theoric,
                                                 int block_x, int block_y);
 
 void lhe_advanced_ppp_side_to_rectangle_shape (AdvancedLheBlock **array_block_Y, AdvancedLheBlock **array_block_UV,
-                                               float ***ppp_x, float ***ppp_y,
                                                uint32_t width_image_Y, uint32_t height_image_Y, 
                                                uint32_t width_image_UV, uint32_t height_image_UV,
                                                uint32_t block_length, float ppp_max, 

@@ -288,7 +288,6 @@ static float lhe_advance_translate_pr_interval_to_pr_quant (uint8_t perceptual_r
  */
 static void lhe_advanced_read_mesh (LheState *s, AdvancedLheBlock **block_array_Y, AdvancedLheBlock **block_array_UV,
                                     float ** perceptual_relevance_x, float ** perceptual_relevance_y,
-                                    float ***ppp_x, float ***ppp_y,
                                     float ppp_max_theoric, float compression_factor,
                                     uint32_t width_Y, uint32_t height_Y, uint32_t width_UV, uint32_t height_UV,
                                     uint32_t block_width_Y, uint32_t block_height_Y, uint32_t block_width_UV, uint32_t block_height_UV,
@@ -323,13 +322,12 @@ static void lhe_advanced_read_mesh (LheState *s, AdvancedLheBlock **block_array_
                                          width_UV, height_UV,
                                          block_x, block_y);
 
-            ppp_max = lhe_advanced_perceptual_relevance_to_ppp(ppp_x, ppp_y, 
+            ppp_max = lhe_advanced_perceptual_relevance_to_ppp(block_array_Y,
                                                                perceptual_relevance_x, perceptual_relevance_y, 
                                                                compression_factor, ppp_max_theoric, 
                                                                block_x, block_y);
             //Adjusts ppp to rectangle shape
             lhe_advanced_ppp_side_to_rectangle_shape (block_array_Y, block_array_UV,
-                                                      ppp_x, ppp_y,
                                                       width_Y, height_Y, 
                                                       width_UV, height_UV,
                                                       block_width_Y, ppp_max_theoric,
@@ -686,7 +684,6 @@ static void lhe_advanced_decode_one_hop_per_pixel_block (LheBasicPrec *prec, Adv
  * Vertical Nearest neighbour interpolation 
  */
 static void lhe_advanced_vertical_nearest_neighbour_interpolation (AdvancedLheBlock **block_array, 
-                                                                   float ***ppp_y_array, 
                                                                    uint8_t *downsampled_image, uint8_t *intermediate_interpolated_image,
                                                                    uint32_t width, uint32_t block_width, uint32_t block_height,
                                                                    int block_x, int block_y) 
@@ -703,10 +700,10 @@ static void lhe_advanced_vertical_nearest_neighbour_interpolation (AdvancedLheBl
     yfin =  block_array[block_y][block_x].y_fin;
     yfin_downsampled = block_array[block_y][block_x].y_fin_downsampled;
 
-    ppp_0=ppp_y_array[block_y][block_x][TOP_LEFT_CORNER];
-    ppp_1=ppp_y_array[block_y][block_x][TOP_RIGHT_CORNER];
-    ppp_2=ppp_y_array[block_y][block_x][BOT_LEFT_CORNER];
-    ppp_3=ppp_y_array[block_y][block_x][BOT_RIGHT_CORNER];
+    ppp_0=block_array[block_y][block_x].ppp_y[TOP_LEFT_CORNER];
+    ppp_1=block_array[block_y][block_x].ppp_y[TOP_RIGHT_CORNER];
+    ppp_2=block_array[block_y][block_x].ppp_y[BOT_LEFT_CORNER];
+    ppp_3=block_array[block_y][block_x].ppp_y[BOT_RIGHT_CORNER];
     
     //gradient PPPy side c
     gradient_0=(ppp_1-ppp_0)/(block_width-1.0);    
@@ -732,6 +729,11 @@ static void lhe_advanced_vertical_nearest_neighbour_interpolation (AdvancedLheBl
             {            
                 yfin_interpolated = yfin_interpolated_float + 0.5;  
                 
+                 if (yfin_interpolated>yfin) 
+                {
+                    yfin_interpolated = yfin; 
+                }
+                
                 for (int i=yprev_interpolated;i < yfin_interpolated;i++)
                 {
                     intermediate_interpolated_image[i*width+x]=downsampled_image[y_sc*width+x];                  
@@ -752,7 +754,6 @@ static void lhe_advanced_vertical_nearest_neighbour_interpolation (AdvancedLheBl
  * Horizontal Nearest neighbour interpolation 
  */
 static void lhe_advanced_horizontal_nearest_neighbour_interpolation (AdvancedLheBlock **block_array, 
-                                                                     float ***ppp_x_array, 
                                                                      uint8_t *intermediate_interpolated_image, uint8_t *component_Y,
                                                                      uint32_t width, uint32_t block_width, uint32_t block_height,
                                                                      int block_x, int block_y) 
@@ -769,11 +770,11 @@ static void lhe_advanced_horizontal_nearest_neighbour_interpolation (AdvancedLhe
     yini = block_array[block_y][block_x].y_ini;
     yfin =  block_array[block_y][block_x].y_fin;
 
-    ppp_0=ppp_x_array[block_y][block_x][TOP_LEFT_CORNER];
-    ppp_1=ppp_x_array[block_y][block_x][TOP_RIGHT_CORNER];
-    ppp_2=ppp_x_array[block_y][block_x][BOT_LEFT_CORNER];
-    ppp_3=ppp_x_array[block_y][block_x][BOT_RIGHT_CORNER];
-    
+    ppp_0=block_array[block_y][block_x].ppp_x[TOP_LEFT_CORNER];
+    ppp_1=block_array[block_y][block_x].ppp_x[TOP_RIGHT_CORNER];
+    ppp_2=block_array[block_y][block_x].ppp_x[BOT_LEFT_CORNER];
+    ppp_3=block_array[block_y][block_x].ppp_x[BOT_RIGHT_CORNER];
+        
     //gradient PPPx side a
     gradient_0=(ppp_2-ppp_0)/(block_height-1.0);   
     //gradient PPPx side b
@@ -795,12 +796,12 @@ static void lhe_advanced_horizontal_nearest_neighbour_interpolation (AdvancedLhe
             
             if (xfin_interpolated>xfin) 
             {
-                xfin_interpolated = xfin; //this is a hot fix but it is not ok... it is needed to adapt ppp in chrominances
+                xfin_interpolated = xfin; 
             }
+            
    
             for (int i=xprev_interpolated;i < xfin_interpolated;i++)
             {
-                //if (block_y== 1 && block_x == 31 && xfin_interpolated == 258 && y==16) changes the value
                 component_Y[y*width+i]=intermediate_interpolated_image[y*width+x_sc];                  
             }
                         
@@ -832,7 +833,6 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
     int ret;
     
     float **perceptual_relevance_x, **perceptual_relevance_y;
-    float ***ppp_x, ***ppp_y;
     float ppp_max_theoric, compression_factor;
 
     AdvancedLheBlock **block_array_Y;
@@ -931,30 +931,6 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
         {
             perceptual_relevance_y[i] = malloc(sizeof(float) * (total_blocks_width+1));
         }   
-        
-        ppp_x = malloc(sizeof(float**) * (total_blocks_height));  
-    
-        for (int i=0; i<total_blocks_height; i++) 
-        {
-            ppp_x[i] = malloc(sizeof(float*) * (total_blocks_width));
-            
-            for (int j=0; j<total_blocks_width; j++) 
-            {
-                ppp_x[i][j] = malloc(sizeof(float) * CORNERS);
-            }
-        }
-        
-        ppp_y = malloc(sizeof(float**) * (total_blocks_height));  
-        
-        for (int i=0; i<total_blocks_height; i++) 
-        {
-            ppp_y[i] = malloc(sizeof(float*) * (total_blocks_width));
-            
-            for (int j=0; j<total_blocks_width; j++) 
-            {
-                ppp_y[i][j] = malloc(sizeof(float) * CORNERS);
-            }
-        }
 
         block_array_Y = malloc(sizeof(AdvancedLheBlock *) * total_blocks_height);
         
@@ -981,7 +957,6 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
        
         lhe_advanced_read_mesh(s, block_array_Y, block_array_UV,
                                perceptual_relevance_x, perceptual_relevance_y,
-                               ppp_x, ppp_y,
                                ppp_max_theoric, compression_factor,
                                width_Y, height_Y, width_UV, height_UV,
                                block_width_Y, block_height_Y, block_width_UV, block_height_UV,
@@ -1010,7 +985,7 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
             }
         }
  
-        #pragma omp parallel for
+        //#pragma omp parallel for
         for (int block_y=0; block_y<total_blocks_height; block_y++)
         {
             for (int block_x=0; block_x<total_blocks_width; block_x++)
@@ -1024,13 +999,11 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
                                                             block_x, block_y, block_width_Y, block_height_Y); 
                 
                 lhe_advanced_vertical_nearest_neighbour_interpolation (block_array_Y, 
-                                                                       ppp_y, 
                                                                        downsampled_image_Y, intermediate_interpolated_Y,
                                                                        width_Y, block_width_Y, block_height_Y,
                                                                        block_x, block_y);           
                 
                 lhe_advanced_horizontal_nearest_neighbour_interpolation (block_array_Y, 
-                                                                         ppp_x, 
                                                                          intermediate_interpolated_Y, component_Y,
                                                                          width_Y, block_width_Y, block_height_Y,
                                                                          block_x, block_y);
@@ -1043,17 +1016,16 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
                                                             block_x, block_y, block_width_UV, block_height_UV);
                 
                 lhe_advanced_vertical_nearest_neighbour_interpolation (block_array_UV, 
-                                                                       ppp_y, 
                                                                        downsampled_image_U, intermediate_interpolated_U,
                                                                        width_UV, block_width_UV, block_height_UV,
                                                                        block_x, block_y);
                 
                 lhe_advanced_horizontal_nearest_neighbour_interpolation (block_array_UV, 
-                                                                         ppp_x, 
                                                                          intermediate_interpolated_U, component_U,
                                                                          width_UV, block_width_UV, block_height_UV,
                                                                          block_x, block_y);
            
+
                 //Chrominance V
                 lhe_advanced_decode_one_hop_per_pixel_block(&s->prec, block_array_UV,
                                                             hops_V, downsampled_image_V, 
@@ -1063,13 +1035,11 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
 
                 
                 lhe_advanced_vertical_nearest_neighbour_interpolation (block_array_UV, 
-                                                                       ppp_y, 
                                                                        downsampled_image_V, intermediate_interpolated_V,
                                                                        width_UV, block_width_UV, block_height_UV,
                                                                        block_x, block_y);
                 
                 lhe_advanced_horizontal_nearest_neighbour_interpolation (block_array_UV, 
-                                                                         ppp_x, 
                                                                          intermediate_interpolated_V, component_V,
                                                                          width_UV, block_width_UV, block_height_UV,
                                                                          block_x, block_y);                                                                        

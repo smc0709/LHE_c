@@ -1268,7 +1268,6 @@ static void lhe_advanced_compute_perceptual_relevance (float **perceptual_releva
  * @param block_y block y index
  */
 static void lhe_advanced_horizontal_downsample_sps (AdvancedLheBlock **block_array,
-                                                    float ***ppp_array,
                                                     uint8_t *component_original_data, 
                                                     uint8_t *downsampled_data,
                                                     int width_image, int height_image, int block_width, int block_height,
@@ -1285,12 +1284,12 @@ static void lhe_advanced_horizontal_downsample_sps (AdvancedLheBlock **block_arr
     xfin_downsampled = block_array[block_y][block_x].x_fin_downsampled;
  
     yini = block_array[block_y][block_x].y_ini;
-    yfin = block_array[block_y][block_x].y_fin;   
-    
-    ppp_0=ppp_array[block_y][block_x][TOP_LEFT_CORNER];
-    ppp_1=ppp_array[block_y][block_x][TOP_RIGHT_CORNER];
-    ppp_2=ppp_array[block_y][block_x][BOT_LEFT_CORNER];
-    ppp_3=ppp_array[block_y][block_x][BOT_RIGHT_CORNER];
+    yfin = block_array[block_y][block_x].y_fin;  
+        
+    ppp_0=block_array[block_y][block_x].ppp_x[TOP_LEFT_CORNER];
+    ppp_1=block_array[block_y][block_x].ppp_x[TOP_RIGHT_CORNER];
+    ppp_2=block_array[block_y][block_x].ppp_x[BOT_LEFT_CORNER];
+    ppp_3=block_array[block_y][block_x].ppp_x[BOT_RIGHT_CORNER];
     
     //gradient PPPx side a
     gradient_0=(ppp_2-ppp_0)/(block_height-1.0);   
@@ -1340,7 +1339,7 @@ static void lhe_advanced_horizontal_downsample_sps (AdvancedLheBlock **block_arr
  * @param block_x block x index
  * @param block_y block y index
  */
-static void lhe_advanced_vertical_downsample_sps (AdvancedLheBlock **block_array, float ***ppp_array, 
+static void lhe_advanced_vertical_downsample_sps (AdvancedLheBlock **block_array,
                                                   uint8_t *intermediate_downsample, 
                                                   uint8_t *downsampled_data,
                                                   int width_image, int height_image, int block_width, int block_height,
@@ -1361,10 +1360,10 @@ static void lhe_advanced_vertical_downsample_sps (AdvancedLheBlock **block_array
     yfin = block_array[block_y][block_x].y_fin;   
     yfin_downsampled = block_array[block_y][block_x].y_fin_downsampled;
 
-    ppp_0=ppp_array[block_y][block_x][TOP_LEFT_CORNER];
-    ppp_1=ppp_array[block_y][block_x][TOP_RIGHT_CORNER];
-    ppp_2=ppp_array[block_y][block_x][BOT_LEFT_CORNER];
-    ppp_3=ppp_array[block_y][block_x][BOT_RIGHT_CORNER];
+    ppp_0=block_array[block_y][block_x].ppp_y[TOP_LEFT_CORNER];
+    ppp_1=block_array[block_y][block_x].ppp_y[TOP_RIGHT_CORNER];
+    ppp_2=block_array[block_y][block_x].ppp_y[BOT_LEFT_CORNER];
+    ppp_3=block_array[block_y][block_x].ppp_y[BOT_RIGHT_CORNER];
 
     //gradient PPPy side c
     gradient_0=(ppp_1-ppp_0)/(block_width-1.0);    
@@ -1533,7 +1532,6 @@ static void lhe_advanced_encode (LheContext *s, const AVFrame *frame, AdvancedLh
                                  uint32_t total_blocks_width, uint32_t total_blocks_height, 
                                  uint32_t block_width_Y, uint32_t block_height_Y, uint32_t block_width_UV, uint32_t block_height_UV) 
 {
-    float ***ppp_x, ***ppp_y;
     float ppp_max, ppp_max_theoric, compression_factor;
     uint8_t *downsampled_data_Y, *downsampled_data_U, *downsampled_data_V, *intermediate_downsample_Y, *intermediate_downsample_U, *intermediate_downsample_V;
     uint32_t i, j, image_size_Y, image_size_UV;
@@ -1556,30 +1554,6 @@ static void lhe_advanced_encode (LheContext *s, const AVFrame *frame, AdvancedLh
     downsampled_data_V = malloc (sizeof(uint8_t) * image_size_UV);
     intermediate_downsample_V = malloc (sizeof(uint8_t) * image_size_UV);
  
-    ppp_x = malloc(sizeof(float**) * total_blocks_height);  
-    
-    for (i=0; i<total_blocks_height; i++) 
-    {
-        ppp_x[i] = malloc(sizeof(float*) * total_blocks_width);
-        
-        for (j=0; j<total_blocks_width; j++) 
-        {
-            ppp_x[i][j] = malloc(sizeof(float) * CORNERS);
-        }
-    }
-    
-    ppp_y = malloc(sizeof(float**) * (total_blocks_height));  
-    
-    for (i=0; i<total_blocks_height; i++) 
-    {
-        ppp_y[i] = malloc(sizeof(float*) * (total_blocks_width));
-        
-        for (j=0; j<total_blocks_width; j++) 
-        {
-            ppp_y[i][j] = malloc(sizeof(float) * CORNERS);
-        }
-    }
-    
     width_flhe = (width_Y-1) / SPS_RATIO_WIDTH + 1;
     height_flhe = (height_Y-1) / SPS_RATIO_HEIGHT + 1;
     image_size_flhe = width_flhe * height_flhe;
@@ -1638,13 +1612,12 @@ static void lhe_advanced_encode (LheContext *s, const AVFrame *frame, AdvancedLh
                                          width_UV, height_UV,
                                          block_x, block_y);
                                                      
-            ppp_max = lhe_advanced_perceptual_relevance_to_ppp(ppp_x, ppp_y, 
+            ppp_max = lhe_advanced_perceptual_relevance_to_ppp(block_array_Y, 
                                                                perceptual_relevance_x, perceptual_relevance_y, 
                                                                compression_factor, ppp_max_theoric, 
                                                                block_x, block_y);
             
             lhe_advanced_ppp_side_to_rectangle_shape (block_array_Y, block_array_UV, 
-                                                      ppp_x, ppp_y,
                                                       width_Y, height_Y, 
                                                       width_UV, height_UV,
                                                       block_width_Y, ppp_max_theoric,
@@ -1653,14 +1626,14 @@ static void lhe_advanced_encode (LheContext *s, const AVFrame *frame, AdvancedLh
             
             //LUMINANCE
             //Downsamples using component original data         
-            lhe_advanced_horizontal_downsample_sps (block_array_Y, ppp_x,
+            lhe_advanced_horizontal_downsample_sps (block_array_Y,
                                                     component_original_data_Y, 
                                                     intermediate_downsample_Y,
                                                     width_Y, height_Y, block_width_Y, block_height_Y,
                                                     block_x, block_y);
                                                             
            
-            lhe_advanced_vertical_downsample_sps (block_array_Y, ppp_y, 
+            lhe_advanced_vertical_downsample_sps (block_array_Y,
                                                   intermediate_downsample_Y, 
                                                   downsampled_data_Y,
                                                   width_Y, height_Y, block_width_Y, block_height_Y,
@@ -1679,13 +1652,13 @@ static void lhe_advanced_encode (LheContext *s, const AVFrame *frame, AdvancedLh
             //CHROMINANCES
             
             //CHROMINANCE U
-            lhe_advanced_horizontal_downsample_sps (block_array_UV, ppp_x,
+            lhe_advanced_horizontal_downsample_sps (block_array_UV, 
                                                     component_original_data_U, 
                                                     intermediate_downsample_U,
                                                     width_UV, height_UV, block_width_UV, block_height_UV,
                                                     block_x, block_y);
             
-            lhe_advanced_vertical_downsample_sps (block_array_UV, ppp_y, 
+            lhe_advanced_vertical_downsample_sps (block_array_UV,  
                                                   intermediate_downsample_U, 
                                                   downsampled_data_U,
                                                   width_UV, height_UV, block_width_UV, block_height_UV,
@@ -1703,13 +1676,13 @@ static void lhe_advanced_encode (LheContext *s, const AVFrame *frame, AdvancedLh
 
              
             //CHROMINANCE_V
-            lhe_advanced_horizontal_downsample_sps (block_array_UV, ppp_x,
+            lhe_advanced_horizontal_downsample_sps (block_array_UV, 
                                                     component_original_data_V, 
                                                     intermediate_downsample_V,
                                                     width_UV, height_UV, block_width_UV, block_height_UV,
                                                     block_x, block_y);
             
-            lhe_advanced_vertical_downsample_sps (block_array_UV, ppp_y,
+            lhe_advanced_vertical_downsample_sps (block_array_UV, 
                                                   intermediate_downsample_V, 
                                                   downsampled_data_V,
                                                   width_UV, height_UV, block_width_UV, block_height_UV,
