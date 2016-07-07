@@ -1262,6 +1262,7 @@ static void lhe_advanced_compute_perceptual_relevance (float **perceptual_releva
  * @param *downsampled_data final downsampled image in x coordinate
  * @param width_image image width
  * @param height_image height image
+ * @param linesize rectangle images create a square image in ffmpeg memory. Linesize is width used by ffmpeg in memory
  * @param block_width block width
  * @param block_height height width
  * @param block_x block x index
@@ -1270,7 +1271,8 @@ static void lhe_advanced_compute_perceptual_relevance (float **perceptual_releva
 static void lhe_advanced_horizontal_downsample_sps (AdvancedLheBlock **block_array,
                                                     uint8_t *component_original_data, 
                                                     uint8_t *downsampled_data,
-                                                    int width_image, int height_image, int block_width, int block_height,
+                                                    int width_image, int height_image, int linesize,
+                                                    int block_width, int block_height,
                                                     int block_x, int block_y) 
 {
     uint32_t downsampled_x_side, xini, xdown, xfin, xfin_downsampled, yini, yfin;
@@ -1311,7 +1313,7 @@ static void lhe_advanced_horizontal_downsample_sps (AdvancedLheBlock **block_arr
                 xdown = xfin;
             }
             
-            downsampled_data[y*width_image+x]=component_original_data[y*width_image+xdown];
+            downsampled_data[y*width_image+x]=component_original_data[y*linesize+xdown];
 
             ppp_x+=gradient;
             xdown_float+=ppp_x;
@@ -1408,7 +1410,6 @@ static void lhe_advanced_vertical_downsample_sps (AdvancedLheBlock **block_array
  * @param *hops hops array
  * @param width_image image width
  * @param height_image image height
- * @param linesize rectangle images create a square image in ffmpeg memory. Linesize is width used by ffmpeg in memory
  * @param *first_color_block first component value for each block
  * @param total_blocks_width number of blocks widthwise
  * @param block_x block x index
@@ -1419,7 +1420,7 @@ static void lhe_advanced_vertical_downsample_sps (AdvancedLheBlock **block_array
 static void lhe_advanced_encode_block (LheBasicPrec *prec, AdvancedLheBlock **block_array,
                                        uint8_t *downsampled_data, 
                                        uint8_t *component_prediction, uint8_t *hops, 
-                                       int width_image, int height_image, int linesize, 
+                                       int width_image, int height_image, 
                                        uint8_t *first_color_block, int total_blocks_width,
                                        int block_x, int block_y,
                                        int block_width, int block_height)
@@ -1429,7 +1430,7 @@ static void lhe_advanced_encode_block (LheBasicPrec *prec, AdvancedLheBlock **bl
     int xini, xfin_downsampled, yini, yfin_downsampled;
     bool small_hop, last_small_hop;
     uint8_t predicted_luminance, hop_1, hop_number, original_color, r_max;
-    int pix, pix_original_data, dif_pix, dif_line, num_block;
+    int pix, dif_pix, num_block;
     uint32_t downsampled_x_side, downsampled_y_side;
     
     downsampled_x_side = block_array[block_y][block_x].downsampled_x_side;
@@ -1454,18 +1455,13 @@ static void lhe_advanced_encode_block (LheBasicPrec *prec, AdvancedLheBlock **bl
     
     r_max = PARAM_R;
     
-    pix = yini*width_image + xini;
-    pix_original_data = yini*linesize + xini;
-       
-    dif_pix = width_image - xfin_downsampled + xini;
-    dif_line = linesize - xfin_downsampled + xini;   
-    
-
+    pix = yini*width_image + xini;       
+    dif_pix = width_image - xfin_downsampled + xini;    
 
     for (int y=yini; y < yfin_downsampled; y++)  {
         for (int x=xini; x < xfin_downsampled; x++)  {
               
-            original_color = downsampled_data[pix_original_data]; //This can't be pix because ffmpeg adds empty memory slots. 
+            original_color = downsampled_data[pix]; //This can't be pix because ffmpeg adds empty memory slots. 
 
             //prediction of signal (predicted_luminance) , based on pixel's coordinates 
             //----------------------------------------------------------
@@ -1505,10 +1501,8 @@ static void lhe_advanced_encode_block (LheBasicPrec *prec, AdvancedLheBlock **bl
             //lets go for the next pixel
             //--------------------------
             pix++;
-            pix_original_data++;
         }//for x
         pix+=dif_pix;
-        pix_original_data+=dif_line;
     }//for y    
 }
 
@@ -1629,7 +1623,8 @@ static void lhe_advanced_encode (LheContext *s, const AVFrame *frame, AdvancedLh
             lhe_advanced_horizontal_downsample_sps (block_array_Y,
                                                     component_original_data_Y, 
                                                     intermediate_downsample_Y,
-                                                    width_Y, height_Y, block_width_Y, block_height_Y,
+                                                    width_Y, height_Y, linesize_Y,
+                                                    block_width_Y, block_height_Y,
                                                     block_x, block_y);
                                                             
            
@@ -1643,7 +1638,7 @@ static void lhe_advanced_encode (LheContext *s, const AVFrame *frame, AdvancedLh
             lhe_advanced_encode_block (&s->prec, block_array_Y, 
                                        downsampled_data_Y, 
                                        component_prediction_Y, hops_Y, 
-                                       width_Y,  height_Y, linesize_Y, 
+                                       width_Y,  height_Y, 
                                        first_color_block_Y, total_blocks_width,
                                        block_x,  block_y,
                                        block_width_Y,  block_height_Y);
@@ -1655,7 +1650,8 @@ static void lhe_advanced_encode (LheContext *s, const AVFrame *frame, AdvancedLh
             lhe_advanced_horizontal_downsample_sps (block_array_UV, 
                                                     component_original_data_U, 
                                                     intermediate_downsample_U,
-                                                    width_UV, height_UV, block_width_UV, block_height_UV,
+                                                    width_UV, height_UV, linesize_U,
+                                                    block_width_UV, block_height_UV,
                                                     block_x, block_y);
             
             lhe_advanced_vertical_downsample_sps (block_array_UV,  
@@ -1667,7 +1663,7 @@ static void lhe_advanced_encode (LheContext *s, const AVFrame *frame, AdvancedLh
             lhe_advanced_encode_block (&s->prec, block_array_UV,
                                        downsampled_data_U, 
                                        component_prediction_U, hops_U, 
-                                       width_UV,  height_UV, linesize_U, 
+                                       width_UV,  height_UV, 
                                        first_color_block_U, total_blocks_width,
                                        block_x,  block_y,
                                        block_width_UV,  block_height_UV);
@@ -1679,7 +1675,8 @@ static void lhe_advanced_encode (LheContext *s, const AVFrame *frame, AdvancedLh
             lhe_advanced_horizontal_downsample_sps (block_array_UV, 
                                                     component_original_data_V, 
                                                     intermediate_downsample_V,
-                                                    width_UV, height_UV, block_width_UV, block_height_UV,
+                                                    width_UV, height_UV, linesize_V, 
+                                                    block_width_UV, block_height_UV,
                                                     block_x, block_y);
             
             lhe_advanced_vertical_downsample_sps (block_array_UV, 
@@ -1692,7 +1689,7 @@ static void lhe_advanced_encode (LheContext *s, const AVFrame *frame, AdvancedLh
             lhe_advanced_encode_block (&s->prec, block_array_UV,
                                        downsampled_data_V, 
                                        component_prediction_V, hops_V, 
-                                       width_UV,  height_UV, linesize_V, 
+                                       width_UV,  height_UV, 
                                        first_color_block_V, total_blocks_width,
                                        block_x,  block_y,
                                        block_width_UV,  block_height_UV); 

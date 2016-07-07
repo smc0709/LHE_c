@@ -590,7 +590,6 @@ static void lhe_basic_decode_frame_pararell (LheBasicPrec *prec,
  * @param *image final image
  * @param width image width
  * @param height image height
- * @param linesize rectangle images create a square image in ffmpeg memory. Linesize is width used by ffmpeg in memory
  * @param *first_color_block first component value for each block
  * @param total_blocks_width number of blocks widthwise
  * @param block_x block x index
@@ -600,7 +599,7 @@ static void lhe_basic_decode_frame_pararell (LheBasicPrec *prec,
  */
 static void lhe_advanced_decode_one_hop_per_pixel_block (LheBasicPrec *prec, AdvancedLheBlock **block_array,
                                                          uint8_t *hops, uint8_t *image,
-                                                         uint32_t width, uint32_t height, int linesize,
+                                                         uint32_t width, uint32_t height,
                                                          uint8_t *first_color_block, uint32_t total_blocks_width,
                                                          uint32_t block_x, uint32_t block_y,
                                                          uint32_t block_width, uint32_t block_height) 
@@ -610,7 +609,7 @@ static void lhe_advanced_decode_one_hop_per_pixel_block (LheBasicPrec *prec, Adv
     uint32_t xini, xfin_downsampled, yini, yfin_downsampled;
     bool small_hop, last_small_hop;
     uint8_t hop, predicted_luminance, hop_1, r_max; 
-    uint32_t pix, pix_hops_data, dif_pix, dif_hops, num_block;
+    uint32_t pix, dif_pix, num_block;
     
     num_block = block_y * total_blocks_width + block_x;
     
@@ -628,15 +627,13 @@ static void lhe_advanced_decode_one_hop_per_pixel_block (LheBasicPrec *prec, Adv
     r_max               = PARAM_R;        
     
  
-    pix = yini*linesize + xini; 
-    pix_hops_data = yini*width + xini;
-    dif_pix = linesize - xfin_downsampled + xini;
-    dif_hops = width - xfin_downsampled + xini;
+    pix = yini*width + xini; 
+    dif_pix = width - xfin_downsampled + xini;
     
     for (int y=yini; y < yfin_downsampled; y++)  {
         for (int x=xini; x < xfin_downsampled; x++)     {
             
-            hop = hops[pix_hops_data]; 
+            hop = hops[pix]; 
   
             if (x == xini && y==yini) 
             {
@@ -648,16 +645,16 @@ static void lhe_advanced_decode_one_hop_per_pixel_block (LheBasicPrec *prec, Adv
             } 
             else if (x == xini) 
             {
-                predicted_luminance=image[pix-linesize];
+                predicted_luminance=image[pix-width];
                 last_small_hop=false;
                 hop_1=START_HOP_1;
             } else if (x == xfin_downsampled -1) 
             {
-                predicted_luminance=(image[pix-1]+image[pix-linesize])>>1;                                                             
+                predicted_luminance=(image[pix-1]+image[pix-width])>>1;                                                             
             } 
             else 
             {
-                predicted_luminance=(image[pix-1]+image[pix+1-linesize])>>1;     
+                predicted_luminance=(image[pix-1]+image[pix+1-width])>>1;     
             }
             
           
@@ -672,12 +669,9 @@ static void lhe_advanced_decode_one_hop_per_pixel_block (LheBasicPrec *prec, Adv
             //lets go for the next pixel
             //--------------------------
             pix++;
-            pix_hops_data++;
         }// for x
         pix+=dif_pix;
-        pix_hops_data+=dif_hops;
     }// for y
-    
 }
 
 /**
@@ -755,7 +749,8 @@ static void lhe_advanced_vertical_nearest_neighbour_interpolation (AdvancedLheBl
  */
 static void lhe_advanced_horizontal_nearest_neighbour_interpolation (AdvancedLheBlock **block_array, 
                                                                      uint8_t *intermediate_interpolated_image, uint8_t *component_Y,
-                                                                     uint32_t width, uint32_t block_width, uint32_t block_height,
+                                                                     uint32_t width, int linesize,
+                                                                     uint32_t block_width, uint32_t block_height,
                                                                      int block_x, int block_y) 
 {
     uint32_t downsampled_x_side;
@@ -802,7 +797,7 @@ static void lhe_advanced_horizontal_nearest_neighbour_interpolation (AdvancedLhe
    
             for (int i=xprev_interpolated;i < xfin_interpolated;i++)
             {
-                component_Y[y*width+i]=intermediate_interpolated_image[y*width+x_sc];                  
+                component_Y[y*linesize+i]=intermediate_interpolated_image[y*width+x_sc];                  
             }
                         
             xprev_interpolated=xfin_interpolated;
@@ -994,7 +989,7 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
                 //Luminance
                 lhe_advanced_decode_one_hop_per_pixel_block(&s->prec, block_array_Y,
                                                             hops_Y, downsampled_image_Y, 
-                                                            width_Y, height_Y, s->frame->linesize[0], 
+                                                            width_Y, height_Y,  
                                                             first_color_block_Y, total_blocks_width, 
                                                             block_x, block_y, block_width_Y, block_height_Y); 
                 
@@ -1005,13 +1000,14 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
                 
                 lhe_advanced_horizontal_nearest_neighbour_interpolation (block_array_Y, 
                                                                          intermediate_interpolated_Y, component_Y,
-                                                                         width_Y, block_width_Y, block_height_Y,
+                                                                         width_Y, s->frame->linesize[0],
+                                                                         block_width_Y, block_height_Y,
                                                                          block_x, block_y);
 
                 //Chrominance U
                 lhe_advanced_decode_one_hop_per_pixel_block(&s->prec, block_array_UV,
                                                             hops_U, downsampled_image_U, 
-                                                            width_UV, height_UV, s->frame->linesize[1],
+                                                            width_UV, height_UV, 
                                                             first_color_block_U, total_blocks_width, 
                                                             block_x, block_y, block_width_UV, block_height_UV);
                 
@@ -1022,14 +1018,15 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
                 
                 lhe_advanced_horizontal_nearest_neighbour_interpolation (block_array_UV, 
                                                                          intermediate_interpolated_U, component_U,
-                                                                         width_UV, block_width_UV, block_height_UV,
+                                                                         width_UV, s->frame->linesize[1],
+                                                                         block_width_UV, block_height_UV,
                                                                          block_x, block_y);
            
 
                 //Chrominance V
                 lhe_advanced_decode_one_hop_per_pixel_block(&s->prec, block_array_UV,
                                                             hops_V, downsampled_image_V, 
-                                                            width_UV, height_UV, s->frame->linesize[2],
+                                                            width_UV, height_UV, 
                                                             first_color_block_V, total_blocks_width, 
                                                             block_x, block_y, block_width_UV, block_height_UV);
 
@@ -1041,7 +1038,8 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
                 
                 lhe_advanced_horizontal_nearest_neighbour_interpolation (block_array_UV, 
                                                                          intermediate_interpolated_V, component_V,
-                                                                         width_UV, block_width_UV, block_height_UV,
+                                                                         width_UV, s->frame->linesize[2],
+                                                                         block_width_UV, block_height_UV,
                                                                          block_x, block_y);                                                                        
               
             }
