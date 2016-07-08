@@ -116,7 +116,9 @@
 #define PR_MESH_BITS 2*PR_INTERVAL_BITS
 
 //Compression
-#define COMPRESSION_FACTOR 1.4//0.14675f//1.749534f
+#define QL_SIZE_BITS 8
+#define PPP_MAX_IMAGES 200 //this value allows to compress images up to 12800 px widthwise
+#define MAX_QL 100
 
 //Offset file
 #define FILE_OFFSET_BYTES 4
@@ -126,6 +128,7 @@ typedef struct LheBasicPrec {
     uint8_t prec_luminance[Y_MAX_COMPONENT][RATIO][H1_RANGE][NUMBER_OF_HOPS]; // precomputed luminance component
     uint8_t best_hop [RATIO][H1_RANGE][Y_MAX_COMPONENT][Y_MAX_COMPONENT]; //ratio - h1 - original color - prediction
     uint8_t h1_adaptation [H1_RANGE][NUMBER_OF_HOPS][NUMBER_OF_HOPS]; //h1 adaptation cache
+    float compression_factor [PPP_MAX_IMAGES][MAX_QL]; //compression factor values
 } LheBasicPrec; 
 
 typedef struct LheHuffEntry {

@@ -614,6 +614,30 @@ void lhe_advanced_ppp_side_to_rectangle_shape (AdvancedLheBlock **array_block,
 //==================================================================
 
 /**
+ * Precalculates CF (compression factor) from QL (Quality Level).
+ */
+static void lhe_init_compression_factor_from_ql (LheBasicPrec *prec) 
+{
+    float max_ppp;
+    float cf, cf_min, cf_max, r;
+    
+    const float pr_min = PR_QUANT_0;
+    const float pr_max = PR_QUANT_5;
+    
+    for (int ppp_max = 1; ppp_max < PPP_MAX_IMAGES; ppp_max++) 
+    {
+        cf_min = (1.0 + (ppp_max-1.0)*pr_min) / ppp_max;
+        cf_max = 1.0 + (ppp_max-1.0)*pr_max;
+        r = pow (cf_max/cf_min, (1.0/99.0));
+        
+        for (int ql=0; ql < MAX_QL; ql ++)
+        {
+            cf = cf_min * pow (r, (99-ql));
+            prec -> compression_factor[ppp_max][ql] = cf;            
+        }
+    }
+}
+/**
  * Calculates color component value in the middle of the interval for each hop.
  * Bassically this method inits the luminance value of each hop with the intermediate 
  * value between hops frontiers.
@@ -938,4 +962,6 @@ void lhe_init_cache (LheBasicPrec *prec)
             }
         }
     }
+    
+    lhe_init_compression_factor_from_ql (prec); //Inits compression factor cache 
 }

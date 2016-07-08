@@ -812,7 +812,7 @@ static void lhe_advanced_horizontal_nearest_neighbour_interpolation (AdvancedLhe
 //==================================================================
 static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, AVPacket *avpkt)
 {
-    uint8_t lhe_mode;
+    uint8_t lhe_mode, quality_level;
     uint8_t *downsampled_image_Y, *downsampled_image_U, *downsampled_image_V;
     uint8_t *intermediate_interpolated_Y, *intermediate_interpolated_U, *intermediate_interpolated_V;
     uint8_t *hops_Y, *hops_U, *hops_V;
@@ -824,7 +824,8 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
     int ret;
     
     float **perceptual_relevance_x, **perceptual_relevance_y;
-    float ppp_max_theoric, compression_factor;
+    float compression_factor;
+    uint32_t ppp_max_theoric;
 
     AdvancedLheBlock **block_array_Y;
     AdvancedLheBlock **block_array_UV;
@@ -900,7 +901,7 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
     
     if (lhe_mode == ADVANCED_LHE)
         //ADVANCED LHE
-    {   
+    {           
         downsampled_image_Y = malloc (sizeof(uint8_t) * image_size_Y);
         downsampled_image_U = malloc (sizeof(uint8_t) * image_size_UV);
         downsampled_image_V = malloc (sizeof(uint8_t) * image_size_UV);
@@ -943,8 +944,10 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
         block_width_UV = (block_width_Y - 1)/CHROMA_FACTOR_WIDTH + 1;
         block_height_UV = (block_height_Y - 1)/CHROMA_FACTOR_HEIGHT + 1;    
         
+        //Read quality level and calculate compression factor
+        quality_level = get_bits(&s->gb, QL_SIZE_BITS); 
         ppp_max_theoric = block_width_Y/SIDE_MIN;
-        compression_factor = COMPRESSION_FACTOR;
+        compression_factor = (&s->prec)->compression_factor[ppp_max_theoric][quality_level];        
        
         lhe_advanced_read_mesh(s, block_array_Y, block_array_UV,
                                perceptual_relevance_x, perceptual_relevance_y,
