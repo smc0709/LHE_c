@@ -1308,10 +1308,6 @@ static void lhe_advanced_horizontal_downsample_sps (AdvancedLheBlock **block_arr
         for (int x=xini; x<xfin_downsampled; x++)
         {
             xdown = xdown_float + 0.5;
-            if (xdown>xfin)
-            {
-                xdown = xfin;
-            }
             
             downsampled_data[y*width_image+x]=component_original_data[y*linesize+xdown];
 
@@ -1382,11 +1378,6 @@ static void lhe_advanced_vertical_downsample_sps (AdvancedLheBlock **block_array
         for (int y=yini; y < yfin_downsampled; y++)
         {
             ydown = ydown_float + 0.5;
-            
-            if (ydown>yfin) 
-            {
-                ydown = yfin;
-            }
 
             downsampled_data[y*width_image+x]=intermediate_downsample[ydown*width_image+x];;
                         
@@ -1606,15 +1597,21 @@ static void lhe_advanced_encode (LheContext *s, const AVFrame *frame, AdvancedLh
                                          width_UV, height_UV,
                                          block_x, block_y);
                                                      
-            ppp_max = lhe_advanced_perceptual_relevance_to_ppp(block_array_Y, 
+            ppp_max = lhe_advanced_perceptual_relevance_to_ppp(block_array_Y, block_array_UV,
                                                                perceptual_relevance_x, perceptual_relevance_y, 
                                                                compression_factor, ppp_max_theoric, 
                                                                block_x, block_y);
             
-            lhe_advanced_ppp_side_to_rectangle_shape (block_array_Y, block_array_UV, 
+            lhe_advanced_ppp_side_to_rectangle_shape (block_array_Y,
                                                       width_Y, height_Y, 
-                                                      width_UV, height_UV,
-                                                      block_width_Y, ppp_max_theoric,
+                                                      block_width_Y, block_height_Y,
+                                                      ppp_max_theoric,
+                                                      block_x, block_y);
+            
+            lhe_advanced_ppp_side_to_rectangle_shape (block_array_UV, 
+                                                      width_UV, height_UV, 
+                                                      block_width_UV, block_height_UV,
+                                                      ppp_max_theoric,
                                                       block_x, block_y);
 
             

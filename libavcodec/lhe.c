@@ -219,7 +219,7 @@ void calculate_block_coordinates (AdvancedLheBlock **block_array_Y, AdvancedLheB
  * @param block_x block x index
  * @param block_y block y index
  */
-float lhe_advanced_perceptual_relevance_to_ppp (AdvancedLheBlock **array_block_Y,
+float lhe_advanced_perceptual_relevance_to_ppp (AdvancedLheBlock **array_block_Y, AdvancedLheBlock **array_block_UV,
                                                 float ** perceptual_relevance_x, float ** perceptual_relevance_y,
                                                 float compression_factor,
                                                 uint32_t ppp_max_theoric,
@@ -285,6 +285,16 @@ float lhe_advanced_perceptual_relevance_to_ppp (AdvancedLheBlock **array_block_Y
     array_block_Y[block_y][block_x].ppp_y[TOP_RIGHT_CORNER] = ppp_y_1;
     array_block_Y[block_y][block_x].ppp_y[BOT_LEFT_CORNER] = ppp_y_2;
     array_block_Y[block_y][block_x].ppp_y[BOT_RIGHT_CORNER] = ppp_y_3;
+    
+    array_block_UV[block_y][block_x].ppp_x[TOP_LEFT_CORNER] = ppp_x_0;
+    array_block_UV[block_y][block_x].ppp_x[TOP_RIGHT_CORNER] = ppp_x_1;
+    array_block_UV[block_y][block_x].ppp_x[BOT_LEFT_CORNER] = ppp_x_2;
+    array_block_UV[block_y][block_x].ppp_x[BOT_RIGHT_CORNER] = ppp_x_3;
+    
+    array_block_UV[block_y][block_x].ppp_y[TOP_LEFT_CORNER] = ppp_y_0;
+    array_block_UV[block_y][block_x].ppp_y[TOP_RIGHT_CORNER] = ppp_y_1;
+    array_block_UV[block_y][block_x].ppp_y[BOT_LEFT_CORNER] = ppp_y_2;
+    array_block_UV[block_y][block_x].ppp_y[BOT_RIGHT_CORNER] = ppp_y_3;
 
     
     return ppp_max;
@@ -321,22 +331,21 @@ float lhe_advanced_perceptual_relevance_to_ppp (AdvancedLheBlock **array_block_Y
  * @param block_x Block x index
  * @param block_y Block y index                                                        
  */
-void lhe_advanced_ppp_side_to_rectangle_shape (AdvancedLheBlock **array_block_Y, AdvancedLheBlock **array_block_UV,
-                                               uint32_t width_image_Y, uint32_t height_image_Y, 
-                                               uint32_t width_image_UV, uint32_t height_image_UV,
-                                               uint32_t block_length, float ppp_max, 
+void lhe_advanced_ppp_side_to_rectangle_shape (AdvancedLheBlock **array_block,
+                                               uint32_t image_width, uint32_t image_height, 
+                                               uint32_t block_width, uint32_t block_height,
+                                               float ppp_max, 
                                                int block_x, int block_y) 
 {
     float ppp_x_0, ppp_x_1, ppp_x_2, ppp_x_3, ppp_y_0, ppp_y_1, ppp_y_2, ppp_y_3, side_a, side_b, side_c, side_d, side_average, side_min, side_max, add;
     
-    uint32_t downsampled_block_Y, downsampled_block_UV;
-    uint32_t x_fin_downsampled_Y, x_fin_downsampled_UV, y_fin_downsampled_Y, y_fin_downsampled_UV;
+    uint32_t downsampled_block, x_fin_downsampled, y_fin_downsampled;
     
     //HORIZONTAL ADJUSTMENT
-    ppp_x_0 = array_block_Y[block_y][block_x].ppp_x[TOP_LEFT_CORNER];
-    ppp_x_1 = array_block_Y[block_y][block_x].ppp_x[TOP_RIGHT_CORNER];
-    ppp_x_2 = array_block_Y[block_y][block_x].ppp_x[BOT_LEFT_CORNER];
-    ppp_x_3 = array_block_Y[block_y][block_x].ppp_x[BOT_RIGHT_CORNER];
+    ppp_x_0 = array_block[block_y][block_x].ppp_x[TOP_LEFT_CORNER];
+    ppp_x_1 = array_block[block_y][block_x].ppp_x[TOP_RIGHT_CORNER];
+    ppp_x_2 = array_block[block_y][block_x].ppp_x[BOT_LEFT_CORNER];
+    ppp_x_3 = array_block[block_y][block_x].ppp_x[BOT_RIGHT_CORNER];
 
     side_c = ppp_x_0 + ppp_x_1;
     side_d = ppp_x_2 + ppp_x_3;
@@ -360,28 +369,18 @@ void lhe_advanced_ppp_side_to_rectangle_shape (AdvancedLheBlock **array_block_Y,
         side_average=side_max;
     }
     
-    downsampled_block_Y = 2.0*block_length/ side_average + 0.5;
-    downsampled_block_UV = (downsampled_block_Y - 1) / CHROMA_FACTOR_WIDTH + 1;
+    downsampled_block = 2.0*block_width/ side_average + 0.5;
     
-    array_block_Y[block_y][block_x].downsampled_x_side = downsampled_block_Y;
+    array_block[block_y][block_x].downsampled_x_side = downsampled_block;
     
-    x_fin_downsampled_Y = array_block_Y[block_y][block_x].x_ini + downsampled_block_Y;
-    if (x_fin_downsampled_Y > width_image_Y) 
+    x_fin_downsampled = array_block[block_y][block_x].x_ini + downsampled_block;
+    if (x_fin_downsampled > image_width) 
     {
-        x_fin_downsampled_Y = width_image_Y;
+        x_fin_downsampled = image_width;
     }
-    array_block_Y[block_y][block_x].x_fin_downsampled = x_fin_downsampled_Y;
+    array_block[block_y][block_x].x_fin_downsampled = x_fin_downsampled;
 
-    array_block_UV[block_y][block_x].downsampled_x_side = downsampled_block_UV;
-    
-    x_fin_downsampled_UV = array_block_UV[block_y][block_x].x_ini + downsampled_block_UV;
-    if (x_fin_downsampled_UV > width_image_UV) 
-    {
-        x_fin_downsampled_UV = width_image_UV;
-    }
-    array_block_UV[block_y][block_x].x_fin_downsampled = x_fin_downsampled_UV;
-    
-    side_average=2.0*block_length/downsampled_block_Y;
+    side_average=2.0*block_width/downsampled_block;
        
     //adjust side c
     //--------------
@@ -470,21 +469,16 @@ void lhe_advanced_ppp_side_to_rectangle_shape (AdvancedLheBlock **array_block_Y,
 
     }
     
-    array_block_Y[block_y][block_x].ppp_x[TOP_LEFT_CORNER] = ppp_x_0;
-    array_block_Y[block_y][block_x].ppp_x[TOP_RIGHT_CORNER] = ppp_x_1;
-    array_block_Y[block_y][block_x].ppp_x[BOT_LEFT_CORNER] = ppp_x_2;
-    array_block_Y[block_y][block_x].ppp_x[BOT_RIGHT_CORNER] = ppp_x_3;
-    
-    array_block_UV[block_y][block_x].ppp_x[TOP_LEFT_CORNER] = ppp_x_0;
-    array_block_UV[block_y][block_x].ppp_x[TOP_RIGHT_CORNER] = ppp_x_1;
-    array_block_UV[block_y][block_x].ppp_x[BOT_LEFT_CORNER] = ppp_x_2;
-    array_block_UV[block_y][block_x].ppp_x[BOT_RIGHT_CORNER] = ppp_x_3;
-    
+    array_block[block_y][block_x].ppp_x[TOP_LEFT_CORNER] = ppp_x_0;
+    array_block[block_y][block_x].ppp_x[TOP_RIGHT_CORNER] = ppp_x_1;
+    array_block[block_y][block_x].ppp_x[BOT_LEFT_CORNER] = ppp_x_2;
+    array_block[block_y][block_x].ppp_x[BOT_RIGHT_CORNER] = ppp_x_3;
+
     //VERTICAL ADJUSTMENT
-    ppp_y_0 = array_block_Y[block_y][block_x].ppp_y[TOP_LEFT_CORNER];
-    ppp_y_1 = array_block_Y[block_y][block_x].ppp_y[TOP_RIGHT_CORNER];
-    ppp_y_2 = array_block_Y[block_y][block_x].ppp_y[BOT_LEFT_CORNER];
-    ppp_y_3 = array_block_Y[block_y][block_x].ppp_y[BOT_RIGHT_CORNER];
+    ppp_y_0 = array_block[block_y][block_x].ppp_y[TOP_LEFT_CORNER];
+    ppp_y_1 = array_block[block_y][block_x].ppp_y[TOP_RIGHT_CORNER];
+    ppp_y_2 = array_block[block_y][block_x].ppp_y[BOT_LEFT_CORNER];
+    ppp_y_3 = array_block[block_y][block_x].ppp_y[BOT_RIGHT_CORNER];
     
     side_a = ppp_y_0 + ppp_y_2;
     side_b = ppp_y_1 + ppp_y_3;
@@ -508,27 +502,17 @@ void lhe_advanced_ppp_side_to_rectangle_shape (AdvancedLheBlock **array_block_Y,
         side_average=side_max;
     }
     
-    downsampled_block_Y = 2.0*block_length/ side_average + 0.5;    
-    downsampled_block_UV = (downsampled_block_Y - 1) / CHROMA_FACTOR_HEIGHT + 1;
+    downsampled_block = 2.0*block_height/ side_average + 0.5;    
     
-    array_block_Y[block_y][block_x].downsampled_y_side = downsampled_block_Y;
-    y_fin_downsampled_Y = array_block_Y[block_y][block_x].y_ini + downsampled_block_Y;
-    if (y_fin_downsampled_Y > height_image_Y)
+    array_block[block_y][block_x].downsampled_y_side = downsampled_block;
+    y_fin_downsampled = array_block[block_y][block_x].y_ini + downsampled_block;
+    if (y_fin_downsampled > image_height)
     {
-        y_fin_downsampled_Y = height_image_Y;
+        y_fin_downsampled = image_height;
     }
-    array_block_Y[block_y][block_x].y_fin_downsampled = y_fin_downsampled_Y;
+    array_block[block_y][block_x].y_fin_downsampled = y_fin_downsampled;
 
-    array_block_UV[block_y][block_x].downsampled_y_side = downsampled_block_UV;
-    y_fin_downsampled_UV = array_block_UV[block_y][block_x].y_ini + downsampled_block_UV;
-    if (y_fin_downsampled_UV > height_image_UV)
-    {
-        y_fin_downsampled_UV = height_image_UV;
-    }
-    array_block_UV[block_y][block_x].y_fin_downsampled = y_fin_downsampled_UV;
-
-    
-    side_average=2.0*block_length/downsampled_block_Y;    
+    side_average=2.0*block_height/downsampled_block;    
     
     //adjust side a
     //--------------
@@ -617,15 +601,10 @@ void lhe_advanced_ppp_side_to_rectangle_shape (AdvancedLheBlock **array_block_Y,
 
     }
     
-    array_block_Y[block_y][block_x].ppp_y[TOP_LEFT_CORNER] = ppp_y_0;
-    array_block_Y[block_y][block_x].ppp_y[TOP_RIGHT_CORNER] = ppp_y_1;
-    array_block_Y[block_y][block_x].ppp_y[BOT_LEFT_CORNER] = ppp_y_2;
-    array_block_Y[block_y][block_x].ppp_y[BOT_RIGHT_CORNER] = ppp_y_3;
-    
-    array_block_UV[block_y][block_x].ppp_y[TOP_LEFT_CORNER] = ppp_y_0;
-    array_block_UV[block_y][block_x].ppp_y[TOP_RIGHT_CORNER] = ppp_y_1;
-    array_block_UV[block_y][block_x].ppp_y[BOT_LEFT_CORNER] = ppp_y_2;
-    array_block_UV[block_y][block_x].ppp_y[BOT_RIGHT_CORNER] = ppp_y_3;
+    array_block[block_y][block_x].ppp_y[TOP_LEFT_CORNER] = ppp_y_0;
+    array_block[block_y][block_x].ppp_y[TOP_RIGHT_CORNER] = ppp_y_1;
+    array_block[block_y][block_x].ppp_y[BOT_LEFT_CORNER] = ppp_y_2;
+    array_block[block_y][block_x].ppp_y[BOT_RIGHT_CORNER] = ppp_y_3;
 }
 
 

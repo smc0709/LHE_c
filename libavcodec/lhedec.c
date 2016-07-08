@@ -322,15 +322,22 @@ static void lhe_advanced_read_mesh (LheState *s, AdvancedLheBlock **block_array_
                                          width_UV, height_UV,
                                          block_x, block_y);
 
-            ppp_max = lhe_advanced_perceptual_relevance_to_ppp(block_array_Y,
+            ppp_max = lhe_advanced_perceptual_relevance_to_ppp(block_array_Y, block_array_UV,
                                                                perceptual_relevance_x, perceptual_relevance_y, 
                                                                compression_factor, ppp_max_theoric, 
                                                                block_x, block_y);
-            //Adjusts ppp to rectangle shape
-            lhe_advanced_ppp_side_to_rectangle_shape (block_array_Y, block_array_UV,
+            //Adjusts luminance ppp to rectangle shape 
+            lhe_advanced_ppp_side_to_rectangle_shape (block_array_Y,
                                                       width_Y, height_Y, 
-                                                      width_UV, height_UV,
-                                                      block_width_Y, ppp_max_theoric,
+                                                      block_width_Y, block_height_Y,
+                                                      ppp_max_theoric,
+                                                      block_x, block_y);
+            
+            //Adjusts chrominance ppp to rectangle shape
+            lhe_advanced_ppp_side_to_rectangle_shape (block_array_UV, 
+                                                      width_UV, height_UV, 
+                                                      block_width_UV, block_height_UV,
+                                                      ppp_max_theoric,
                                                       block_x, block_y);
      
         }
@@ -723,11 +730,6 @@ static void lhe_advanced_vertical_nearest_neighbour_interpolation (AdvancedLheBl
             {            
                 yfin_interpolated = yfin_interpolated_float + 0.5;  
                 
-                 if (yfin_interpolated>yfin) 
-                {
-                    yfin_interpolated = yfin; 
-                }
-                
                 for (int i=yprev_interpolated;i < yfin_interpolated;i++)
                 {
                     intermediate_interpolated_image[i*width+x]=downsampled_image[y_sc*width+x];                  
@@ -788,13 +790,7 @@ static void lhe_advanced_horizontal_nearest_neighbour_interpolation (AdvancedLhe
         for (int x_sc=xini; x_sc<xfin_downsampled; x_sc++)
         {
             xfin_interpolated = xfin_interpolated_float + 0.5;
-            
-            if (xfin_interpolated>xfin) 
-            {
-                xfin_interpolated = xfin; 
-            }
-            
-   
+               
             for (int i=xprev_interpolated;i < xfin_interpolated;i++)
             {
                 component_Y[y*linesize+i]=intermediate_interpolated_image[y*width+x_sc];                  
@@ -984,8 +980,7 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
         for (int block_y=0; block_y<total_blocks_height; block_y++)
         {
             for (int block_x=0; block_x<total_blocks_width; block_x++)
-            {
-             
+            {                             
                 //Luminance
                 lhe_advanced_decode_one_hop_per_pixel_block(&s->prec, block_array_Y,
                                                             hops_Y, downsampled_image_Y, 
@@ -1022,7 +1017,6 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
                                                                          block_width_UV, block_height_UV,
                                                                          block_x, block_y);
            
-
                 //Chrominance V
                 lhe_advanced_decode_one_hop_per_pixel_block(&s->prec, block_array_UV,
                                                             hops_V, downsampled_image_V, 
@@ -1078,6 +1072,7 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
                                             first_color_block_Y, first_color_block_U, first_color_block_V);    
         }
     }
+    
     /*  
         av_log(NULL, AV_LOG_INFO, "HOPS Y \n");
 
