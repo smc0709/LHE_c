@@ -38,7 +38,6 @@ typedef struct LheState {
 static av_cold int lhe_decode_init(AVCodecContext *avctx)
 {
     LheState *s = avctx->priv_data;
-    avctx->pix_fmt = AV_PIX_FMT_YUV422P;
 
     s->frame = av_frame_alloc();
     if (!s->frame)
@@ -812,7 +811,7 @@ static void lhe_advanced_horizontal_nearest_neighbour_interpolation (AdvancedLhe
 //==================================================================
 static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, AVPacket *avpkt)
 {
-    uint8_t lhe_mode, quality_level;
+    uint8_t lhe_mode, pixel_format, quality_level;
     uint8_t *downsampled_image_Y, *downsampled_image_U, *downsampled_image_V;
     uint8_t *intermediate_interpolated_Y, *intermediate_interpolated_U, *intermediate_interpolated_V;
     uint8_t *hops_Y, *hops_U, *hops_V;
@@ -840,6 +839,26 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
     //LHE mode
     lhe_mode = bytestream_get_byte(&lhe_data); 
     
+    //Pixel format byte
+    pixel_format = bytestream_get_byte(&lhe_data); 
+    
+    if (pixel_format == LHE_YUV420)
+    {
+        avctx->pix_fmt = AV_PIX_FMT_YUV420P;
+        CHROMA_FACTOR_WIDTH = 2;
+        CHROMA_FACTOR_HEIGHT = 2;
+    } else if (pixel_format == LHE_YUV422) 
+    {
+        avctx->pix_fmt = AV_PIX_FMT_YUV422P;
+        CHROMA_FACTOR_WIDTH = 2;
+        CHROMA_FACTOR_HEIGHT = 1;
+    } else if (pixel_format == LHE_YUV444) 
+    {
+        avctx->pix_fmt = AV_PIX_FMT_YUV444P;
+        CHROMA_FACTOR_WIDTH = 1;
+        CHROMA_FACTOR_HEIGHT = 1;
+    }
+        
     width_Y  = bytestream2_get_le32u(&lhe_data);
     height_Y = bytestream2_get_le32u(&lhe_data);
     

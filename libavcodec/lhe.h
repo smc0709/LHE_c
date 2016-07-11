@@ -24,14 +24,16 @@
 #include <omp.h>
 #endif
 
+//LHE Pixel Format
+#define LHE_YUV420 0
+#define LHE_YUV422 1
+#define LHE_YUV444 2
 
 //Configuration 
 #define BASIC_LHE 0
 #define ADVANCED_LHE 1
 #define MIDDLE_VALUE false
 #define LUMINANCE_FACTOR 1
-#define CHROMA_FACTOR_WIDTH 2
-#define CHROMA_FACTOR_HEIGHT 1
 #define BLOCK_WIDTH_Y 64
 #define BLOCK_HEIGHT_Y 64
 #define BLOCK_WIDTH_UV BLOCK_WIDTH_Y/CHROMA_FACTOR_WIDTH
@@ -123,6 +125,9 @@
 //Offset file
 #define FILE_OFFSET_BYTES 4
 #define FILE_OFFSET_BITS 32
+
+uint8_t CHROMA_FACTOR_WIDTH;
+uint8_t CHROMA_FACTOR_HEIGHT;
 
 typedef struct LheBasicPrec {
     uint8_t prec_luminance[Y_MAX_COMPONENT][RATIO][H1_RANGE][NUMBER_OF_HOPS]; // precomputed luminance component

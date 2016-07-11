@@ -66,6 +66,21 @@ static av_cold int lhe_encode_init(AVCodecContext *avctx)
     LheContext *s = avctx->priv_data;
 
     lhe_init_cache(&s->prec);
+    
+    if (avctx->pix_fmt == AV_PIX_FMT_YUV420P)
+    {
+        CHROMA_FACTOR_WIDTH = 2;
+        CHROMA_FACTOR_HEIGHT = 2;
+    } else if (avctx->pix_fmt == AV_PIX_FMT_YUV422P) 
+    {
+        CHROMA_FACTOR_WIDTH = 2;
+        CHROMA_FACTOR_HEIGHT = 1;
+    } else if (avctx->pix_fmt == AV_PIX_FMT_YUV444P) 
+    {
+        CHROMA_FACTOR_WIDTH = 1;
+        CHROMA_FACTOR_HEIGHT = 1;
+    }
+        
 
     return 0;
 
@@ -272,7 +287,7 @@ static int lhe_basic_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
                                     uint8_t *hops_Y, uint8_t *hops_U, uint8_t *hops_V) {
   
     uint8_t *buf;
-    uint8_t lhe_mode;
+    uint8_t lhe_mode, pixel_format;
     uint64_t n_bits_hops, n_bytes, n_bytes_components, total_blocks;
     
     int i, ret;
@@ -313,6 +328,20 @@ static int lhe_basic_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
     //Lhe mode byte
     lhe_mode = BASIC_LHE; 
     bytestream_put_byte(&buf, lhe_mode);
+    
+    //Pixel format byte
+    if (avctx->pix_fmt == AV_PIX_FMT_YUV420P)
+    {
+        pixel_format = LHE_YUV420;
+    } else if (avctx->pix_fmt == AV_PIX_FMT_YUV422P) 
+    {
+        pixel_format = LHE_YUV422;
+    } else if (avctx->pix_fmt == AV_PIX_FMT_YUV444P) 
+    {
+        pixel_format = LHE_YUV444;
+    }
+    
+    bytestream_put_byte(&buf, pixel_format);
     
     //save width and height
     bytestream_put_le32(&buf, width_Y);
@@ -581,7 +610,7 @@ static int lhe_advanced_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
 {
   
     uint8_t *buf;
-    uint8_t lhe_mode;
+    uint8_t lhe_mode, pixel_format;
     uint64_t n_bits_hops, n_bytes, n_bytes_components, n_bytes_mesh, total_blocks;
     uint32_t xini_Y, xfin_downsampled_Y, yini_Y, yfin_downsampled_Y, xini_UV, xfin_downsampled_UV, yini_UV, yfin_downsampled_UV; 
     uint64_t pix;
@@ -628,6 +657,20 @@ static int lhe_advanced_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
     
     //Lhe mode byte
     bytestream_put_byte(&buf, lhe_mode);
+    
+    //Pixel format byte
+    if (avctx->pix_fmt == AV_PIX_FMT_YUV420P)
+    {
+        pixel_format = LHE_YUV420;
+    } else if (avctx->pix_fmt == AV_PIX_FMT_YUV422P) 
+    {
+        pixel_format = LHE_YUV422;
+    } else if (avctx->pix_fmt == AV_PIX_FMT_YUV444P) 
+    {
+        pixel_format = LHE_YUV444;
+    }
+    
+    bytestream_put_byte(&buf, pixel_format);
         
     //save width and height
     bytestream_put_le32(&buf, width_Y);
@@ -1917,7 +1960,7 @@ static int lhe_encode_close(AVCodecContext *avctx)
 static const AVOption options[] = {
     { "pr_metrics", "Print PR metrics", OFFSET(pr_metrics), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, VE },
     { "basic_lhe", "Basic LHE", OFFSET(basic_lhe), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, VE },
-    { "ql", "Quality level from 0 to 99", OFFSET(ql), AV_OPT_TYPE_INT, { .i64 = 25 }, 0, 99, VE },
+    { "ql", "Quality level from 0 to 99", OFFSET(ql), AV_OPT_TYPE_INT, { .i64 = 50 }, 0, 99, VE },
     { NULL },
 };
 
@@ -1941,7 +1984,7 @@ AVCodec ff_lhe_encoder = {
     .encode2        = lhe_encode_frame,
     .close          = lhe_encode_close,
     .pix_fmts       = (const enum AVPixelFormat[]){
-        AV_PIX_FMT_YUV422P, AV_PIX_FMT_GRAY8, AV_PIX_FMT_NONE
+        AV_PIX_FMT_YUV420P, AV_PIX_FMT_YUV422P, AV_PIX_FMT_YUV444P, AV_PIX_FMT_NONE
     },
     .priv_class     = &lhe_class,
 };
