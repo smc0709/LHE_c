@@ -201,6 +201,7 @@ static uint64_t lhe_basic_gen_huffman (LheHuffEntry *he_Y, LheHuffEntry *he_UV,
                                        int image_size_Y, int image_size_UV)
 {
     int i, ret, n_bits;
+    float bpp;
     uint8_t  huffman_lengths_Y[LHE_MAX_HUFF_SIZE];
     uint8_t  huffman_lengths_UV[LHE_MAX_HUFF_SIZE];
     uint64_t symbol_count_Y[LHE_MAX_HUFF_SIZE]     = { 0 };
@@ -227,6 +228,9 @@ static uint64_t lhe_basic_gen_huffman (LheHuffEntry *he_Y, LheHuffEntry *he_UV,
     
     //Generates luminance Huffman codes
     n_bits = lhe_generate_huffman_codes(he_Y);
+    bpp = 1.0*n_bits/image_size_Y;
+    
+    av_log (NULL, AV_LOG_INFO, "Y bpp: %f ", bpp );
     
     //CHROMINANCES (same Huffman table for both chrominances)
     
@@ -254,6 +258,9 @@ static uint64_t lhe_basic_gen_huffman (LheHuffEntry *he_Y, LheHuffEntry *he_UV,
 
     //Generates chrominance Huffman codes
     n_bits += lhe_generate_huffman_codes(he_UV);
+    bpp = 1.0*n_bits/image_size_Y;
+    
+    av_log (NULL, AV_LOG_INFO, "YUV bpp: %f ", bpp );
     
     return n_bits;
     
@@ -317,6 +324,8 @@ static int lhe_basic_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
               + total_blocks * (sizeof(first_pixel_blocks_Y) + sizeof(first_pixel_blocks_U) + sizeof(first_pixel_blocks_V)) //first component value for each block array
               + LHE_HUFFMAN_TABLE_BYTES + //huffman table
               + n_bytes_components; //components
+              
+    av_log (NULL, AV_LOG_INFO, "Header: %d bytes \n ", n_bytes - n_bytes_components);
 
               
     //ff_alloc_packet2 reserves n_bytes of memory
@@ -445,6 +454,7 @@ static uint64_t lhe_advanced_gen_huffman (LheHuffEntry *he_Y, LheHuffEntry *he_U
                                           uint32_t total_blocks_width, uint32_t total_blocks_height)
 {
     int i, ret, n_bits;
+    float bpp;
     uint8_t  huffman_lengths_Y[LHE_MAX_HUFF_SIZE];
     uint8_t  huffman_lengths_UV[LHE_MAX_HUFF_SIZE];
     uint64_t symbol_count_Y[LHE_MAX_HUFF_SIZE]     = { 0 };
@@ -506,7 +516,9 @@ static uint64_t lhe_advanced_gen_huffman (LheHuffEntry *he_Y, LheHuffEntry *he_U
     
     //Generates luminance Huffman codes
     n_bits = lhe_generate_huffman_codes(he_Y);
+    bpp = 1.0*n_bits/(width_Y*height_Y);
     
+    av_log (NULL, AV_LOG_INFO, "Y bpp: %f ",bpp );
     
     //CHROMINANCES
     //Generate Huffman length chrominance (same Huffman table for both chrominances)
@@ -523,6 +535,9 @@ static uint64_t lhe_advanced_gen_huffman (LheHuffEntry *he_Y, LheHuffEntry *he_U
 
     //Generates chrominance Huffman codes
     n_bits += lhe_generate_huffman_codes(he_UV);
+    bpp = 1.0*n_bits/(width_Y*height_Y);
+
+    av_log (NULL, AV_LOG_INFO, "YUV bpp: %f ", bpp);
     
     //Returns total bits
     return n_bits; 
@@ -644,7 +659,8 @@ static int lhe_advanced_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
               + sizeof (quality_level) + //quality level
               + LHE_HUFFMAN_TABLE_BYTES + //huffman table
               + n_bytes_components; //components
-
+              
+    av_log (NULL, AV_LOG_INFO, "Header: %d bytes \n ", n_bytes - n_bytes_components);
               
     //ff_alloc_packet2 reserves n_bytes of memory
     if ((ret = ff_alloc_packet2(avctx, pkt, n_bytes, 0)) < 0)
