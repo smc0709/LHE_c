@@ -126,9 +126,6 @@
 #define FILE_OFFSET_BYTES 4//800
 #define FILE_OFFSET_BITS FILE_OFFSET_BYTES*8
 
-uint8_t CHROMA_FACTOR_WIDTH;
-uint8_t CHROMA_FACTOR_HEIGHT;
-
 typedef struct LheBasicPrec {
     uint8_t prec_luminance[Y_MAX_COMPONENT][RATIO][H1_RANGE][NUMBER_OF_HOPS]; // precomputed luminance component
     uint8_t best_hop [RATIO][H1_RANGE][Y_MAX_COMPONENT][Y_MAX_COMPONENT]; //ratio - h1 - original color - prediction

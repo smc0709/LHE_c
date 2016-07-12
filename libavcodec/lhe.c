@@ -337,7 +337,7 @@ void lhe_advanced_ppp_side_to_rectangle_shape (AdvancedLheBlock **array_block,
                                                float ppp_max, 
                                                int block_x, int block_y) 
 {
-    float ppp_x_0, ppp_x_1, ppp_x_2, ppp_x_3, ppp_y_0, ppp_y_1, ppp_y_2, ppp_y_3, side_a, side_b, side_c, side_d, side_average, side_min, side_max, add;
+    float ppp_x_0, ppp_x_1, ppp_x_2, ppp_x_3, ppp_y_0, ppp_y_1, ppp_y_2, ppp_y_3, side_a, side_b, side_c, side_d, side_average, side_max, add;
     
     uint32_t downsampled_block, x_fin_downsampled, y_fin_downsampled;
     
@@ -357,12 +357,10 @@ void lhe_advanced_ppp_side_to_rectangle_shape (AdvancedLheBlock **array_block,
         
         if (side_c < side_d) 
         {
-            side_min = side_d; //side_min is the side whose ppp summation is bigger 
             side_max = side_c; //side max is the side whose resolution is bigger and ppp summation is lower
         } 
         else 
         {
-            side_min = side_c;
             side_max = side_d;
         }
         
@@ -490,12 +488,10 @@ void lhe_advanced_ppp_side_to_rectangle_shape (AdvancedLheBlock **array_block,
         
         if (side_a < side_b) 
         {
-            side_min = side_b; //side_min is the side whose ppp summation is bigger 
             side_max = side_a; //side max is the side whose resolution is bigger and ppp summation is lower
         } 
         else 
         {
-            side_min = side_a;
             side_max = side_b;
         }
         
@@ -618,7 +614,6 @@ void lhe_advanced_ppp_side_to_rectangle_shape (AdvancedLheBlock **array_block,
  */
 static void lhe_init_compression_factor_from_ql (LheBasicPrec *prec) 
 {
-    float max_ppp;
     float cf, cf_min, cf_max, r;
     
     const float pr_min = PR_QUANT_0;
@@ -868,7 +863,7 @@ static void lhe_init_best_hop(LheBasicPrec* prec, int hop0_Y, int hop_1, int r_m
  */
 static void lhe_init_h1_adaptation (LheBasicPrec* prec) 
 {
-    uint8_t hop_prev, hop, x, hop_1; 
+    uint8_t hop_prev, hop, hop_1; 
     
     for (hop_1=1; hop_1<H1_RANGE; hop_1++) 
     {

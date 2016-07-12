@@ -32,6 +32,8 @@ typedef struct LheState {
     LheBasicPrec prec;
     AVFrame * frame;
     GetBitContext gb;
+    uint8_t chroma_factor_width;
+    uint8_t chroma_factor_height;
 } LheState;
 
 
@@ -169,7 +171,7 @@ static void lhe_basic_read_file_symbols (LheState *s, LheHuffEntry *he, uint32_t
 // ADVANCED LHE FILE
 //==================================================================
 /**
- * Reads file symbols of advanced lhe file
+ * Reads file symbols from advanced lhe file
  * 
  * @param s Lhe parameters
  * @param he Huffman entry, Huffman parameters
@@ -218,6 +220,56 @@ static void lhe_advanced_read_file_symbols (LheState *s, LheHuffEntry *he, Advan
                 huffman_symbol = 0;
                 count_bits = 0;
             }
+        }
+    }
+}
+
+/**
+ * Reads file symbols from advanced lhe file
+ * 
+ * @param *s Lhe parameters
+ * @param he_Y Luminance Huffman entry, Huffman parameters
+ * @param he_UV Chrominance Huffman entry, Huffman parameters
+ * @param block_array_Y Luminance Advanced Lhe parameters
+ * @param block_array_UV Chrominance Advanced Lhe parameters
+ * @param symbols_Y luminance symbols array (hops)
+ * @param symbols_U chrominance u symbols array (hops)
+ * @param symbols_V chrominance v symbols array (hops)
+ * @param width_Y luminance image width
+ * @param height_Y luminance image height
+ * @param width_UV chrominance image width
+ * @param height_UV chrominance image height
+ * @param total_blocks_width number of blocks widthwise
+ * @param total_blocks_height number of blocks heightwise
+ */
+static void lhe_advanced_read_all_file_symbols (LheState *s, 
+                                                LheHuffEntry *he_Y, LheHuffEntry *he_UV,
+                                                AdvancedLheBlock **block_array_Y, AdvancedLheBlock **block_array_UV,
+                                                uint8_t *symbols_Y, uint8_t *symbols_U, uint8_t *symbols_V,
+                                                uint32_t width_Y, uint32_t height_Y, uint32_t width_UV, uint32_t height_UV, 
+                                                uint32_t total_blocks_width, uint32_t total_blocks_height) 
+{
+    
+    for (int block_y=0; block_y<total_blocks_height; block_y++)
+    {
+        for (int block_x=0; block_x<total_blocks_width; block_x++)
+        {          
+
+            lhe_advanced_read_file_symbols (s, he_Y, block_array_Y,
+                                            symbols_Y,
+                                            width_Y, height_Y,
+                                            block_x, block_y);  
+                                            
+            lhe_advanced_read_file_symbols (s, he_UV, block_array_UV,
+                                            symbols_U,
+                                            width_UV, height_UV,
+                                            block_x, block_y);
+            
+            lhe_advanced_read_file_symbols (s, he_UV, block_array_UV, 
+                                            symbols_V, 
+                                            width_UV, height_UV,
+                                            block_x, block_y);
+
         }
     }
 }
@@ -293,7 +345,6 @@ static void lhe_advanced_read_mesh (LheState *s, AdvancedLheBlock **block_array_
                                     uint32_t total_blocks_width, uint32_t total_blocks_height) 
 {
     uint8_t perceptual_relevance_x_interval, perceptual_relevance_y_interval;
-    float ppp_max;
     
     for (int block_y=0; block_y<total_blocks_height+1; block_y++) 
     {
@@ -321,10 +372,11 @@ static void lhe_advanced_read_mesh (LheState *s, AdvancedLheBlock **block_array_
                                          width_UV, height_UV,
                                          block_x, block_y);
 
-            ppp_max = lhe_advanced_perceptual_relevance_to_ppp(block_array_Y, block_array_UV,
-                                                               perceptual_relevance_x, perceptual_relevance_y, 
-                                                               compression_factor, ppp_max_theoric, 
-                                                               block_x, block_y);
+            lhe_advanced_perceptual_relevance_to_ppp(block_array_Y, block_array_UV,
+                                                     perceptual_relevance_x, perceptual_relevance_y, 
+                                                     compression_factor, ppp_max_theoric, 
+                                                     block_x, block_y);
+            
             //Adjusts luminance ppp to rectangle shape 
             lhe_advanced_ppp_side_to_rectangle_shape (block_array_Y,
                                                       width_Y, height_Y, 
@@ -690,14 +742,14 @@ static void lhe_advanced_vertical_nearest_neighbour_interpolation (AdvancedLheBl
 {
     uint32_t downsampled_y_side;
     float gradient, gradient_0, gradient_1, ppp_y, ppp_0, ppp_1, ppp_2, ppp_3;
-    uint32_t xini, xfin_downsampled, yini, yfin, yprev_interpolated, yfin_interpolated, yfin_downsampled;
+    uint32_t xini, xfin_downsampled, yini, yprev_interpolated, yfin, yfin_interpolated, yfin_downsampled;
     float yfin_interpolated_float;
     
     downsampled_y_side = block_array[block_y][block_x].downsampled_y_side;
     xini = block_array[block_y][block_x].x_ini;
     xfin_downsampled = block_array[block_y][block_x].x_fin_downsampled;
     yini = block_array[block_y][block_x].y_ini;
-    yfin =  block_array[block_y][block_x].y_fin;
+    yfin = block_array[block_y][block_x].y_fin;
     yfin_downsampled = block_array[block_y][block_x].y_fin_downsampled;
 
     ppp_0=block_array[block_y][block_x].ppp_y[TOP_LEFT_CORNER];
@@ -729,9 +781,14 @@ static void lhe_advanced_vertical_nearest_neighbour_interpolation (AdvancedLheBl
             {            
                 yfin_interpolated = yfin_interpolated_float + 0.5;  
                 
+                if (yfin_interpolated > yfin)
+                {
+                    yfin_interpolated = yfin;
+                }
+                
                 for (int i=yprev_interpolated;i < yfin_interpolated;i++)
                 {
-                    intermediate_interpolated_image[i*width+x]=downsampled_image[y_sc*width+x];                  
+                    intermediate_interpolated_image[i*width+x]=downsampled_image[y_sc*width+x];
                 }
           
                 yprev_interpolated=yfin_interpolated;
@@ -789,6 +846,11 @@ static void lhe_advanced_horizontal_nearest_neighbour_interpolation (AdvancedLhe
         for (int x_sc=xini; x_sc<xfin_downsampled; x_sc++)
         {
             xfin_interpolated = xfin_interpolated_float + 0.5;
+            
+            if (xfin_interpolated > xfin)
+            {
+                xfin_interpolated = xfin;
+            }
                
             for (int i=xprev_interpolated;i < xfin_interpolated;i++)
             {
@@ -806,14 +868,121 @@ static void lhe_advanced_horizontal_nearest_neighbour_interpolation (AdvancedLhe
     }//y 
 }
 
+static void lhe_advanced_decode_symbols (LheState *s, 
+                                         LheHuffEntry *he_Y, LheHuffEntry *he_UV,
+                                         AdvancedLheBlock **block_array_Y, AdvancedLheBlock **block_array_UV,
+                                         uint8_t *first_color_block_Y, uint8_t *first_color_block_U, uint8_t *first_color_block_V,
+                                         uint8_t *symbols_Y, uint8_t *symbols_U, uint8_t *symbols_V,
+                                         uint8_t *component_Y, uint8_t *component_U, uint8_t *component_V,
+                                         uint32_t width_Y, uint32_t height_Y, uint32_t width_UV, uint32_t height_UV,
+                                         uint32_t image_size_Y, uint32_t image_size_UV,
+                                         uint32_t block_width_Y, uint32_t block_height_Y, uint32_t block_width_UV, uint32_t block_height_UV,
+                                         uint32_t total_blocks_width, uint32_t total_blocks_height) 
+{
+    uint8_t *downsampled_image_Y, *downsampled_image_U, *downsampled_image_V;
+    uint8_t *intermediate_interpolated_Y, *intermediate_interpolated_U, *intermediate_interpolated_V;
+    
+    downsampled_image_Y = malloc (sizeof(uint8_t) * image_size_Y);
+    downsampled_image_U = malloc (sizeof(uint8_t) * image_size_UV);
+    downsampled_image_V = malloc (sizeof(uint8_t) * image_size_UV);
+    
+    intermediate_interpolated_Y = malloc (sizeof(uint8_t) * image_size_Y);
+    intermediate_interpolated_U = malloc (sizeof(uint8_t) * image_size_UV);
+    intermediate_interpolated_V = malloc (sizeof(uint8_t) * image_size_UV);
+    
+    #pragma omp parallel for
+    for (int block_y=0; block_y<total_blocks_height; block_y++)
+    {
+        for (int block_x=0; block_x<total_blocks_width; block_x++)
+        {                        
+            //Luminance
+            lhe_advanced_decode_one_hop_per_pixel_block(&s->prec, block_array_Y,
+                                                        symbols_Y, downsampled_image_Y, 
+                                                        width_Y, height_Y,  
+                                                        first_color_block_Y, total_blocks_width, 
+                                                        block_x, block_y, block_width_Y, block_height_Y); 
+            
+                
+            
+            lhe_advanced_vertical_nearest_neighbour_interpolation (block_array_Y, 
+                                                                    downsampled_image_Y, intermediate_interpolated_Y,
+                                                                    width_Y, block_width_Y, block_height_Y,
+                                                                    block_x, block_y);     
+            
+            
+            lhe_advanced_horizontal_nearest_neighbour_interpolation (block_array_Y, 
+                                                                        intermediate_interpolated_Y, component_Y,
+                                                                        width_Y, s->frame->linesize[0],
+                                                                        block_width_Y, block_height_Y,
+                                                                        block_x, block_y);
+
+            //Chrominance U
+            lhe_advanced_decode_one_hop_per_pixel_block(&s->prec, block_array_UV,
+                                                        symbols_U, downsampled_image_U, 
+                                                        width_UV, height_UV, 
+                                                        first_color_block_U, total_blocks_width, 
+                                                        block_x, block_y, block_width_UV, block_height_UV);
+
+            lhe_advanced_vertical_nearest_neighbour_interpolation (block_array_UV, 
+                                                                    downsampled_image_U, intermediate_interpolated_U,
+                                                                    width_UV, block_width_UV, block_height_UV,
+                                                                    block_x, block_y);
+            
+            lhe_advanced_horizontal_nearest_neighbour_interpolation (block_array_UV, 
+                                                                        intermediate_interpolated_U, component_U,
+                                                                        width_UV, s->frame->linesize[1],
+                                                                        block_width_UV, block_height_UV,
+                                                                        block_x, block_y);
+                                                                        
+        
+            //Chrominance V
+            lhe_advanced_decode_one_hop_per_pixel_block(&s->prec, block_array_UV,
+                                                        symbols_V, downsampled_image_V, 
+                                                        width_UV, height_UV, 
+                                                        first_color_block_V, total_blocks_width, 
+                                                        block_x, block_y, block_width_UV, block_height_UV);
+
+            
+            lhe_advanced_vertical_nearest_neighbour_interpolation (block_array_UV, 
+                                                                    downsampled_image_V, intermediate_interpolated_V,
+                                                                    width_UV, block_width_UV, block_height_UV,
+                                                                    block_x, block_y);
+            
+            lhe_advanced_horizontal_nearest_neighbour_interpolation (block_array_UV, 
+                                                                        intermediate_interpolated_V, component_V,
+                                                                        width_UV, s->frame->linesize[2],
+                                                                        block_width_UV, block_height_UV,
+                                                                        block_x, block_y);                      
+        }
+    }
+}
+
 //==================================================================
 // DECODE FRAME
 //==================================================================
+static void lhe_init_pixel_format (AVCodecContext *avctx, LheState *s, uint8_t pixel_format)
+{
+    if (pixel_format == LHE_YUV420)
+    {
+        avctx->pix_fmt = AV_PIX_FMT_YUV420P;
+        s->chroma_factor_width = 2;
+        s->chroma_factor_height = 2;
+    } else if (pixel_format == LHE_YUV422) 
+    {
+        avctx->pix_fmt = AV_PIX_FMT_YUV422P;
+        s->chroma_factor_width = 2;
+        s->chroma_factor_height = 1;
+    } else if (pixel_format == LHE_YUV444) 
+    {
+        avctx->pix_fmt = AV_PIX_FMT_YUV444P;
+        s->chroma_factor_width = 1;
+        s->chroma_factor_height = 1;
+    }
+}
+
 static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, AVPacket *avpkt)
 {
     uint8_t lhe_mode, pixel_format, quality_level;
-    uint8_t *downsampled_image_Y, *downsampled_image_U, *downsampled_image_V;
-    uint8_t *intermediate_interpolated_Y, *intermediate_interpolated_U, *intermediate_interpolated_V;
     uint8_t *hops_Y, *hops_U, *hops_V;
     uint8_t *component_Y, *component_U, *component_V;
     uint8_t *first_color_block_Y, *first_color_block_U, *first_color_block_V;
@@ -839,33 +1008,17 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
     //LHE mode
     lhe_mode = bytestream_get_byte(&lhe_data); 
     
-    //Pixel format byte
+    //Pixel format byte, init pixel format
     pixel_format = bytestream_get_byte(&lhe_data); 
-    
-    if (pixel_format == LHE_YUV420)
-    {
-        avctx->pix_fmt = AV_PIX_FMT_YUV420P;
-        CHROMA_FACTOR_WIDTH = 2;
-        CHROMA_FACTOR_HEIGHT = 2;
-    } else if (pixel_format == LHE_YUV422) 
-    {
-        avctx->pix_fmt = AV_PIX_FMT_YUV422P;
-        CHROMA_FACTOR_WIDTH = 2;
-        CHROMA_FACTOR_HEIGHT = 1;
-    } else if (pixel_format == LHE_YUV444) 
-    {
-        avctx->pix_fmt = AV_PIX_FMT_YUV444P;
-        CHROMA_FACTOR_WIDTH = 1;
-        CHROMA_FACTOR_HEIGHT = 1;
-    }
-        
-    width_Y  = bytestream2_get_le32u(&lhe_data);
-    height_Y = bytestream2_get_le32u(&lhe_data);
+    lhe_init_pixel_format (avctx, s, pixel_format);
+           
+    width_Y  = bytestream_get_le32(&lhe_data);
+    height_Y = bytestream_get_le32(&lhe_data);
     
     image_size_Y = width_Y * height_Y;
     
-    width_UV = (width_Y - 1)/CHROMA_FACTOR_WIDTH + 1;
-    height_UV = (height_Y - 1)/CHROMA_FACTOR_HEIGHT + 1;
+    width_UV = (width_Y - 1)/s->chroma_factor_width + 1;
+    height_UV = (height_Y - 1)/s->chroma_factor_height + 1;
     image_size_UV = width_UV * height_UV;
     
     avctx->width  = width_Y;
@@ -921,14 +1074,6 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
     if (lhe_mode == ADVANCED_LHE)
         //ADVANCED LHE
     {           
-        downsampled_image_Y = malloc (sizeof(uint8_t) * image_size_Y);
-        downsampled_image_U = malloc (sizeof(uint8_t) * image_size_UV);
-        downsampled_image_V = malloc (sizeof(uint8_t) * image_size_UV);
-        
-        intermediate_interpolated_Y = malloc (sizeof(uint8_t) * image_size_Y);
-        intermediate_interpolated_U = malloc (sizeof(uint8_t) * image_size_UV);
-        intermediate_interpolated_V = malloc (sizeof(uint8_t) * image_size_UV);
-
         perceptual_relevance_x = malloc(sizeof(float*) * (total_blocks_height+1));  
     
         for (int i=0; i<total_blocks_height+1; i++) 
@@ -960,8 +1105,8 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
         block_width_Y = (width_Y-1)/total_blocks_width + 1;    
         block_height_Y = (height_Y-1)/total_blocks_height + 1;   
         
-        block_width_UV = (block_width_Y - 1)/CHROMA_FACTOR_WIDTH + 1;
-        block_height_UV = (block_height_Y - 1)/CHROMA_FACTOR_HEIGHT + 1;    
+        block_width_UV = (block_width_Y - 1)/s->chroma_factor_width + 1;
+        block_height_UV = (block_height_Y - 1)/s->chroma_factor_height + 1;    
         
         //Read quality level and calculate compression factor
         quality_level = get_bits(&s->gb, QL_SIZE_BITS); 
@@ -974,92 +1119,27 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
                                width_Y, height_Y, width_UV, height_UV,
                                block_width_Y, block_height_Y, block_width_UV, block_height_UV,
                                total_blocks_width, total_blocks_height) ; 
-                              
-        for (int block_y=0; block_y<total_blocks_height; block_y++)
-        {
-            for (int block_x=0; block_x<total_blocks_width; block_x++)
-            {          
+        
+
+        lhe_advanced_read_all_file_symbols (s, 
+                                            he_Y, he_UV,
+                                            block_array_Y, block_array_UV,
+                                            hops_Y, hops_U, hops_V,
+                                            width_Y, height_Y, width_UV, height_UV, 
+                                            total_blocks_width, total_blocks_height);
+        
+        lhe_advanced_decode_symbols (s, 
+                                     he_Y, he_UV,
+                                     block_array_Y, block_array_UV,
+                                     first_color_block_Y, first_color_block_U, first_color_block_V,
+                                     hops_Y, hops_U, hops_V,
+                                     component_Y, component_U, component_V,
+                                     width_Y, height_Y, width_UV, height_UV,
+                                     image_size_Y, image_size_UV,
+                                     block_width_Y, block_height_Y, block_width_UV, block_height_UV,
+                                     total_blocks_width, total_blocks_height);
  
-                lhe_advanced_read_file_symbols (s, he_Y, block_array_Y,
-                                                hops_Y,
-                                                width_Y, height_Y,
-                                                block_x, block_y);  
-                                                
-                lhe_advanced_read_file_symbols (s, he_UV, block_array_UV,
-                                                hops_U,
-                                                width_UV, height_UV,
-                                                block_x, block_y);
-                
-                lhe_advanced_read_file_symbols (s, he_UV, block_array_UV, 
-                                                hops_V, 
-                                                width_UV, height_UV,
-                                                block_x, block_y);
-
-            }
-        }
- 
-        //#pragma omp parallel for
-        for (int block_y=0; block_y<total_blocks_height; block_y++)
-        {
-            for (int block_x=0; block_x<total_blocks_width; block_x++)
-            {                             
-                //Luminance
-                lhe_advanced_decode_one_hop_per_pixel_block(&s->prec, block_array_Y,
-                                                            hops_Y, downsampled_image_Y, 
-                                                            width_Y, height_Y,  
-                                                            first_color_block_Y, total_blocks_width, 
-                                                            block_x, block_y, block_width_Y, block_height_Y); 
-                
-                lhe_advanced_vertical_nearest_neighbour_interpolation (block_array_Y, 
-                                                                       downsampled_image_Y, intermediate_interpolated_Y,
-                                                                       width_Y, block_width_Y, block_height_Y,
-                                                                       block_x, block_y);           
-                
-                lhe_advanced_horizontal_nearest_neighbour_interpolation (block_array_Y, 
-                                                                         intermediate_interpolated_Y, component_Y,
-                                                                         width_Y, s->frame->linesize[0],
-                                                                         block_width_Y, block_height_Y,
-                                                                         block_x, block_y);
-
-                //Chrominance U
-                lhe_advanced_decode_one_hop_per_pixel_block(&s->prec, block_array_UV,
-                                                            hops_U, downsampled_image_U, 
-                                                            width_UV, height_UV, 
-                                                            first_color_block_U, total_blocks_width, 
-                                                            block_x, block_y, block_width_UV, block_height_UV);
-                
-                lhe_advanced_vertical_nearest_neighbour_interpolation (block_array_UV, 
-                                                                       downsampled_image_U, intermediate_interpolated_U,
-                                                                       width_UV, block_width_UV, block_height_UV,
-                                                                       block_x, block_y);
-                
-                lhe_advanced_horizontal_nearest_neighbour_interpolation (block_array_UV, 
-                                                                         intermediate_interpolated_U, component_U,
-                                                                         width_UV, s->frame->linesize[1],
-                                                                         block_width_UV, block_height_UV,
-                                                                         block_x, block_y);
-           
-                //Chrominance V
-                lhe_advanced_decode_one_hop_per_pixel_block(&s->prec, block_array_UV,
-                                                            hops_V, downsampled_image_V, 
-                                                            width_UV, height_UV, 
-                                                            first_color_block_V, total_blocks_width, 
-                                                            block_x, block_y, block_width_UV, block_height_UV);
-
-                
-                lhe_advanced_vertical_nearest_neighbour_interpolation (block_array_UV, 
-                                                                       downsampled_image_V, intermediate_interpolated_V,
-                                                                       width_UV, block_width_UV, block_height_UV,
-                                                                       block_x, block_y);
-                
-                lhe_advanced_horizontal_nearest_neighbour_interpolation (block_array_UV, 
-                                                                         intermediate_interpolated_V, component_V,
-                                                                         width_UV, s->frame->linesize[2],
-                                                                         block_width_UV, block_height_UV,
-                                                                         block_x, block_y);                                                                        
-              
-            }
-        }    
+  
     }
     else
         //BASIC LHE
@@ -1110,7 +1190,7 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
 
     if ((ret = av_frame_ref(data, s->frame)) < 0)
         return ret;
-    
+ 
     *got_frame = 1;
 
     return 0;
