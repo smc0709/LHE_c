@@ -140,12 +140,15 @@ typedef struct LheHuffEntry {
     uint64_t count;
 } LheHuffEntry;
 
-typedef struct AdvancedLheBlock {
+typedef struct BasicLheBlock {
     uint32_t x_ini;
     uint32_t x_fin;
-    uint32_t x_fin_downsampled;
     uint32_t y_ini;
     uint32_t y_fin;
+} BasicLheBlock;
+
+typedef struct AdvancedLheBlock {
+    uint32_t x_fin_downsampled;
     uint32_t y_fin_downsampled;
     uint32_t downsampled_x_side;
     uint32_t downsampled_y_side;
@@ -166,12 +169,13 @@ void lhe_init_cache (LheBasicPrec *prec);
  * ADVANCED_LHE
  * Common functions encoder and decoder
  */
-void calculate_block_coordinates (AdvancedLheBlock **block_array_Y, AdvancedLheBlock **block_array_UV,
-                                  uint32_t block_width_Y, uint32_t block_height_Y,                             
-                                  uint32_t block_width_UV, uint32_t block_height_UV, 
-                                  uint32_t width_image_Y, uint32_t height_image_Y,
-                                  uint32_t width_image_UV, uint32_t height_image_UV,
-                                  int block_x, int block_y);
+void lhe_calculate_block_coordinates (BasicLheBlock **block_array_Y, BasicLheBlock **block_array_UV,
+                                      uint32_t block_width_Y, uint32_t block_height_Y,                             
+                                      uint32_t block_width_UV, uint32_t block_height_UV, 
+                                      uint32_t width_image_Y, uint32_t height_image_Y,
+                                      uint32_t width_image_UV, uint32_t height_image_UV,
+                                      uint32_t total_blocks_width, uint32_t total_blocks_height,
+                                      int block_x, int block_y);
 
 float lhe_advanced_perceptual_relevance_to_ppp (AdvancedLheBlock **array_block_Y, AdvancedLheBlock **array_block_UV,
                                                 float ** perceptual_relevance_x, float ** perceptual_relevance_y,
@@ -179,8 +183,7 @@ float lhe_advanced_perceptual_relevance_to_ppp (AdvancedLheBlock **array_block_Y
                                                 uint32_t ppp_max_theoric,
                                                 int block_x, int block_y);
 
-void lhe_advanced_ppp_side_to_rectangle_shape (AdvancedLheBlock **array_block,
+void lhe_advanced_ppp_side_to_rectangle_shape (BasicLheBlock **basic_block, AdvancedLheBlock **advanced_block,
                                                uint32_t image_width, uint32_t image_height, 
-                                               uint32_t block_width, uint32_t block_height, 
                                                float ppp_max, 
                                                int block_x, int block_y);
