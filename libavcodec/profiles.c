@@ -1,5 +1,4 @@
 /*
- *
  * This file is part of FFmpeg.
  *
  * FFmpeg is free software; you can redistribute it and/or
@@ -61,6 +60,8 @@ const AVProfile ff_h264_profiles[] = {
     { FF_PROFILE_H264_HIGH_444_PREDICTIVE,  "High 4:4:4 Predictive" },
     { FF_PROFILE_H264_HIGH_444_INTRA,       "High 4:4:4 Intra"      },
     { FF_PROFILE_H264_CAVLC_444,            "CAVLC 4:4:4"           },
+    { FF_PROFILE_H264_MULTIVIEW_HIGH,       "Multiview High"        },
+    { FF_PROFILE_H264_STEREO_HIGH,          "Stereo High"           },
     { FF_PROFILE_UNKNOWN },
 };
 

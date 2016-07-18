@@ -575,7 +575,7 @@ static int Rgb16ToPlanarRgb16Wrapper(SwsContext *c, const uint8_t *src[],
     case AV_PIX_FMT_RGB48BE:
     case AV_PIX_FMT_RGBA64LE:
     case AV_PIX_FMT_RGBA64BE:
-        packed16togbra16(src[0] + srcSliceY * srcStride[0], srcStride[0],
+        packed16togbra16(src[0], srcStride[0],
                          dst2013, stride2013, srcSliceH, alpha, swap,
                          16 - bpc, c->srcW);
         break;
@@ -583,7 +583,7 @@ static int Rgb16ToPlanarRgb16Wrapper(SwsContext *c, const uint8_t *src[],
     case AV_PIX_FMT_BGR48BE:
     case AV_PIX_FMT_BGRA64LE:
     case AV_PIX_FMT_BGRA64BE:
-        packed16togbra16(src[0] + srcSliceY * srcStride[0], srcStride[0],
+        packed16togbra16(src[0], srcStride[0],
                          dst1023, stride1023, srcSliceH, alpha, swap,
                          16 - bpc, c->srcW);
         break;
@@ -1413,9 +1413,9 @@ static int planarCopyWrapper(SwsContext *c, const uint8_t *src[],
     const AVPixFmtDescriptor *desc_dst = av_pix_fmt_desc_get(c->dstFormat);
     int plane, i, j;
     for (plane = 0; plane < 4; plane++) {
-        int length = (plane == 0 || plane == 3) ? c->srcW  : FF_CEIL_RSHIFT(c->srcW,   c->chrDstHSubSample);
-        int y =      (plane == 0 || plane == 3) ? srcSliceY: FF_CEIL_RSHIFT(srcSliceY, c->chrDstVSubSample);
-        int height = (plane == 0 || plane == 3) ? srcSliceH: FF_CEIL_RSHIFT(srcSliceH, c->chrDstVSubSample);
+        int length = (plane == 0 || plane == 3) ? c->srcW  : AV_CEIL_RSHIFT(c->srcW,   c->chrDstHSubSample);
+        int y =      (plane == 0 || plane == 3) ? srcSliceY: AV_CEIL_RSHIFT(srcSliceY, c->chrDstVSubSample);
+        int height = (plane == 0 || plane == 3) ? srcSliceH: AV_CEIL_RSHIFT(srcSliceH, c->chrDstVSubSample);
         const uint8_t *srcPtr = src[plane];
         uint8_t *dstPtr = dst[plane] + dstStride[plane] * y;
         int shiftonly = plane == 1 || plane == 2 || (!c->srcRange && plane == 0);
@@ -1643,6 +1643,7 @@ void ff_get_unscaled_swscale(SwsContext *c)
          dstFormat == AV_PIX_FMT_GBRP12LE || dstFormat == AV_PIX_FMT_GBRP12BE ||
          dstFormat == AV_PIX_FMT_GBRP14LE || dstFormat == AV_PIX_FMT_GBRP14BE ||
          dstFormat == AV_PIX_FMT_GBRP16LE || dstFormat == AV_PIX_FMT_GBRP16BE ||
+         dstFormat == AV_PIX_FMT_GBRAP12LE || dstFormat == AV_PIX_FMT_GBRAP12BE ||
          dstFormat == AV_PIX_FMT_GBRAP16LE || dstFormat == AV_PIX_FMT_GBRAP16BE ))
         c->swscale = Rgb16ToPlanarRgb16Wrapper;
 
@@ -1651,6 +1652,7 @@ void ff_get_unscaled_swscale(SwsContext *c)
          srcFormat == AV_PIX_FMT_GBRP10LE || srcFormat == AV_PIX_FMT_GBRP10BE ||
          srcFormat == AV_PIX_FMT_GBRP12LE || srcFormat == AV_PIX_FMT_GBRP12BE ||
          srcFormat == AV_PIX_FMT_GBRP14LE || srcFormat == AV_PIX_FMT_GBRP14BE ||
+         srcFormat == AV_PIX_FMT_GBRAP12LE || srcFormat == AV_PIX_FMT_GBRAP12BE ||
          srcFormat == AV_PIX_FMT_GBRAP16LE || srcFormat == AV_PIX_FMT_GBRAP16BE) &&
         (dstFormat == AV_PIX_FMT_RGB48LE  || dstFormat == AV_PIX_FMT_RGB48BE  ||
          dstFormat == AV_PIX_FMT_BGR48LE  || dstFormat == AV_PIX_FMT_BGR48BE  ||
@@ -1692,6 +1694,7 @@ void ff_get_unscaled_swscale(SwsContext *c)
         IS_DIFFERENT_ENDIANESS(srcFormat, dstFormat, AV_PIX_FMT_GBRP12) ||
         IS_DIFFERENT_ENDIANESS(srcFormat, dstFormat, AV_PIX_FMT_GBRP14) ||
         IS_DIFFERENT_ENDIANESS(srcFormat, dstFormat, AV_PIX_FMT_GBRP16) ||
+        IS_DIFFERENT_ENDIANESS(srcFormat, dstFormat, AV_PIX_FMT_GBRAP12) ||
         IS_DIFFERENT_ENDIANESS(srcFormat, dstFormat, AV_PIX_FMT_GBRAP16) ||
         IS_DIFFERENT_ENDIANESS(srcFormat, dstFormat, AV_PIX_FMT_RGB444) ||
         IS_DIFFERENT_ENDIANESS(srcFormat, dstFormat, AV_PIX_FMT_RGB48)  ||
@@ -1762,7 +1765,9 @@ void ff_get_unscaled_swscale(SwsContext *c)
          c->chrDstHSubSample == c->chrSrcHSubSample &&
          c->chrDstVSubSample == c->chrSrcVSubSample &&
          dstFormat != AV_PIX_FMT_NV12 && dstFormat != AV_PIX_FMT_NV21 &&
-         srcFormat != AV_PIX_FMT_NV12 && srcFormat != AV_PIX_FMT_NV21))
+         dstFormat != AV_PIX_FMT_P010LE && dstFormat != AV_PIX_FMT_P010BE &&
+         srcFormat != AV_PIX_FMT_NV12 && srcFormat != AV_PIX_FMT_NV21 &&
+         srcFormat != AV_PIX_FMT_P010LE && srcFormat != AV_PIX_FMT_P010BE))
     {
         if (isPacked(c->srcFormat))
             c->swscale = packedCopyWrapper;
@@ -1774,6 +1779,8 @@ void ff_get_unscaled_swscale(SwsContext *c)
         ff_get_unscaled_swscale_ppc(c);
      if (ARCH_ARM)
          ff_get_unscaled_swscale_arm(c);
+    if (ARCH_AARCH64)
+        ff_get_unscaled_swscale_aarch64(c);
 }
 
 /* Convert the palette to the same packed 32-bit format as the palette */

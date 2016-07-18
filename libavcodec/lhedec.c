@@ -3,6 +3,7 @@
  */
 
 #include "bytestream.h"
+#include "get_bits.h"
 #include "internal.h"
 #include "lhe.h"
 

@@ -128,6 +128,8 @@ typedef struct MOVStreamContext {
     MOVStts *ctts_data;
     unsigned int stsc_count;
     MOVStsc *stsc_data;
+    int stsc_index;
+    int stsc_sample;
     unsigned int stps_count;
     unsigned *stps_data;  ///< partial sync sample for mpeg-2 open gop
     MOVElst *elst_data;
@@ -169,6 +171,12 @@ typedef struct MOVStreamContext {
     int nb_frames_for_fps;
     int64_t duration_for_fps;
 
+    /** extradata array (and size) for multiple stsd */
+    uint8_t **extradata;
+    int *extradata_size;
+    int last_stsd_index;
+    int stsd_count;
+
     int32_t *display_matrix;
     uint32_t format;
 
@@ -177,6 +185,9 @@ typedef struct MOVStreamContext {
         uint8_t* auxiliary_info;
         uint8_t* auxiliary_info_end;
         uint8_t* auxiliary_info_pos;
+        uint8_t auxiliary_info_default_size;
+        uint8_t* auxiliary_info_sizes;
+        size_t auxiliary_info_sizes_count;
         struct AVAESCTR* aes_ctr;
     } cenc;
 } MOVStreamContext;
@@ -227,6 +238,7 @@ typedef struct MOVContext {
     struct AVAES *aes_decrypt;
     uint8_t *decryption_key;
     int decryption_key_len;
+    int enable_drefs;
 } MOVContext;
 
 int ff_mp4_read_descr_len(AVIOContext *pb);
