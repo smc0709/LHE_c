@@ -1656,51 +1656,38 @@ static float lhe_advanced_encode (LheContext *s, const AVFrame *frame,
     hops_flhe = malloc(sizeof(uint8_t) * image_size_flhe);
     component_prediction_flhe = malloc(sizeof(uint8_t) * image_size_flhe);
     
-    if(OPENMP_FLAGS == CONFIG_OPENMP) {
-        #pragma omp parallel for
-        for (int block_y=0; block_y<total_blocks_height; block_y++)      
-        {  
-            for (int block_x=0; block_x<total_blocks_width; block_x++) 
-            {
-                 lhe_calculate_block_coordinates (basic_block_Y, basic_block_UV,
-                                                  block_width_Y, block_height_Y,                             
-                                                  block_width_UV, block_height_UV, 
-                                                  width_Y, height_Y,
-                                                  width_UV, height_UV,
-                                                  total_blocks_width, total_blocks_height,
-                                                  block_x, block_y);
-                
-                lhe_basic_encode_one_hop_per_pixel_block(&s->prec, 
-                                                         basic_block_Y,
-                                                         component_original_data_Y, component_prediction_flhe, hops_flhe,      
-                                                         width_Y, width_flhe, height_Y, height_flhe, frame->linesize[0], 
-                                                         first_color_block_Y, 
-                                                         total_blocks_width, total_blocks_height,
-                                                         block_x, block_y, 
-                                                         block_width_Y, block_width_flhe, block_height_Y, block_height_flhe,
-                                                         SPS_RATIO_WIDTH, SPS_RATIO_HEIGHT   );
-            }
+    #pragma omp parallel for
+    for (int block_y=0; block_y<total_blocks_height; block_y++)      
+    {  
+        for (int block_x=0; block_x<total_blocks_width; block_x++) 
+        {
+                lhe_calculate_block_coordinates (basic_block_Y, basic_block_UV,
+                                                block_width_Y, block_height_Y,                             
+                                                block_width_UV, block_height_UV, 
+                                                width_Y, height_Y,
+                                                width_UV, height_UV,
+                                                total_blocks_width, total_blocks_height,
+                                                block_x, block_y);
+            
+            lhe_basic_encode_one_hop_per_pixel_block(&s->prec, 
+                                                        basic_block_Y,
+                                                        component_original_data_Y, component_prediction_flhe, hops_flhe,      
+                                                        width_Y, width_flhe, height_Y, height_flhe, frame->linesize[0], 
+                                                        first_color_block_Y, 
+                                                        total_blocks_width, total_blocks_height,
+                                                        block_x, block_y, 
+                                                        block_width_Y, block_width_flhe, block_height_Y, block_height_flhe,
+                                                        SPS_RATIO_WIDTH, SPS_RATIO_HEIGHT   );
         }
-
-                                       
-                               
-    } else 
-    {
-        lhe_basic_encode_one_hop_per_pixel(&s->prec, 
-                                           component_original_data_Y, component_prediction_flhe, hops_flhe, 
-                                           width_Y, width_flhe, height_flhe, frame->linesize[0], first_color_block_Y,
-                                           SPS_RATIO_WIDTH, SPS_RATIO_HEIGHT  );        
     }
- 
- 
+
     lhe_advanced_compute_perceptual_relevance (basic_block_Y,
                                                perceptual_relevance_x, perceptual_relevance_y,
                                                hops_flhe,
                                                width_flhe,  height_flhe,
                                                total_blocks_width,  total_blocks_height,
                                                block_width_flhe,  block_height_flhe);
-        
-    
+           
     #pragma omp parallel for
     for (int block_y=0; block_y<total_blocks_height; block_y++) 
     {
