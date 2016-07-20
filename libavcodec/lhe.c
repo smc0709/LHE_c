@@ -227,23 +227,58 @@ float lhe_advanced_perceptual_relevance_to_ppp (AdvancedLheBlock **array_block_Y
 {
     float const1, const2, ppp_min, ppp_max;
     float ppp_x_0, ppp_x_1, ppp_x_2, ppp_x_3, ppp_y_0, ppp_y_1, ppp_y_2, ppp_y_3;
+    float perceptual_relevance_x_0, perceptual_relevance_x_1, perceptual_relevance_x_2, perceptual_relevance_x_3;
+    float perceptual_relevance_y_0, perceptual_relevance_y_1, perceptual_relevance_y_2, perceptual_relevance_y_3;
 
-    ppp_min = PPP_MIN;
-    const1 = ppp_max_theoric - 1;
+    const1 = ppp_max_theoric - 1.0;
     const2 = ppp_max_theoric * compression_factor;
     
-    ppp_x_0 = const2 / (1.0 + const1 * perceptual_relevance_x[block_y][block_x]);
-    ppp_x_1 = const2 / (1.0 + const1 * perceptual_relevance_x[block_y][block_x+1]);     
-    ppp_x_2 = const2 / (1.0 + const1 * perceptual_relevance_x[block_y+1][block_x]);  
-    ppp_x_3 = const2 / (1.0 + const1 * perceptual_relevance_x[block_y+1][block_x+1]);
+    perceptual_relevance_x_0 = perceptual_relevance_x[block_y][block_x];
+    perceptual_relevance_x_1 = perceptual_relevance_x[block_y][block_x+1];
+    perceptual_relevance_x_2 = perceptual_relevance_x[block_y+1][block_x];
+    perceptual_relevance_x_3 = perceptual_relevance_x[block_y+1][block_x+1];
     
+    perceptual_relevance_y_0 = perceptual_relevance_y[block_y][block_x];
+    perceptual_relevance_y_1 = perceptual_relevance_y[block_y][block_x+1];
+    perceptual_relevance_y_2 = perceptual_relevance_y[block_y+1][block_x];
+    perceptual_relevance_y_3 = perceptual_relevance_y[block_y+1][block_x+1];
+        
+    ppp_x_0 = const2 / (1.0 + const1 * perceptual_relevance_x_0);
+    ppp_x_1 = const2 / (1.0 + const1 * perceptual_relevance_x_1);     
+    ppp_x_2 = const2 / (1.0 + const1 * perceptual_relevance_x_2);  
+    ppp_x_3 = const2 / (1.0 + const1 * perceptual_relevance_x_3);   
+    
+    if (perceptual_relevance_x_0 == 0) ppp_x_0 = ppp_max_theoric;
+    if (perceptual_relevance_x_1 == 0) ppp_x_1 = ppp_max_theoric;
+    if (perceptual_relevance_x_2 == 0) ppp_x_2 = ppp_max_theoric;
+    if (perceptual_relevance_x_3 == 0) ppp_x_3 = ppp_max_theoric;
 
-    ppp_y_0 = const2 / (1.0 + const1 * perceptual_relevance_y[block_y][block_x]);    
-    ppp_y_1 = const2 / (1.0 + const1 * perceptual_relevance_y[block_y][block_x+1]);   
-    ppp_y_2 = const2 / (1.0 + const1 * perceptual_relevance_y[block_y+1][block_x]);        
-    ppp_y_3 = const2 / (1.0 + const1 * perceptual_relevance_y[block_y+1][block_x+1]);
+    ppp_y_0 = const2 / (1.0 + const1 * perceptual_relevance_y_0);    
+    ppp_y_1 = const2 / (1.0 + const1 * perceptual_relevance_y_1);   
+    ppp_y_2 = const2 / (1.0 + const1 * perceptual_relevance_y_2);        
+    ppp_y_3 = const2 / (1.0 + const1 * perceptual_relevance_y_3);
     
-        //Looks for ppp_min
+    
+    if (perceptual_relevance_y_0 == 0) ppp_y_0 = ppp_max_theoric;
+    if (perceptual_relevance_y_1 == 0) ppp_y_1 = ppp_max_theoric;
+    if (perceptual_relevance_y_2 == 0) ppp_y_2 = ppp_max_theoric;
+    if (perceptual_relevance_y_3 == 0) ppp_y_3 = ppp_max_theoric;
+    
+    
+    //Data control for ppp_min
+    if (ppp_x_0< PPP_MIN) ppp_x_0 = PPP_MIN;
+    if (ppp_x_1< PPP_MIN) ppp_x_1 = PPP_MIN;
+    if (ppp_x_2< PPP_MIN) ppp_x_2 = PPP_MIN;
+    if (ppp_x_3< PPP_MIN) ppp_x_3 = PPP_MIN;   
+    if (ppp_y_0< PPP_MIN) ppp_y_0 = PPP_MIN;
+    if (ppp_y_1< PPP_MIN) ppp_y_1 = PPP_MIN;
+    if (ppp_y_2< PPP_MIN) ppp_y_2 = PPP_MIN;
+    if (ppp_y_3< PPP_MIN) ppp_y_3 = PPP_MIN;
+
+
+    //Looks for ppp_min
+    ppp_min = ppp_max_theoric;
+
     if (ppp_x_0 < ppp_min) ppp_min = ppp_x_0;
     if (ppp_x_1 < ppp_min) ppp_min = ppp_x_1;
     if (ppp_x_2 < ppp_min) ppp_min = ppp_x_2;
@@ -259,22 +294,14 @@ float lhe_advanced_perceptual_relevance_to_ppp (AdvancedLheBlock **array_block_Y
     if (ppp_max > ppp_max_theoric) ppp_max = ppp_max_theoric;
     
     //Adjust values
-    if (ppp_x_0> ppp_max) ppp_x_0 = ppp_max;
-    if (ppp_x_0< PPP_MIN) ppp_x_0 = PPP_MIN;
-    if (ppp_x_1> ppp_max) ppp_x_1 = ppp_max;
-    if (ppp_x_1< PPP_MIN) ppp_x_1 = PPP_MIN;
-    if (ppp_x_2> ppp_max) ppp_x_2 = ppp_max;
-    if (ppp_x_2< PPP_MIN) ppp_x_2 = PPP_MIN;
-    if (ppp_x_3> ppp_max) ppp_x_3 = ppp_max;
-    if (ppp_x_3< PPP_MIN) ppp_x_3 = PPP_MIN;   
-    if (ppp_y_0> ppp_max) ppp_y_0 = ppp_max;
-    if (ppp_y_0< PPP_MIN) ppp_y_0 = PPP_MIN;
-    if (ppp_y_1> ppp_max) ppp_y_1 = ppp_max;
-    if (ppp_y_1< PPP_MIN) ppp_y_1 = PPP_MIN;
-    if (ppp_y_2> ppp_max) ppp_y_2 = ppp_max;
-    if (ppp_y_2< PPP_MIN) ppp_y_2 = PPP_MIN;
-    if (ppp_y_3> ppp_max) ppp_y_3 = ppp_max;
-    if (ppp_y_3< PPP_MIN) ppp_y_3 = PPP_MIN;
+    if (ppp_x_0 > ppp_max) ppp_x_0 = ppp_max;
+    if (ppp_x_1 > ppp_max) ppp_x_1 = ppp_max;
+    if (ppp_x_2 > ppp_max) ppp_x_2 = ppp_max;
+    if (ppp_x_3 > ppp_max) ppp_x_3 = ppp_max;
+    if (ppp_y_0 > ppp_max) ppp_y_0 = ppp_max;
+    if (ppp_y_1 > ppp_max) ppp_y_1 = ppp_max;
+    if (ppp_y_2 > ppp_max) ppp_y_2 = ppp_max;
+    if (ppp_y_3 > ppp_max) ppp_y_3 = ppp_max;
     
     array_block_Y[block_y][block_x].ppp_x[TOP_LEFT_CORNER] = ppp_x_0;
     array_block_Y[block_y][block_x].ppp_x[TOP_RIGHT_CORNER] = ppp_x_1;
@@ -623,7 +650,7 @@ static void lhe_init_compression_factor_from_ql (LheBasicPrec *prec)
 {
     float cf, cf_min, cf_max, r;
     
-    const float pr_min = PR_QUANT_0;
+    const float pr_min = PR_QUANT_1;
     const float pr_max = PR_QUANT_5;
     
     for (int ppp_max = 1; ppp_max < PPP_MAX_IMAGES; ppp_max++) 
@@ -634,8 +661,8 @@ static void lhe_init_compression_factor_from_ql (LheBasicPrec *prec)
         
         for (int ql=0; ql < MAX_QL; ql ++)
         {
-            cf = cf_min * pow (r, (99-ql));
-            prec -> compression_factor[ppp_max][ql] = cf;            
+            cf = (1.0/ppp_max) * pow (r, (99-ql));
+            prec -> compression_factor[ppp_max][ql] = cf;  
         }
     }
 }
@@ -667,40 +694,14 @@ static void lhe_init_hop_center_color_component_value (LheBasicPrec *prec, int h
     //HOP-3                   
     prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_NEG_3]= (hop_neg_3_Y + (hop_neg_4_Y+hop_neg_2_Y)/2)/2;
 
-    if (prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_NEG_3] <= MIN_COMPONENT_VALUE) 
-    {
-        prec->prec_luminance[hop0_Y][rmax][hop1][HOP_NEG_3]=1;
-        
-    }
-
     //HOP-2                  
     prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_NEG_2]= (hop_neg_2_Y+ (hop_neg_3_Y+hop_neg_1_Y)/2)/2;
-
-    if (prec-> prec_luminance [hop0_Y][rmax][hop1][HOP_NEG_2] <= MIN_COMPONENT_VALUE) 
-    { 
-            prec-> prec_luminance [hop0_Y][rmax][hop1][HOP_NEG_2]=1;
-        
-    }
-
 
     //HOP2                   
     prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_POS_2]= (hop_pos_2_Y + (hop_pos_1_Y+hop_pos_3_Y)/2)/2;
 
-    if (prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_POS_2]>MAX_COMPONENT_VALUE) 
-    {
-        prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_POS_2]=MAX_COMPONENT_VALUE;
-        
-    }
-
-    //HOP3
-                    
+    //HOP3             
     prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_POS_3]= (hop_pos_3_Y + (hop_pos_2_Y+hop_pos_4_Y)/2)/2;
-
-    if (prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_POS_3]>MAX_COMPONENT_VALUE) 
-    {
-        prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_POS_3]=MAX_COMPONENT_VALUE;
-        
-    }  
 }
     
 /**
@@ -715,87 +716,110 @@ static void lhe_init_hop_center_color_component_value (LheBasicPrec *prec, int h
 static void lhe_init_hop_color_component_value (LheBasicPrec *prec, int hop0_Y, int hop1, int rmax,
                                                 uint8_t hop_neg_4, uint8_t hop_neg_3, uint8_t hop_neg_2,
                                                 uint8_t hop_pos_2, uint8_t hop_pos_3, uint8_t hop_pos_4)
-{    
-    //HOP -4
-    prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_NEG_4]= hop0_Y  - hop_neg_4; 
+{ 
+    int hop_neg_4_Y, hop_neg_3_Y, hop_neg_2_Y, hop_neg_1_Y, hop_pos_1_Y, hop_pos_2_Y, hop_pos_3_Y, hop_pos_4_Y;
     
-    if (prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_NEG_4]<=MIN_COMPONENT_VALUE) 
+    //HOP -4
+    
+    hop_neg_4_Y = hop0_Y  - hop_neg_4; ;
+    
+    if (hop_neg_4_Y<=MIN_COMPONENT_VALUE) 
     { 
-        prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_NEG_4]=1;
+        hop_neg_4_Y=1;
     }
-
+    
+    prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_NEG_4]= (uint8_t) hop_neg_4_Y;
+    
+    
     //HOP-3
-    prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_NEG_3]= hop0_Y  - hop_neg_3; 
+    hop_neg_3_Y = hop0_Y  - hop_neg_3; 
 
-    if (prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_NEG_3] <= MIN_COMPONENT_VALUE) 
+    if (hop_neg_3_Y <= MIN_COMPONENT_VALUE) 
     {
-        prec->prec_luminance [hop0_Y][rmax][hop1][HOP_NEG_3]=1;
+        hop_neg_3_Y=1;
         
     }
+    
+    prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_NEG_3]= (uint8_t) hop_neg_3_Y; 
+
 
     //HOP-2
-    prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_NEG_2]= hop0_Y  - hop_neg_2; 
+    hop_neg_2_Y = hop0_Y  - hop_neg_2; 
 
-    if (prec-> prec_luminance [hop0_Y][rmax][hop1][HOP_NEG_2] <= MIN_COMPONENT_VALUE) 
+    if (hop_neg_2_Y <= MIN_COMPONENT_VALUE) 
     { 
-            prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_NEG_2]=1;
-        
+        hop_neg_2_Y=1;
     }
+    
+    prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_NEG_2]= (uint8_t) hop_neg_2_Y;
+
 
     //HOP-1
-    prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_NEG_1]= hop0_Y-hop1;
+    hop_neg_1_Y= hop0_Y-hop1;
 
-    if (prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_NEG_1] <= MIN_COMPONENT_VALUE) 
+    if (hop_neg_1_Y <= MIN_COMPONENT_VALUE) 
     {
-        prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_NEG_1]=1;
+        hop_neg_1_Y=1;
     }
+    
+    prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_NEG_1]= (uint8_t) hop_neg_1_Y;
 
     //HOP0(int)
-    prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_0]= hop0_Y; //null hop
-
-    if (prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_0]<=MIN_COMPONENT_VALUE) 
+    if (hop0_Y<=MIN_COMPONENT_VALUE) 
     {
-        prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_0]=1; //null hop
+        hop0_Y=1; //null hop
     }
 
-    if (prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_0]>MAX_COMPONENT_VALUE) 
+    if (hop0_Y>MAX_COMPONENT_VALUE) 
     {
-        prec-> prec_luminance[hop0_Y][hop1][rmax][HOP_0]=MAX_COMPONENT_VALUE;//null hop
+        hop0_Y=MAX_COMPONENT_VALUE;//null hop
     }
+    
+    prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_0]= (uint8_t) hop0_Y; //null hop
+    
 
     //HOP1
-    prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_POS_1]= hop0_Y + hop1;
+    hop_pos_1_Y = hop0_Y + hop1;
 
-    if (prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_POS_1]>MAX_COMPONENT_VALUE)
+    if (hop_pos_1_Y>MAX_COMPONENT_VALUE)
     {
-        prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_POS_1]=MAX_COMPONENT_VALUE;
+        hop_pos_1_Y=MAX_COMPONENT_VALUE;
     }
 
+    prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_POS_1]= (uint8_t) hop_pos_1_Y;
+    
     //HOP2
-    prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_POS_2]= hop0_Y  + hop_pos_2; 
+    hop_pos_2_Y = hop0_Y  + hop_pos_2; 
 
-    if (prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_POS_2]>MAX_COMPONENT_VALUE) 
+    if (hop_pos_2_Y>MAX_COMPONENT_VALUE) 
     {
-        prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_POS_2]=MAX_COMPONENT_VALUE;
+        hop_pos_2_Y=MAX_COMPONENT_VALUE;
         
     }
+    
+    prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_POS_2]= (uint8_t) hop_pos_2_Y; 
+
 
     //HOP3
-    prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_POS_3]= hop0_Y  + hop_pos_3; 
+    hop_pos_3_Y = hop0_Y  + hop_pos_3; 
 
-    if (prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_POS_3]>MAX_COMPONENT_VALUE) 
+    if (hop_pos_3_Y > MAX_COMPONENT_VALUE) 
     {
-        prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_POS_3]=MAX_COMPONENT_VALUE;
-        
+        hop_pos_3_Y=MAX_COMPONENT_VALUE;
     }
+    
+    prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_POS_3]= (uint8_t) hop_pos_3_Y; 
+
 
     //HOP4
-    prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_POS_4]= hop0_Y  + hop_pos_4; 
+    hop_pos_4_Y = hop0_Y  + hop_pos_4; 
 
-    if (prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_POS_4]>MAX_COMPONENT_VALUE) 
+    if (hop_pos_4_Y>MAX_COMPONENT_VALUE) 
     {
-        prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_POS_4]=MAX_COMPONENT_VALUE;
-    }             
+        hop_pos_4_Y=MAX_COMPONENT_VALUE;
+    }           
+    
+    prec-> prec_luminance[hop0_Y][rmax][hop1][HOP_POS_4]= (uint8_t) hop_pos_4_Y;
 }
 
 /**

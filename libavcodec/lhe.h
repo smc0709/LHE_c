@@ -69,15 +69,15 @@
 #define SPS_RATIO_HEIGHT 2
 
 //Perceptual Relevance Params
-#define PR_HMAX 1.0/4.0
-#define PR_MIN 0.2f
-#define PR_MAX 0.5f
-#define PR_DIF 0.3f //PR_MAX-PR_MIN
+#define PR_HMAX 4.0
+#define PR_MIN 0.2
+#define PR_MAX 0.5
+#define PR_DIF 0.3 //PR_MAX-PR_MIN
 #define PR_QUANT_0 0
-#define PR_QUANT_1 0.125f
-#define PR_QUANT_2 0.25f
-#define PR_QUANT_3 0.5f
-#define PR_QUANT_4 0.75f
+#define PR_QUANT_1 0.125
+#define PR_QUANT_2 0.25
+#define PR_QUANT_3 0.5
+#define PR_QUANT_4 0.75
 #define PR_QUANT_5 1
 #define CORNERS 4
 #define PPP_MIN 1

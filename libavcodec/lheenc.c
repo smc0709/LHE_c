@@ -1178,6 +1178,7 @@ static void lhe_advanced_compute_perceptual_relevance_block (float **perceptual_
     count_hx = 0;
     count_hy = 0;
     
+    
     //Computes Perceptual Relevance
     for (int y=yini_pr_block; y < yfin_pr_block; y++)  
     {
@@ -1221,11 +1222,11 @@ static void lhe_advanced_compute_perceptual_relevance_block (float **perceptual_
                     hy += HOP_0 - hop;
                     count_hy++;
                 }
-            }
+            }            
                                 
             pix++;
         }
-        
+      
         pix+=dif_pix;
 
     }   
@@ -1233,11 +1234,11 @@ static void lhe_advanced_compute_perceptual_relevance_block (float **perceptual_
 
     if (count_hx == 0) 
     {
-        perceptual_relevance_x[block_y][block_x] = 0;
+        perceptual_relevance_x[block_y][block_x] = 0;      
     } else 
     {
-        prx = (PR_HMAX * hx) / count_hx;
-        
+        prx = (1.0 * hx) / (count_hx * PR_HMAX);
+            
         //PR HISTOGRAM EXPANSION
         prx = (prx-PR_MIN) / PR_DIF;
               
@@ -1252,7 +1253,7 @@ static void lhe_advanced_compute_perceptual_relevance_block (float **perceptual_
             prx = PR_QUANT_3;
         } else {
             prx = PR_QUANT_5;
-        }
+        }       
  
         perceptual_relevance_x[block_y][block_x] = prx;
     }
@@ -1262,11 +1263,11 @@ static void lhe_advanced_compute_perceptual_relevance_block (float **perceptual_
         perceptual_relevance_y[block_y][block_x] = 0;
     } else 
     {
-        pry = (PR_HMAX * hy) / count_hy;
-        
+        pry = (1.0 * hy) / (count_hy * PR_HMAX);
+
         //PR HISTOGRAM EXPANSION
         pry = (pry-PR_MIN) / PR_DIF;
-            
+        
         //PR QUANTIZATION
         if (pry < PR_QUANT_1) {
             pry = PR_QUANT_0;
@@ -1335,7 +1336,7 @@ static void lhe_advanced_compute_perceptual_relevance (BasicLheBlock **basic_blo
                 xfin_pr_block = width;
             }    
             
-            yini_pr_block = yini - (block_width>>1);
+            yini_pr_block = yini - (block_height>>1);
             
             if (yini_pr_block < 0) 
             {
@@ -1348,7 +1349,6 @@ static void lhe_advanced_compute_perceptual_relevance (BasicLheBlock **basic_blo
             {
                 yfin_pr_block = height;
             }
-            
             
             //Calls method to compute perceptual relevance using calculated coordinates 
             lhe_advanced_compute_perceptual_relevance_block (perceptual_relevance_x, perceptual_relevance_y,
@@ -1454,13 +1454,13 @@ static void lhe_advanced_vertical_downsample_sps (BasicLheBlock **basic_block, A
 {
     
     float ppp_y, ppp_0, ppp_1, ppp_2, ppp_3, gradient, gradient_0, gradient_1;
-    uint32_t downsampled_y_side, xini, xfin, yini, ydown, yfin_downsampled;
+    uint32_t downsampled_y_side, xini, xfin_downsampled, yini, ydown, yfin_downsampled;
     float ydown_float;
     
     downsampled_y_side = advanced_block[block_y][block_x].downsampled_y_side;
     
     xini = basic_block[block_y][block_x].x_ini;
-    xfin = basic_block[block_y][block_x].x_fin; //Vertical downsampling is performed after horizontal down. x coord has been already down.  
+    xfin_downsampled = advanced_block[block_y][block_x].x_fin_downsampled; //Vertical downsampling is performed after horizontal down. x coord has been already down.  
  
     yini = basic_block[block_y][block_x].y_ini;
     yfin_downsampled = advanced_block[block_y][block_x].y_fin_downsampled;
@@ -1475,7 +1475,7 @@ static void lhe_advanced_vertical_downsample_sps (BasicLheBlock **basic_block, A
     //gradient PPPy side d
     gradient_1=(ppp_3-ppp_2)/(block_width-1.0);
   
-    for (int x=xini; x < xfin;x++)
+    for (int x=xini; x < xfin_downsampled;x++)
     {
         gradient=(ppp_2-ppp_0)/(downsampled_y_side-1.0);
         ppp_y=ppp_0; 
@@ -1636,7 +1636,7 @@ static float lhe_advanced_encode (LheContext *s, const AVFrame *frame,
     
     ppp_max_theoric = block_width_Y/SIDE_MIN;
     compression_factor = (&s->prec)->compression_factor[ppp_max_theoric][s->ql];
-    
+
     downsampled_data_Y = malloc (sizeof(uint8_t) * image_size_Y);
     intermediate_downsample_Y = malloc (sizeof(uint8_t) * image_size_Y);
     
@@ -1677,7 +1677,7 @@ static float lhe_advanced_encode (LheContext *s, const AVFrame *frame,
                                                         total_blocks_width, total_blocks_height,
                                                         block_x, block_y, 
                                                         block_width_Y, block_width_flhe, block_height_Y, block_height_flhe,
-                                                        SPS_RATIO_WIDTH, SPS_RATIO_HEIGHT   );
+                                                        SPS_RATIO_WIDTH, SPS_RATIO_HEIGHT);
         }
     }
 
@@ -1693,9 +1693,7 @@ static float lhe_advanced_encode (LheContext *s, const AVFrame *frame,
     {
         for (int block_x=0; block_x<total_blocks_width; block_x++) 
         {          
-            
-           
-                                                     
+                                              
             lhe_advanced_perceptual_relevance_to_ppp(advanced_block_Y, advanced_block_UV,
                                                      perceptual_relevance_x, perceptual_relevance_y, 
                                                      compression_factor, ppp_max_theoric, 
@@ -1792,6 +1790,7 @@ static float lhe_advanced_encode (LheContext *s, const AVFrame *frame,
                                        block_width_UV,  block_height_UV); 
         }
     }
+    
     
     return compression_factor;
 }
