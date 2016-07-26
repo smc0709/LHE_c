@@ -1362,6 +1362,205 @@ static void lhe_advanced_compute_perceptual_relevance (BasicLheBlock **basic_blo
 
 /**
  * Downsamples image in x coordinate with different resolution along the block. 
+ * Final sample is average of ppp samples that it represents 
+ * 
+ * @param **basic_block Basic block parameters 
+ * @param **advanced_block Advanced block parameters
+ * @param ***ppp_array ppp (pixel per pixel) for each pixel and corner
+ * @param *component_original_data original image
+ * @param *downsampled_data final downsampled image in x coordinate
+ * @param width_image image width
+ * @param height_image height image
+ * @param linesize rectangle images create a square image in ffmpeg memory. Linesize is width used by ffmpeg in memory
+ * @param block_width block width
+ * @param block_height height width
+ * @param block_x block x index
+ * @param block_y block y index
+ */
+static void lhe_advanced_horizontal_downsample_average (BasicLheBlock **basic_block, AdvancedLheBlock **advanced_block,
+                                                        uint8_t *component_original_data, 
+                                                        uint8_t *downsampled_data,
+                                                        int width_image, int height_image, int linesize,
+                                                        int block_width, int block_height,
+                                                        int block_x, int block_y) 
+{
+    uint32_t downsampled_x_side, xini, xdown_prev, xdown_fin, xfin_downsampled, yini, yfin;
+    float xdown_prev_float, xdown_fin_float;
+    float gradient, gradient_0, gradient_1, ppp_x, ppp_0, ppp_1, ppp_2, ppp_3;
+    float component_float, percent;
+    uint8_t component;
+    
+    downsampled_x_side = advanced_block[block_y][block_x].downsampled_x_side;
+
+    xini = basic_block[block_y][block_x].x_ini;
+    xfin_downsampled = advanced_block[block_y][block_x].x_fin_downsampled;
+ 
+    yini = basic_block[block_y][block_x].y_ini;
+    yfin = basic_block[block_y][block_x].y_fin;  
+        
+    ppp_0=advanced_block[block_y][block_x].ppp_x[TOP_LEFT_CORNER];
+    ppp_1=advanced_block[block_y][block_x].ppp_x[TOP_RIGHT_CORNER];
+    ppp_2=advanced_block[block_y][block_x].ppp_x[BOT_LEFT_CORNER];
+    ppp_3=advanced_block[block_y][block_x].ppp_x[BOT_RIGHT_CORNER];
+    
+    //gradient PPPx side a
+    gradient_0=(ppp_2-ppp_0)/(block_height-1.0);   
+    //gradient PPPx side b
+    gradient_1=(ppp_3-ppp_1)/(block_height-1.0);
+    
+    for (int y=yini; y<yfin; y++)
+    {            
+        gradient=(ppp_1-ppp_0)/(downsampled_x_side-1.0); 
+
+        ppp_x=ppp_0;
+        
+        xdown_prev_float = xini;
+        xdown_prev = xini;
+        xdown_fin_float = xini + ppp_x;
+        
+
+        for (int x=xini; x<xfin_downsampled; x++)
+        {
+            xdown_fin = xdown_fin_float;
+            
+            component_float = 0;
+            percent = (1-(xdown_prev_float-xdown_prev));
+            
+            component_float +=percent*component_original_data[y*linesize+xdown_prev];          
+            
+            for (int i=xdown_prev+1; i<xdown_fin; i++)
+            {
+                component_float += component_original_data[y*linesize+i];               
+            }
+    
+            if (xdown_fin_float>xdown_fin)
+            {
+                percent = xdown_fin_float-xdown_fin;
+                component_float += percent * component_original_data[y*linesize+xdown_fin];
+            }
+                                 
+            component_float = component_float / ppp_x;
+            
+            if (component_float <= 0) component_float = 1;
+            if (component_float > 255) component_float = 255;
+            
+            component = component_float + 0.5;
+            
+            
+            downsampled_data[y*width_image+x] = component;
+            
+            ppp_x+=gradient;
+            xdown_prev = xdown_fin;
+            xdown_prev_float = xdown_fin_float;
+            xdown_fin_float+=ppp_x;
+        }//x
+
+        ppp_0+=gradient_0;
+        ppp_1+=gradient_1;
+
+    }//y
+}
+
+/**
+ * Downsamples image in y coordinate with different resolution along the block. 
+ * Final sample is average of ppp samples that it represents 
+ * 
+ * @param **basic_block Basic block parameters
+ * @param **advanced_block Advanced block parameters 
+ * @param ***ppp_array ppp (pixel per pixel) for each pixel and corner
+ * @param *intermediate_downsample downsampled image in x coordinate
+ * @param *downsampled_data final downsampled image
+ * @param width_image image width
+ * @param height_image height image
+ * @param block_width block width
+ * @param block_height height width
+ * @param block_x block x index
+ * @param block_y block y index
+ */
+static void lhe_advanced_vertical_downsample_average (BasicLheBlock **basic_block, AdvancedLheBlock **advanced_block,
+                                                      uint8_t *intermediate_downsample, 
+                                                      uint8_t *downsampled_data,
+                                                      int width_image, int height_image, int block_width, int block_height,
+                                                      int block_x, int block_y) 
+{
+    
+    float ppp_y, ppp_0, ppp_1, ppp_2, ppp_3, gradient, gradient_0, gradient_1;
+    uint32_t downsampled_y_side, xini, xfin_downsampled, yini, ydown_prev, ydown_fin, yfin_downsampled;
+    float ydown_prev_float, ydown_fin_float;
+    float component_float, percent;
+    uint8_t component;
+    
+    
+    downsampled_y_side = advanced_block[block_y][block_x].downsampled_y_side;
+    
+    xini = basic_block[block_y][block_x].x_ini;
+    xfin_downsampled = advanced_block[block_y][block_x].x_fin_downsampled; //Vertical downsampling is performed after horizontal down. x coord has been already down.  
+ 
+    yini = basic_block[block_y][block_x].y_ini;
+    yfin_downsampled = advanced_block[block_y][block_x].y_fin_downsampled;
+
+    ppp_0=advanced_block[block_y][block_x].ppp_y[TOP_LEFT_CORNER];
+    ppp_1=advanced_block[block_y][block_x].ppp_y[TOP_RIGHT_CORNER];
+    ppp_2=advanced_block[block_y][block_x].ppp_y[BOT_LEFT_CORNER];
+    ppp_3=advanced_block[block_y][block_x].ppp_y[BOT_RIGHT_CORNER];
+
+    //gradient PPPy side c
+    gradient_0=(ppp_1-ppp_0)/(block_width-1.0);    
+    //gradient PPPy side d
+    gradient_1=(ppp_3-ppp_2)/(block_width-1.0);
+      
+    for (int x=xini; x < xfin_downsampled;x++)
+    {
+        gradient=(ppp_2-ppp_0)/(downsampled_y_side-1.0);
+        ppp_y=ppp_0; 
+
+        ydown_prev = yini;
+        ydown_prev_float = yini;
+        ydown_fin_float = yini + ppp_y;
+        
+        for (int y=yini; y < yfin_downsampled; y++)
+        {
+            ydown_fin = ydown_fin_float;
+            
+            component_float = 0;
+            percent = (1-(ydown_prev_float-ydown_prev));
+          
+            component_float += percent * intermediate_downsample[ydown_prev*width_image+x];
+           
+            for (int i=ydown_prev+1; i<ydown_fin; i++)
+            {
+                component_float += intermediate_downsample[i*width_image+x];
+            }
+            
+            if (ydown_fin_float>ydown_fin)
+            {
+                percent = ydown_fin_float-ydown_fin;
+                component_float += percent *intermediate_downsample[ydown_fin*width_image+x];
+            }
+            
+            component_float = component_float / ppp_y;
+            
+            if (component_float <= 0) component_float = 1;
+            if (component_float > 255) component_float = 255;
+            
+            component = component_float + 0.5;
+            
+            downsampled_data[y*width_image+x] = component;
+                                   
+            ppp_y+=gradient;
+            ydown_prev = ydown_fin;
+            ydown_prev_float = ydown_fin_float;
+            ydown_fin_float+=ppp_y;
+        }//ysc
+        ppp_0+=gradient_0;
+        ppp_2+=gradient_1;
+
+    }//x
+    
+}
+
+/**
+ * Downsamples image in x coordinate with different resolution along the block. 
  * Samples are taken using sps with different cadence depending on ppp (pixels per pixel)
  * 
  * @param **basic_block Basic block parameters 
@@ -1718,14 +1917,15 @@ static float lhe_advanced_encode (LheContext *s, const AVFrame *frame,
                                                     width_Y, height_Y, linesize_Y,
                                                     block_width_Y, block_height_Y,
                                                     block_x, block_y);
-                                                            
+                                                       
            
             lhe_advanced_vertical_downsample_sps (basic_block_Y, advanced_block_Y,
                                                   intermediate_downsample_Y, 
                                                   downsampled_data_Y,
                                                   width_Y, height_Y, block_width_Y, block_height_Y,
                                                   block_x, block_y);
-                                                  
+            
+                                                
             //Encode downsampled blocks                          
             lhe_advanced_encode_block (&s->prec, 
                                        basic_block_Y, advanced_block_Y, 
@@ -1790,8 +1990,7 @@ static float lhe_advanced_encode (LheContext *s, const AVFrame *frame,
                                        block_width_UV,  block_height_UV); 
         }
     }
-    
-    
+     
     return compression_factor;
 }
 
