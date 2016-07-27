@@ -1610,11 +1610,11 @@ static void lhe_advanced_horizontal_downsample_sps (BasicLheBlock **basic_block,
         gradient=(ppp_1-ppp_0)/(downsampled_x_side-1.0); 
 
         ppp_x=ppp_0;
-        xdown_float=xini;
+        xdown_float=xini + (ppp_x/2.0);
 
         for (int x=xini; x<xfin_downsampled; x++)
         {
-            xdown = xdown_float + 0.5;
+            xdown = xdown_float;
                       
             downsampled_data[y*width_image+x]=component_original_data[y*linesize+xdown];
 
@@ -1679,14 +1679,14 @@ static void lhe_advanced_vertical_downsample_sps (BasicLheBlock **basic_block, A
         gradient=(ppp_2-ppp_0)/(downsampled_y_side-1.0);
         ppp_y=ppp_0; 
 
-        ydown_float=yini; 
-
+        ydown_float=yini + (ppp_y/2.0); 
+        
         for (int y=yini; y < yfin_downsampled; y++)
         {
-            ydown = ydown_float + 0.5;
+            ydown = ydown_float;
 
-            downsampled_data[y*width_image+x]=intermediate_downsample[ydown*width_image+x];;
-                        
+            downsampled_data[y*width_image+x]=intermediate_downsample[ydown*width_image+x];
+                                    
             ppp_y+=gradient;
             ydown_float+=ppp_y;
         }//ysc
