@@ -101,12 +101,22 @@
 
 
 #define NO_SYMBOL 20
+#define NO_INTERVAL 20 
 
-//Huffman
-#define LHE_MAX_HUFF_SIZE 9
-#define LHE_HUFFMAN_NODE_BITS 4
-#define LHE_HUFFMAN_TABLE_BITS 2*LHE_MAX_HUFF_SIZE*LHE_HUFFMAN_NODE_BITS
-#define LHE_HUFFMAN_TABLE_BYTES LHE_HUFFMAN_TABLE_BITS/8 + 1
+//Huffman mesh
+#define LHE_MAX_HUFF_SIZE_MESH 5
+#define LHE_HUFFMAN_NODE_BITS_MESH 3
+#define LHE_HUFFMAN_TABLE_BITS_MESH 2*LHE_MAX_HUFF_SIZE_MESH*LHE_HUFFMAN_NODE_BITS_MESH
+#define LHE_HUFFMAN_TABLE_BYTES_MESH LHE_HUFFMAN_TABLE_BITS_MESH/8 + 1
+#define LHE_HUFFMAN_NO_OCCURRENCES_MESH 7
+
+//Huffman symbols
+#define LHE_MAX_HUFF_SIZE_SYMBOLS 9
+#define LHE_HUFFMAN_NODE_BITS_SYMBOLS 4
+#define LHE_HUFFMAN_TABLE_BITS_SYMBOLS 2*LHE_MAX_HUFF_SIZE_SYMBOLS*LHE_HUFFMAN_NODE_BITS_SYMBOLS
+#define LHE_HUFFMAN_TABLE_BYTES_SYMBOLS LHE_HUFFMAN_TABLE_BITS_SYMBOLS/8 + 1
+#define LHE_HUFFMAN_NO_OCCURRENCES_SYMBOLS 15
+
 
 //Mesh
 #define PR_INTERVAL_0 0
@@ -156,7 +166,7 @@ typedef struct AdvancedLheBlock {
     float ppp_y[CORNERS];
 } AdvancedLheBlock;
 
-int lhe_generate_huffman_codes(LheHuffEntry *he);
+int lhe_generate_huffman_codes(LheHuffEntry *he,  int max_huff_size);
 double time_diff(struct timeval x , struct timeval y);
 int count_bits (int num);
 

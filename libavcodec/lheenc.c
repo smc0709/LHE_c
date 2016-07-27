@@ -204,10 +204,10 @@ static uint64_t lhe_basic_gen_huffman (LheHuffEntry *he_Y, LheHuffEntry *he_UV,
 {
     int i, ret, n_bits;
     float bpp;
-    uint8_t  huffman_lengths_Y[LHE_MAX_HUFF_SIZE];
-    uint8_t  huffman_lengths_UV[LHE_MAX_HUFF_SIZE];
-    uint64_t symbol_count_Y[LHE_MAX_HUFF_SIZE]     = { 0 };
-    uint64_t symbol_count_UV[LHE_MAX_HUFF_SIZE]    = { 0 };
+    uint8_t  huffman_lengths_Y[LHE_MAX_HUFF_SIZE_SYMBOLS];
+    uint8_t  huffman_lengths_UV[LHE_MAX_HUFF_SIZE_SYMBOLS];
+    uint64_t symbol_count_Y[LHE_MAX_HUFF_SIZE_SYMBOLS]     = { 0 };
+    uint64_t symbol_count_UV[LHE_MAX_HUFF_SIZE_SYMBOLS]    = { 0 };
     
     //LUMINANCE
     
@@ -217,11 +217,11 @@ static uint64_t lhe_basic_gen_huffman (LheHuffEntry *he_Y, LheHuffEntry *he_UV,
     }
     
     //Generates Huffman length for luminance signal
-    if ((ret = ff_huff_gen_len_table(huffman_lengths_Y, symbol_count_Y, LHE_MAX_HUFF_SIZE, 1)) < 0)
+    if ((ret = ff_huff_gen_len_table(huffman_lengths_Y, symbol_count_Y, LHE_MAX_HUFF_SIZE_SYMBOLS, 1)) < 0)
         return ret;
     
     //Fills he_Y struct with data
-    for (i = 0; i < LHE_MAX_HUFF_SIZE; i++) {
+    for (i = 0; i < LHE_MAX_HUFF_SIZE_SYMBOLS; i++) {
         he_Y[i].len = huffman_lengths_Y[i];
         he_Y[i].count = symbol_count_Y[i];
         he_Y[i].sym = i;
@@ -229,7 +229,7 @@ static uint64_t lhe_basic_gen_huffman (LheHuffEntry *he_Y, LheHuffEntry *he_UV,
     }
     
     //Generates luminance Huffman codes
-    n_bits = lhe_generate_huffman_codes(he_Y);
+    n_bits = lhe_generate_huffman_codes(he_Y, LHE_MAX_HUFF_SIZE_SYMBOLS);
     bpp = 1.0*n_bits/image_size_Y;
     
     av_log (NULL, AV_LOG_INFO, "Y bpp: %f ", bpp );
@@ -247,11 +247,11 @@ static uint64_t lhe_basic_gen_huffman (LheHuffEntry *he_Y, LheHuffEntry *he_UV,
 
     
      //Generates Huffman length for chrominance signals
-    if ((ret = ff_huff_gen_len_table(huffman_lengths_UV, symbol_count_UV, LHE_MAX_HUFF_SIZE, 1)) < 0)
+    if ((ret = ff_huff_gen_len_table(huffman_lengths_UV, symbol_count_UV, LHE_MAX_HUFF_SIZE_SYMBOLS, 1)) < 0)
         return ret;
     
     //Fills he_UV data
-    for (i = 0; i < LHE_MAX_HUFF_SIZE; i++) {
+    for (i = 0; i < LHE_MAX_HUFF_SIZE_SYMBOLS; i++) {
         he_UV[i].len = huffman_lengths_UV[i];
         he_UV[i].count = symbol_count_UV[i];
         he_UV[i].sym = i;
@@ -259,7 +259,7 @@ static uint64_t lhe_basic_gen_huffman (LheHuffEntry *he_Y, LheHuffEntry *he_UV,
     }
 
     //Generates chrominance Huffman codes
-    n_bits += lhe_generate_huffman_codes(he_UV);
+    n_bits += lhe_generate_huffman_codes(he_UV, LHE_MAX_HUFF_SIZE_SYMBOLS);
     bpp = 1.0*n_bits/image_size_Y;
     
     av_log (NULL, AV_LOG_INFO, "YUV bpp: %f ", bpp );
@@ -303,8 +303,8 @@ static int lhe_basic_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
         
     struct timeval before , after;
     
-    LheHuffEntry he_Y[LHE_MAX_HUFF_SIZE]; //Struct for luminance Huffman data
-    LheHuffEntry he_UV[LHE_MAX_HUFF_SIZE]; //Struct for chrominance Huffman data
+    LheHuffEntry he_Y[LHE_MAX_HUFF_SIZE_SYMBOLS]; //Struct for luminance Huffman data
+    LheHuffEntry he_UV[LHE_MAX_HUFF_SIZE_SYMBOLS]; //Struct for chrominance Huffman data
 
     LheContext *s = avctx->priv_data;
     
@@ -325,7 +325,7 @@ static int lhe_basic_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
               + sizeof(width_Y) + sizeof(height_Y) //width and height
               + sizeof(total_blocks_height) + sizeof(total_blocks_width) //Number of blocks heightwise and widthwise
               + total_blocks * (sizeof(*first_pixel_blocks_Y) + sizeof(*first_pixel_blocks_U) + sizeof(*first_pixel_blocks_V)) //first component value for each block array
-              + LHE_HUFFMAN_TABLE_BYTES + //huffman table
+              + LHE_HUFFMAN_TABLE_BYTES_SYMBOLS + //huffman table
               + n_bytes_components
               + FILE_OFFSET_BYTES; //components
               
@@ -381,19 +381,19 @@ static int lhe_basic_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
     }
     
       
-    init_put_bits(&s->pb, buf, LHE_HUFFMAN_TABLE_BYTES + n_bytes_components + FILE_OFFSET_BYTES);
+    init_put_bits(&s->pb, buf, LHE_HUFFMAN_TABLE_BYTES_SYMBOLS + n_bytes_components + FILE_OFFSET_BYTES);
 
     //Write Huffman tables
-    for (i=0; i<LHE_MAX_HUFF_SIZE; i++)
+    for (i=0; i<LHE_MAX_HUFF_SIZE_SYMBOLS; i++)
     {
         if (he_Y[i].len==255) he_Y[i].len=15;
-        put_bits(&s->pb, LHE_HUFFMAN_NODE_BITS, he_Y[i].len);
+        put_bits(&s->pb, LHE_HUFFMAN_NODE_BITS_SYMBOLS, he_Y[i].len);
     }
     
-    for (i=0; i<LHE_MAX_HUFF_SIZE; i++)
+    for (i=0; i<LHE_MAX_HUFF_SIZE_SYMBOLS; i++)
     {
         if (he_UV[i].len==255) he_UV[i].len=15;
-        put_bits(&s->pb, LHE_HUFFMAN_NODE_BITS, he_UV[i].len);
+        put_bits(&s->pb, LHE_HUFFMAN_NODE_BITS_SYMBOLS, he_UV[i].len);
     }   
     
     //Write signals of the image
@@ -426,7 +426,6 @@ static int lhe_basic_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
 //==================================================================
 // ADVANCED LHE FILE
 //==================================================================
-
 
 /**
  * Generates Huffman for ADVANCED LHE 
@@ -462,10 +461,10 @@ static uint64_t lhe_advanced_gen_huffman (LheHuffEntry *he_Y, LheHuffEntry *he_U
 {
     int i, ret, n_bits;
     float bpp;
-    uint8_t  huffman_lengths_Y[LHE_MAX_HUFF_SIZE];
-    uint8_t  huffman_lengths_UV[LHE_MAX_HUFF_SIZE];
-    uint64_t symbol_count_Y[LHE_MAX_HUFF_SIZE]     = { 0 };
-    uint64_t symbol_count_UV[LHE_MAX_HUFF_SIZE]    = { 0 };
+    uint8_t  huffman_lengths_Y[LHE_MAX_HUFF_SIZE_SYMBOLS];
+    uint8_t  huffman_lengths_UV[LHE_MAX_HUFF_SIZE_SYMBOLS];
+    uint64_t symbol_count_Y[LHE_MAX_HUFF_SIZE_SYMBOLS]     = { 0 };
+    uint64_t symbol_count_UV[LHE_MAX_HUFF_SIZE_SYMBOLS]    = { 0 };
     
     uint32_t xini_Y, xini_UV, xfin_downsampled_Y, xfin_downsampled_UV, yini_Y, yini_UV, yfin_downsampled_Y, yfin_downsampled_UV;
 
@@ -510,11 +509,11 @@ static uint64_t lhe_advanced_gen_huffman (LheHuffEntry *he_Y, LheHuffEntry *he_U
 
     //LUMINANCE
     //Generates Huffman length for luminance
-    if ((ret = ff_huff_gen_len_table(huffman_lengths_Y, symbol_count_Y, LHE_MAX_HUFF_SIZE, 1)) < 0)
+    if ((ret = ff_huff_gen_len_table(huffman_lengths_Y, symbol_count_Y, LHE_MAX_HUFF_SIZE_SYMBOLS, 1)) < 0)
         return ret;
     
     //Fills he_Y struct with data
-    for (i = 0; i < LHE_MAX_HUFF_SIZE; i++) {
+    for (i = 0; i < LHE_MAX_HUFF_SIZE_SYMBOLS; i++) {
         he_Y[i].len = huffman_lengths_Y[i];
         he_Y[i].count = symbol_count_Y[i];
         he_Y[i].sym = i;
@@ -522,18 +521,18 @@ static uint64_t lhe_advanced_gen_huffman (LheHuffEntry *he_Y, LheHuffEntry *he_U
     }
     
     //Generates luminance Huffman codes
-    n_bits = lhe_generate_huffman_codes(he_Y);
+    n_bits = lhe_generate_huffman_codes(he_Y, LHE_MAX_HUFF_SIZE_SYMBOLS);
     bpp = 1.0*n_bits/(width_Y*height_Y);
     
     av_log (NULL, AV_LOG_INFO, "Y bpp: %f ",bpp );
     
     //CHROMINANCES
     //Generate Huffman length chrominance (same Huffman table for both chrominances)
-    if ((ret = ff_huff_gen_len_table(huffman_lengths_UV, symbol_count_UV, LHE_MAX_HUFF_SIZE, 1)) < 0)
+    if ((ret = ff_huff_gen_len_table(huffman_lengths_UV, symbol_count_UV, LHE_MAX_HUFF_SIZE_SYMBOLS, 1)) < 0)
         return ret;
     
     //Fills he_UV struct with data
-    for (i = 0; i < LHE_MAX_HUFF_SIZE; i++) {
+    for (i = 0; i < LHE_MAX_HUFF_SIZE_SYMBOLS; i++) {
         he_UV[i].len = huffman_lengths_UV[i];
         he_UV[i].count = symbol_count_UV[i];
         he_UV[i].sym = i;
@@ -541,7 +540,7 @@ static uint64_t lhe_advanced_gen_huffman (LheHuffEntry *he_Y, LheHuffEntry *he_U
     }
 
     //Generates chrominance Huffman codes
-    n_bits += lhe_generate_huffman_codes(he_UV);
+    n_bits += lhe_generate_huffman_codes(he_UV, LHE_MAX_HUFF_SIZE_SYMBOLS);
     bpp = 1.0*n_bits/(width_Y*height_Y);
 
     av_log (NULL, AV_LOG_INFO, "YUV bpp: %f ", bpp);
@@ -591,6 +590,55 @@ static uint8_t lhe_advanced_translate_pr_into_mesh (float perceptual_relevance)
 }
 
 /**
+ * Generates Huffman codes for Perceptual Relevance mesh
+ * 
+ * @param *he_mesh
+ * @param **perceptual_relevance_x
+ * @param **perceptual_relevance_y
+ * @param total_blocks_width
+ * @param total_blocks_height
+ */
+static uint64_t lhe_advanced_gen_huffman_mesh (LheHuffEntry *he_mesh, 
+                                               float **perceptual_relevance_x, float **perceptual_relevance_y,                                          
+                                               uint32_t total_blocks_width, uint32_t total_blocks_height)
+{
+    int ret, pr_interval_x, pr_interval_y;
+    uint64_t n_bits;
+    uint8_t  huffman_lengths_mesh [LHE_MAX_HUFF_SIZE_MESH];
+    uint64_t symbol_count_mesh [LHE_MAX_HUFF_SIZE_MESH]     = { 0 };
+    
+    //Compute probabilities from model
+    for (int block_y=0; block_y<total_blocks_height+1; block_y++) 
+    {
+        for (int block_x=0; block_x<total_blocks_width+1; block_x++) 
+        { 
+            pr_interval_x = lhe_advanced_translate_pr_into_mesh(perceptual_relevance_x[block_y][block_x]);
+            pr_interval_y = lhe_advanced_translate_pr_into_mesh(perceptual_relevance_y[block_y][block_x]);
+            symbol_count_mesh[pr_interval_x]++;
+            symbol_count_mesh[pr_interval_y]++;
+
+        }
+    }
+
+    //Generates Huffman length for mesh
+    if ((ret = ff_huff_gen_len_table(huffman_lengths_mesh, symbol_count_mesh, LHE_MAX_HUFF_SIZE_MESH, 1)) < 0)
+        return ret;
+    
+    //Fills he_mesh struct with data
+    for (int i = 0; i < LHE_MAX_HUFF_SIZE_MESH; i++) {
+        he_mesh[i].len = huffman_lengths_mesh[i];
+        he_mesh[i].count = symbol_count_mesh[i];
+        he_mesh[i].sym = i;
+        he_mesh[i].code = 1024; //imposible code to initialize   
+    }
+    
+    //Generates mesh Huffman codes
+    n_bits = lhe_generate_huffman_codes(he_mesh, LHE_MAX_HUFF_SIZE_MESH);
+  
+    return n_bits; 
+}
+
+/**
  * Writes ADVANCED LHE file 
  * 
  * @param *avctx Pointer to AVCodec context
@@ -635,17 +683,18 @@ static int lhe_advanced_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
 {
   
     uint8_t *buf;
-    uint8_t lhe_mode, pixel_format;
-    uint64_t n_bits_hops, n_bytes, n_bytes_components, n_bytes_mesh, total_blocks;
+    uint8_t lhe_mode, pixel_format, pr_interval;
+    uint64_t n_bits_hops, n_bits_mesh, n_bytes, n_bytes_components, n_bytes_mesh, total_blocks;
     uint32_t xini_Y, xfin_downsampled_Y, yini_Y, yfin_downsampled_Y, xini_UV, xfin_downsampled_UV, yini_UV, yfin_downsampled_UV; 
     uint64_t pix;
         
     int i, ret;
         
     struct timeval before , after;
-    
-    LheHuffEntry he_Y[LHE_MAX_HUFF_SIZE]; //Struct for luminance Huffman data
-    LheHuffEntry he_UV[LHE_MAX_HUFF_SIZE]; //Struct for chrominance Huffman data
+   
+    LheHuffEntry he_mesh[LHE_MAX_HUFF_SIZE_MESH]; //Struct for mesh Huffman data
+    LheHuffEntry he_Y[LHE_MAX_HUFF_SIZE_SYMBOLS]; //Struct for luminance Huffman data
+    LheHuffEntry he_UV[LHE_MAX_HUFF_SIZE_SYMBOLS]; //Struct for chrominance Huffman data
 
     LheContext *s = avctx->priv_data;
         
@@ -654,6 +703,12 @@ static int lhe_advanced_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
     gettimeofday(&before , NULL);
 
     //Generates HUffman
+    n_bits_mesh = lhe_advanced_gen_huffman_mesh (he_mesh, 
+                                                 perceptual_relevance_x, perceptual_relevance_y,                                          
+                                                 total_blocks_width, total_blocks_height);
+  
+    n_bytes_mesh = (n_bits_mesh / 8) + 1;
+    
     n_bits_hops = lhe_advanced_gen_huffman (he_Y, he_UV, 
                                             basic_block_Y, basic_block_UV,
                                             advanced_block_Y, advanced_block_UV,
@@ -662,10 +717,7 @@ static int lhe_advanced_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
                                             block_width_Y, block_height_Y, block_width_UV, block_height_UV,
                                             total_blocks_width, total_blocks_height);
      
-    n_bytes_components = (n_bits_hops/8) + 1;        
-    
-    //Mesh bytes
-    n_bytes_mesh = ((PR_MESH_BITS * (total_blocks_width + 1) * (total_blocks_height + 1)) / 8) + 1;
+    n_bytes_components = (n_bits_hops/8) + 1;           
     
     //File size
     n_bytes = sizeof(lhe_mode) + sizeof (pixel_format) +
@@ -673,7 +725,8 @@ static int lhe_advanced_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
               + sizeof(total_blocks_height) + sizeof(total_blocks_width)
               + total_blocks * (sizeof(*first_pixel_blocks_Y) + sizeof(*first_pixel_blocks_U) + sizeof(*first_pixel_blocks_V)) //first pixel blocks array value
               + sizeof (quality_level) + //quality level
-              + LHE_HUFFMAN_TABLE_BYTES + //huffman table
+              + LHE_HUFFMAN_TABLE_BYTES_MESH
+              + LHE_HUFFMAN_TABLE_BYTES_SYMBOLS + //huffman table
               + n_bytes_mesh 
               + n_bytes_components
               + FILE_OFFSET_BYTES; //components
@@ -728,34 +781,51 @@ static int lhe_advanced_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
     
       for (i=0; i<total_blocks; i++) 
     {
-        bytestream_put_byte(&buf, first_pixel_blocks_V[i]);
+        bytestream_put_byte(&buf, first_pixel_blocks_V[i]);       
     }
          
-    init_put_bits(&s->pb, buf, LHE_HUFFMAN_TABLE_BYTES + sizeof(quality_level) + n_bytes_mesh + n_bytes_components + FILE_OFFSET_BYTES);
+    init_put_bits(&s->pb, buf, LHE_HUFFMAN_TABLE_BYTES_MESH + LHE_HUFFMAN_TABLE_BYTES_SYMBOLS + sizeof(quality_level) + n_bytes_mesh + n_bytes_components + FILE_OFFSET_BYTES);
 
-    //Write Huffman tables
-    for (i=0; i<LHE_MAX_HUFF_SIZE; i++)
+    //Write Huffman tables 
+    for (i=0; i<LHE_MAX_HUFF_SIZE_SYMBOLS; i++)
     {
-        if (he_Y[i].len==255) he_Y[i].len=15;
-        put_bits(&s->pb, LHE_HUFFMAN_NODE_BITS, he_Y[i].len);
+        if (he_Y[i].len==255) he_Y[i].len=LHE_HUFFMAN_NO_OCCURRENCES_SYMBOLS;
+        put_bits(&s->pb, LHE_HUFFMAN_NODE_BITS_SYMBOLS, he_Y[i].len);
     }
     
-    for (i=0; i<LHE_MAX_HUFF_SIZE; i++)
+    for (i=0; i<LHE_MAX_HUFF_SIZE_SYMBOLS; i++)
     {
-        if (he_UV[i].len==255) he_UV[i].len=15;
-        put_bits(&s->pb, LHE_HUFFMAN_NODE_BITS, he_UV[i].len);
+        if (he_UV[i].len==255) he_UV[i].len=LHE_HUFFMAN_NO_OCCURRENCES_SYMBOLS;
+        put_bits(&s->pb, LHE_HUFFMAN_NODE_BITS_SYMBOLS, he_UV[i].len);
     } 
+    
+    for (i=0; i<LHE_MAX_HUFF_SIZE_MESH; i++)
+    {
+        if (he_mesh[i].len==255) he_mesh[i].len=LHE_HUFFMAN_NO_OCCURRENCES_MESH;
+        put_bits(&s->pb, LHE_HUFFMAN_NODE_BITS_MESH, he_mesh[i].len);
+    }
     
     //Advanced LHE quality level
     put_bits(&s->pb, QL_SIZE_BITS, quality_level);    
     
-    //Write mesh (perceptual relevance intervals)
+    //Write mesh. First PRX, then PRY because it eases the decoding task
+    //Perceptual Relevance x intervals
     for (int block_y=0; block_y<total_blocks_height+1; block_y++) 
     {
         for (int block_x=0; block_x<total_blocks_width+1; block_x++) 
         { 
-            put_bits(&s->pb, PR_INTERVAL_BITS, lhe_advanced_translate_pr_into_mesh(perceptual_relevance_x[block_y][block_x]));
-            put_bits(&s->pb, PR_INTERVAL_BITS, lhe_advanced_translate_pr_into_mesh(perceptual_relevance_y[block_y][block_x]));
+            pr_interval = lhe_advanced_translate_pr_into_mesh(perceptual_relevance_x[block_y][block_x]);
+            put_bits(&s->pb, he_mesh[pr_interval].len, he_mesh[pr_interval].code);
+        }
+    }
+    
+     //Perceptual relevance y intervals
+    for (int block_y=0; block_y<total_blocks_height+1; block_y++) 
+    {
+        for (int block_x=0; block_x<total_blocks_width+1; block_x++) 
+        { 
+            pr_interval = lhe_advanced_translate_pr_into_mesh(perceptual_relevance_y[block_y][block_x]);
+            put_bits(&s->pb, he_mesh[pr_interval].len, he_mesh[pr_interval].code);
 
         }
     }

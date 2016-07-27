@@ -56,23 +56,30 @@ static av_cold int lhe_decode_init(AVCodecContext *avctx)
 //==================================================================
 /**
  * Reads Huffman table
+ * 
+ * @param max_huff_size Maximum number of symbols in Huffman tree
+ * @param max_huff_node_bits Number of bits for each entry in the file
+ * @param huff_no_occurrences Code for no occurrences
  */
-static void lhe_read_huffman_table (LheState *s, LheHuffEntry *he) 
+static void lhe_read_huffman_table (LheState *s, LheHuffEntry *he, 
+                                    int max_huff_size, int max_huff_node_bits, 
+                                    int huff_no_occurrences) 
 {   
     int i;
     uint8_t len;
 
     
-    for (i=0; i< LHE_MAX_HUFF_SIZE; i++) 
+    for (i=0; i< max_huff_size; i++) 
     {
-        len = get_bits(&s->gb, LHE_HUFFMAN_NODE_BITS); 
-        if (len==15) len=255; //If symbol does not have any occurence, encoder assigns 255 length. As each table slot has 4 bits, this is 15 in the file.
+        len = get_bits(&s->gb, max_huff_node_bits); 
+
+        if (len==huff_no_occurrences) len=255; //If symbol does not have any occurence, encoder assigns 255 length. This is 15 or 7 in file
         he[i].len = len;
         he[i].sym = i; 
         he[i].code = 1024;
-    }  
+    }    
     
-    lhe_generate_huffman_codes(he);
+    lhe_generate_huffman_codes(he, max_huff_size);
        
 }
 
@@ -81,10 +88,9 @@ static void lhe_read_huffman_table (LheState *s, LheHuffEntry *he)
  * 
  * @huffman_symbol huffman symbol
  * @he Huffman entry, Huffman parameters
- * @pix Image pix index
  * @count_bits Number of bits of huffman symbol 
  */
-static uint8_t lhe_translate_huffman_into_symbol (uint32_t huffman_symbol, LheHuffEntry *he, uint32_t pix, uint8_t count_bits) 
+static uint8_t lhe_translate_huffman_into_symbol (uint32_t huffman_symbol, LheHuffEntry *he, uint8_t count_bits) 
 {
     uint8_t symbol;
         
@@ -131,6 +137,45 @@ static uint8_t lhe_translate_huffman_into_symbol (uint32_t huffman_symbol, LheHu
     
 }
 
+/**
+ * Translates Huffman symbol into PR interval
+ * 
+ * @param huffman_symbol huffman symbol extracted from file
+ * @param *he Huffman entry, Huffman params 
+ * @param count_bits Number of bits of Huffman symbol
+ */
+static uint8_t lhe_translate_huffman_into_interval (uint32_t huffman_symbol, LheHuffEntry *he, uint8_t count_bits) 
+{
+    uint8_t interval;
+        
+    interval = NO_SYMBOL;
+    
+    if (huffman_symbol == he[PR_INTERVAL_0].code && he[PR_INTERVAL_0].len == count_bits)
+    {
+        interval = PR_INTERVAL_0;
+    } 
+    else if (huffman_symbol == he[PR_INTERVAL_1].code && he[PR_INTERVAL_1].len == count_bits)
+    {
+        interval = PR_INTERVAL_1;
+    } 
+    else if (huffman_symbol == he[PR_INTERVAL_2].code && he[PR_INTERVAL_2].len == count_bits)
+    {
+        interval = PR_INTERVAL_2;
+    } 
+    else if (huffman_symbol == he[PR_INTERVAL_3].code && he[PR_INTERVAL_3].len == count_bits)
+    {
+        interval = PR_INTERVAL_3;
+    } 
+    else if (huffman_symbol == he[PR_INTERVAL_4].code && he[PR_INTERVAL_4].len == count_bits)
+    {
+        interval = PR_INTERVAL_4;
+    }
+    
+    
+    return interval;
+    
+}
+
 //==================================================================
 // BASIC LHE FILE
 //==================================================================
@@ -156,7 +201,7 @@ static void lhe_basic_read_file_symbols (LheState *s, LheHuffEntry *he, uint32_t
         huffman_symbol = (huffman_symbol<<1) | get_bits(&s->gb, 1);
         count_bits++;
         
-        symbol = lhe_translate_huffman_into_symbol(huffman_symbol, he, decoded_symbols, count_bits);        
+        symbol = lhe_translate_huffman_into_symbol(huffman_symbol, he, count_bits);        
         
         if (symbol != NO_SYMBOL) 
         {
@@ -214,7 +259,7 @@ static void lhe_advanced_read_file_symbols (LheState *s, LheHuffEntry *he,
             huffman_symbol = (huffman_symbol<<1) | get_bits(&s->gb, 1);
             count_bits++;
             
-            symbol = lhe_translate_huffman_into_symbol(huffman_symbol, he, pix, count_bits);        
+            symbol = lhe_translate_huffman_into_symbol(huffman_symbol, he, count_bits);        
             
             if (symbol != NO_SYMBOL) 
             {
@@ -231,8 +276,8 @@ static void lhe_advanced_read_file_symbols (LheState *s, LheHuffEntry *he,
  * Reads file symbols from advanced lhe file
  * 
  * @param *s Lhe parameters
- * @param he_Y Luminance Huffman entry, Huffman parameters
- * @param he_UV Chrominance Huffman entry, Huffman parameters
+ * @param *he_Y Luminance Huffman entry, Huffman parameters
+ * @param *he_UV Chrominance Huffman entry, Huffman parameters
  * @param **basic_block_Y Basic block parameters for luminance signal
  * @param **basic_block_UV Basic block parameters for chrominance signals
  * @param **advanced_block_Y Advanced block parameters for luminance signal
@@ -322,11 +367,53 @@ static float lhe_advance_translate_pr_interval_to_pr_quant (uint8_t perceptual_r
 }
 
 /**
+ * Reads Perceptual Relevance interval values from file
+ * 
+ * @param *s Lhe params
+ * @param *he_mesh Huffman params for LHE mesh
+ * @param **perceptual_relevance Perceptual Relevance values
+ * @param total_blocks_width number of blocks widthwise
+ * @param total_blocks_height number of blocks heightwise
+ */
+static void lhe_advanced_read_perceptual_relevance_interval (LheState *s, LheHuffEntry *he_mesh, 
+                                                             float ** perceptual_relevance, 
+                                                             uint32_t total_blocks_width, uint32_t total_blocks_height) 
+{
+    uint8_t perceptual_relevance_interval, count_bits;
+    uint32_t huffman_symbol;
+    
+    perceptual_relevance_interval = NO_INTERVAL;
+    count_bits = 0;
+    huffman_symbol = 0;
+    
+    for (int block_y=0; block_y<total_blocks_height+1; block_y++) 
+    {
+        for (int block_x=0; block_x<total_blocks_width+1;) 
+        { 
+            //Reads from file
+            huffman_symbol = (huffman_symbol<<1) | get_bits(&s->gb, 1);
+            count_bits++;
+            
+            perceptual_relevance_interval = lhe_translate_huffman_into_interval(huffman_symbol, he_mesh, count_bits);        
+            
+            if (perceptual_relevance_interval != NO_INTERVAL) 
+            {
+                perceptual_relevance[block_y][block_x] = lhe_advance_translate_pr_interval_to_pr_quant(perceptual_relevance_interval);;
+                block_x++;
+                huffman_symbol = 0;
+                count_bits = 0;
+            }                  
+        }
+    }
+}
+
+/**
  * Reads perceptual intervals and translates them to perceptual relevance quants.
  * Calculates block coordinates according to perceptual relevance values.
  * Calculates pixels per pixel according to perceptual relevance values.
  * 
  * @param *s Lhe params
+ * @param *he_mesh Huffman params for LHE mesh
  * @param **basic_block_Y Basic block parameters for luminance signal
  * @param **basic_block_UV Basic block parameters for chrominance signals
  * @param **advanced_block_Y Advanced block parameters for luminance signal
@@ -348,7 +435,7 @@ static float lhe_advance_translate_pr_interval_to_pr_quant (uint8_t perceptual_r
  * @param total_blocks_width Number of blocks widthwise
  * @param total_blocks_height Number of blocks heightwise
  */
-static void lhe_advanced_read_mesh (LheState *s, 
+static void lhe_advanced_read_mesh (LheState *s, LheHuffEntry *he_mesh,
                                     BasicLheBlock **basic_block_Y, BasicLheBlock **basic_block_UV,
                                     AdvancedLheBlock **advanced_block_Y, AdvancedLheBlock **advanced_block_UV,
                                     float ** perceptual_relevance_x, float ** perceptual_relevance_y,
@@ -357,23 +444,16 @@ static void lhe_advanced_read_mesh (LheState *s,
                                     uint32_t block_width_Y, uint32_t block_height_Y, uint32_t block_width_UV, uint32_t block_height_UV,
                                     uint32_t total_blocks_width, uint32_t total_blocks_height) 
 {
-    uint8_t perceptual_relevance_x_interval, perceptual_relevance_y_interval;
     
-    for (int block_y=0; block_y<total_blocks_height+1; block_y++) 
-    {
-        for (int block_x=0; block_x<total_blocks_width+1; block_x++) 
-        { 
-            //Reads from file
-            perceptual_relevance_x_interval = get_bits(&s->gb, PR_INTERVAL_BITS); 
-            perceptual_relevance_y_interval = get_bits(&s->gb, PR_INTERVAL_BITS); 
-                        
-            perceptual_relevance_x[block_y][block_x] = lhe_advance_translate_pr_interval_to_pr_quant(perceptual_relevance_x_interval);
-            perceptual_relevance_y[block_y][block_x] = lhe_advance_translate_pr_interval_to_pr_quant(perceptual_relevance_y_interval);
-            
-        }
-    }
+    lhe_advanced_read_perceptual_relevance_interval (s, he_mesh, 
+                                                     perceptual_relevance_x, 
+                                                     total_blocks_width, total_blocks_height);
     
-
+    lhe_advanced_read_perceptual_relevance_interval (s, he_mesh, 
+                                                     perceptual_relevance_y, 
+                                                     total_blocks_width, total_blocks_height);
+    
+    
     for (int block_y=0; block_y<total_blocks_height; block_y++)
     {
         for (int block_x=0; block_x<total_blocks_width; block_x++)
@@ -1015,8 +1095,9 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
     BasicLheBlock **basic_block_Y, **basic_block_UV;
     AdvancedLheBlock **advanced_block_Y, **advanced_block_UV;
     
-    LheHuffEntry he_Y[LHE_MAX_HUFF_SIZE];
-    LheHuffEntry he_UV[LHE_MAX_HUFF_SIZE];
+    LheHuffEntry he_mesh[LHE_MAX_HUFF_SIZE_MESH];
+    LheHuffEntry he_Y[LHE_MAX_HUFF_SIZE_SYMBOLS];
+    LheHuffEntry he_UV[LHE_MAX_HUFF_SIZE_SYMBOLS];
    
     LheState *s = avctx->priv_data;
     
@@ -1098,9 +1179,8 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
            
     init_get_bits(&s->gb, lhe_data, avpkt->size * 8);
 
-    lhe_read_huffman_table(s, he_Y);
-    lhe_read_huffman_table(s, he_UV);
-    
+    lhe_read_huffman_table(s, he_Y, LHE_MAX_HUFF_SIZE_SYMBOLS, LHE_HUFFMAN_NODE_BITS_SYMBOLS, LHE_HUFFMAN_NO_OCCURRENCES_SYMBOLS);
+    lhe_read_huffman_table(s, he_UV, LHE_MAX_HUFF_SIZE_SYMBOLS, LHE_HUFFMAN_NODE_BITS_SYMBOLS, LHE_HUFFMAN_NO_OCCURRENCES_SYMBOLS);
     
     if (lhe_mode == ADVANCED_LHE)
         //ADVANCED LHE
@@ -1139,12 +1219,15 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
         block_width_UV = width_UV / total_blocks_width;
         block_height_UV = height_UV / total_blocks_height;    
         
+        //MESH Huffman
+        lhe_read_huffman_table(s, he_mesh, LHE_MAX_HUFF_SIZE_MESH, LHE_HUFFMAN_NODE_BITS_MESH, LHE_HUFFMAN_NO_OCCURRENCES_MESH);
+        
         //Read quality level and calculate compression factor
         quality_level = get_bits(&s->gb, QL_SIZE_BITS); 
         ppp_max_theoric = block_width_Y/SIDE_MIN;
         compression_factor = (&s->prec)->compression_factor[ppp_max_theoric][quality_level];        
        
-        lhe_advanced_read_mesh(s, 
+        lhe_advanced_read_mesh(s, he_mesh,
                                basic_block_Y, basic_block_UV,
                                advanced_block_Y, advanced_block_UV,
                                perceptual_relevance_x, perceptual_relevance_y,
@@ -1210,7 +1293,7 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
                                             first_color_block_Y, first_color_block_U, first_color_block_V);    
         }
     }
-    
+ 
     av_log(NULL, AV_LOG_INFO, "DECODING...Width %d Height %d \n", width_Y, height_Y);
 
     if ((ret = av_frame_ref(data, s->frame)) < 0)

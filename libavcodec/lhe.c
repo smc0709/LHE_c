@@ -57,10 +57,19 @@ double time_diff(struct timeval x , struct timeval y)
 /* 
  * Compare huffentry lengths
  */
-static int huff_cmp_len(const void *a, const void *b)
+static int huff_sym_cmp_len(const void *a, const void *b)
 {
     const LheHuffEntry *aa = a, *bb = b;
-    return (aa->len - bb->len)*LHE_MAX_HUFF_SIZE + aa->sym - bb->sym;
+    return (aa->len - bb->len)*LHE_MAX_HUFF_SIZE_SYMBOLS + aa->sym - bb->sym;
+}
+
+/* 
+ * Compare huffentry lengths
+ */
+static int huff_mesh_cmp_len(const void *a, const void *b)
+{
+    const LheHuffEntry *aa = a, *bb = b;
+    return (aa->len - bb->len)*LHE_MAX_HUFF_SIZE_MESH + aa->sym - bb->sym;
 }
 
 /* 
@@ -76,8 +85,9 @@ static int huff_cmp_sym(const void *a, const void *b)
  * Generates Huffman codes using Huffman tree
  * 
  * @param *he Huffman parameters (Huffman tree)
+ * @param max_huff_size maximum number of symbols in Huffman tree
  */
-int lhe_generate_huffman_codes(LheHuffEntry *he)
+int lhe_generate_huffman_codes(LheHuffEntry *he, int max_huff_size)
 {
     int len, i, last;
     uint16_t code;
@@ -85,10 +95,18 @@ int lhe_generate_huffman_codes(LheHuffEntry *he)
     
     bits=0;
     code = 1;
-    last = LHE_MAX_HUFF_SIZE-1;
+    last = max_huff_size-1;
 
     //Sorts Huffman table from less occurrence symbols to greater occurrence symbols
-    qsort(he, LHE_MAX_HUFF_SIZE, sizeof(*he), huff_cmp_len);  
+    switch (max_huff_size) 
+    {
+        case LHE_MAX_HUFF_SIZE_SYMBOLS:
+            qsort(he, LHE_MAX_HUFF_SIZE_SYMBOLS, sizeof(*he), huff_sym_cmp_len);  
+            break;
+        case LHE_MAX_HUFF_SIZE_MESH:
+            qsort(he, LHE_MAX_HUFF_SIZE_MESH, sizeof(*he), huff_mesh_cmp_len);  
+            break;
+    }
 
     //Deletes symbols with no occurrence in model
     while (he[last].len == 255 && last)
@@ -122,10 +140,10 @@ int lhe_generate_huffman_codes(LheHuffEntry *he)
     }
 
     //Sorts symbols from 0 to LHE_MAX_HUFF_SIZE
-    qsort(he, LHE_MAX_HUFF_SIZE, sizeof(*he), huff_cmp_sym);
+    qsort(he, max_huff_size, sizeof(*he), huff_cmp_sym);
     
     //Calculates number of bits
-    for (i=0; i<LHE_MAX_HUFF_SIZE; i++) 
+    for (i=0; i<max_huff_size; i++) 
     {
         bits += (he[i].len * he[i].count); //bits number is symbol occurrence * symbol bits
     }
