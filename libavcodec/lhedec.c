@@ -1085,7 +1085,7 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
     uint8_t *first_color_block_Y, *first_color_block_U, *first_color_block_V;
     uint32_t  block_width_Y, block_width_UV, block_height_Y, block_height_UV, total_blocks;
     int total_blocks_width, total_blocks_height ;
-    uint32_t width_Y, width_UV, height_Y, height_UV, image_size_Y, image_size_UV;
+    uint32_t pixels_block, width_Y, width_UV, height_Y, height_UV, image_size_Y, image_size_UV;
     int ret;
     
     float **perceptual_relevance_x, **perceptual_relevance_y;
@@ -1125,10 +1125,18 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
     //Allocates frame
     if ((ret = ff_get_buffer(avctx, s->frame, 0)) < 0)
         return ret;
-    
-    //Blocks
-    total_blocks_width = bytestream_get_byte(&lhe_data); 
-    total_blocks_height = bytestream_get_byte(&lhe_data); 
+ 
+    if (lhe_mode == SEQUENTIAL_BASIC_LHE) 
+    {
+        total_blocks_width = 1;
+        total_blocks_height = 1;
+    } 
+    else 
+    {
+        total_blocks_width = HORIZONTAL_BLOCKS;
+        pixels_block = width_Y / HORIZONTAL_BLOCKS;
+        total_blocks_height = height_Y / pixels_block;
+    }
     
     total_blocks = total_blocks_height * total_blocks_width;
     
@@ -1293,6 +1301,8 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
                                             first_color_block_Y, first_color_block_U, first_color_block_V);    
         }
     }
+    
+   
  
     av_log(NULL, AV_LOG_INFO, "DECODING...Width %d Height %d \n", width_Y, height_Y);
 

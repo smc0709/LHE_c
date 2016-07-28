@@ -418,6 +418,11 @@ void lhe_advanced_ppp_side_to_rectangle_shape (BasicLheBlock **basic_block, Adva
     block_width = basic_block[block_y][block_x].x_fin - basic_block[block_y][block_x].x_ini;     
     downsampled_block = 2.0*block_width/ side_average + 0.5;
     
+    if (downsampled_block<SIDE_MIN) 
+    {
+        downsampled_block = SIDE_MIN;
+    }
+    
     advanced_block[block_y][block_x].downsampled_x_side = downsampled_block;
     
     x_fin_downsampled = basic_block[block_y][block_x].x_ini + downsampled_block;
@@ -551,6 +556,11 @@ void lhe_advanced_ppp_side_to_rectangle_shape (BasicLheBlock **basic_block, Adva
     //different block sizes. 
     block_height = basic_block[block_y][block_x].y_fin - basic_block[block_y][block_x].y_ini;
     downsampled_block = 2.0*block_height/ side_average + 0.5;    
+    
+    if (downsampled_block<SIDE_MIN) 
+    {
+        downsampled_block = SIDE_MIN;
+    }
     
     advanced_block[block_y][block_x].downsampled_y_side = downsampled_block;
     y_fin_downsampled = basic_block[block_y][block_x].y_ini + downsampled_block;

@@ -338,7 +338,15 @@ static int lhe_basic_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
     buf = pkt->data; //Pointer to write buffer
         
     //Lhe mode byte
-    lhe_mode = BASIC_LHE; 
+    if(OPENMP_FLAGS == CONFIG_OPENMP) 
+    {
+        lhe_mode = PARAREL_BASIC_LHE; 
+    } 
+    else 
+    {
+        lhe_mode = SEQUENTIAL_BASIC_LHE; 
+    }
+    
     bytestream_put_byte(&buf, lhe_mode);
     
     //Pixel format byte
@@ -358,10 +366,6 @@ static int lhe_basic_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
     //save width and height
     bytestream_put_le32(&buf, width_Y);
     bytestream_put_le32(&buf, height_Y);  
-
-    //Save number of blocks (this allows to know if LHE has been parallelized or not)
-    bytestream_put_byte(&buf, total_blocks_width);
-    bytestream_put_byte(&buf, total_blocks_height);
 
     //Save first component of each signal 
     for (i=0; i<total_blocks; i++) 
@@ -722,7 +726,6 @@ static int lhe_advanced_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
     //File size
     n_bytes = sizeof(lhe_mode) + sizeof (pixel_format) +
               + sizeof(width_Y) + sizeof(height_Y) //width and height
-              + sizeof(total_blocks_height) + sizeof(total_blocks_width)
               + total_blocks * (sizeof(*first_pixel_blocks_Y) + sizeof(*first_pixel_blocks_U) + sizeof(*first_pixel_blocks_V)) //first pixel blocks array value
               + sizeof (quality_level) + //quality level
               + LHE_HUFFMAN_TABLE_BYTES_MESH
@@ -762,10 +765,6 @@ static int lhe_advanced_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
     //save width and height
     bytestream_put_le32(&buf, width_Y);
     bytestream_put_le32(&buf, height_Y);  
-
-    //Save total blocks widthwise and total blocks heightwise
-    bytestream_put_byte(&buf, total_blocks_width);
-    bytestream_put_byte(&buf, total_blocks_height);
 
     //Save first pixel for each block
     for (i=0; i<total_blocks; i++) 
@@ -2059,7 +2058,7 @@ static float lhe_advanced_encode (LheContext *s, const AVFrame *frame,
                                        block_x,  block_y,
                                        block_width_UV,  block_height_UV); 
         }
-    }
+    }   
      
     return compression_factor;
 }

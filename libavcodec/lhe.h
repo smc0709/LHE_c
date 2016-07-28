@@ -30,8 +30,9 @@
 #define LHE_YUV444 2
 
 //Configuration 
-#define BASIC_LHE 0
-#define ADVANCED_LHE 1
+#define SEQUENTIAL_BASIC_LHE 0
+#define PARAREL_BASIC_LHE 1
+#define ADVANCED_LHE 2
 #define MIDDLE_VALUE false
 #define LUMINANCE_FACTOR 1
 #define BLOCK_WIDTH_Y 64
