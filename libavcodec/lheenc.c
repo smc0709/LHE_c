@@ -1061,7 +1061,6 @@ static void lhe_basic_encode_one_hop_per_pixel_block (LheBasicPrec *prec,
     dif_line = linesize - xfin + xini;
     sps_line_pix = (sps_ratio_height-1) * linesize + dif_line;
     
-    
     for (int y=yini_sps; y < yfin_sps; y++)  {
         for (int x=xini_sps; x < xfin_sps; x++)  {
             
@@ -1077,20 +1076,20 @@ static void lhe_basic_encode_one_hop_per_pixel_block (LheBasicPrec *prec,
             } 
             else if (y == yini_sps) //First row 
             {
-                predicted_component=component_prediction[pix-1];
+                predicted_component=component_prediction[pix-sps_ratio_width];
             } 
             else if (x == xini_sps) //First column
             {
                 predicted_component=component_prediction[pix-width_sps];
                 last_small_hop=false;
                 hop_1=START_HOP_1;
-            } else if (x == xfin_sps -1) //Last column
+            } else if (x == xfin_sps - sps_ratio_width) //Last column
             {
-                predicted_component=(component_prediction[pix-1]+component_prediction[pix-width_sps])>>1;                               
+                predicted_component=(component_prediction[pix-sps_ratio_width]+component_prediction[pix-width_sps])>>1;                               
             } 
             else //Rest of the block
             {
-                predicted_component=(component_prediction[pix-1]+component_prediction[pix+1-width_sps])>>1;     
+                predicted_component=(component_prediction[pix-sps_ratio_width]+component_prediction[pix+sps_ratio_width-width_sps])>>1;     
             }
 
 
@@ -1233,13 +1232,14 @@ static void lhe_advanced_compute_perceptual_relevance_block (float **perceptual_
                                                              int block_x, int block_y,
                                                              int width) 
 {
-    int pix, dif_pix;
+    int init_pix, pix, dif_pix, weight;
     uint8_t last_hop, top_hop, hop;
     float prx, pry;
     uint64_t hx, hy;
     uint32_t count_hx, count_hy;  
     
-    pix = yini_pr_block*width + xini_pr_block;
+    init_pix = yini_pr_block*width + xini_pr_block;
+    pix = init_pix;
     dif_pix = width - xfin_pr_block + xini_pr_block;
         
     hx = 0;
@@ -1247,59 +1247,63 @@ static void lhe_advanced_compute_perceptual_relevance_block (float **perceptual_
     count_hx = 0;
     count_hy = 0;
     
-    
-    //Computes Perceptual Relevance
-    for (int y=yini_pr_block; y < yfin_pr_block; y++)  
+    //PRX 
+    for (int y=yini_pr_block; y<yfin_pr_block; y++) 
     {
+        last_hop = HOP_0;
+
         for (int x=xini_pr_block; x < xfin_pr_block; x++)  
         {
             hop = hops_Y [pix];
-            last_hop = HOP_0;
-            top_hop = HOP_0;
+                        
+            pix++;      
+            if (hop == HOP_0) continue;
             
-            if (pix>0) 
-                last_hop = hops_Y[pix-1];
-            
-            if (pix>width)
-                top_hop = hops_Y[pix-width];
-                    
-            
-            if (hop == HOP_POS_4 || hop == HOP_NEG_4) {
-                hx += 4;
-                hy += 4;
-                count_hx++;
-                count_hy++;
-            } else {
-                //Adapts index because hops go from 0 to 8 but 
-                //hop weight goes from 0 to 4
-                if (hop > HOP_0 && last_hop < HOP_0) 
-                {
-                    hx += hop - HOP_0; // only abs (-4...0...4)
-                    count_hx++;
-                } else if (hop < HOP_0 && last_hop > HOP_0) 
-                {
-                    hx += HOP_0 - hop;
-                    count_hx++;
-                } 
-                
-                if (hop > HOP_0 && top_hop < HOP_0) 
-                {
-                    hy += hop - HOP_0;
-                    count_hy++;
-                } else if (hop < HOP_0 && top_hop > HOP_0) 
-                {
-                    hy += HOP_0 - hop;
-                    count_hy++;
-                }
-            }            
-                                
-            pix++;
-        }
-      
-        pix+=dif_pix;
-
-    }   
+            if (hop == HOP_POS_4 || hop == HOP_NEG_4 || (hop > HOP_0 && last_hop < HOP_0) || (hop < HOP_0 && last_hop > HOP_0)) {
     
+                // WEIGHT will be only abs(-4...0...4)
+                weight = hop - HOP_0; 
+                
+                if (weight < 0) weight = -weight;
+                
+                hx += weight;
+                count_hx++;
+            }      
+            
+            last_hop = hop;                               
+        }
+        
+        pix+=dif_pix;
+    }
+    
+    //PRY
+    pix = init_pix;
+
+    for (int x=xini_pr_block; x<xfin_pr_block; x++)
+    {
+        top_hop = HOP_0;
+        pix = init_pix - xini_pr_block + x;
+
+                
+        for (int y=yini_pr_block; y<yfin_pr_block;y++) 
+        {
+            hop = hops_Y [pix];
+            pix+=width;
+     
+            if (hop == HOP_0) continue;
+
+            if (hop == HOP_POS_4 || hop == HOP_NEG_4 ||  (hop > HOP_0 && top_hop < HOP_0) || (hop < HOP_0 && top_hop > HOP_0)) {
+      
+                //WEIGHT will be only abs(-4...0...4)
+                 weight = hop - HOP_0;                
+                 if (weight<0) weight = -weight;
+
+                 hy += weight;
+                 count_hy++;
+            } 
+            top_hop = hop;
+        }          
+    }
 
     if (count_hx == 0) 
     {
@@ -1679,7 +1683,7 @@ static void lhe_advanced_horizontal_downsample_sps (BasicLheBlock **basic_block,
         gradient=(ppp_1-ppp_0)/(downsampled_x_side-1.0); 
 
         ppp_x=ppp_0;
-        xdown_float=xini + (ppp_x/2.0);
+        xdown_float=xini + (ppp_x/2.0) - 0.5;
 
         for (int x=xini; x<xfin_downsampled; x++)
         {
@@ -1752,7 +1756,7 @@ static void lhe_advanced_vertical_downsample_sps (BasicLheBlock **basic_block, A
         
         for (int y=yini; y < yfin_downsampled; y++)
         {
-            ydown = ydown_float;
+            ydown = ydown_float - 0.5;
 
             downsampled_data[y*width_image+x]=intermediate_downsample[ydown*width_image+x];
                                     
@@ -1937,7 +1941,7 @@ static float lhe_advanced_encode (LheContext *s, const AVFrame *frame,
                                                 total_blocks_width, total_blocks_height,
                                                 block_x, block_y);
             
-            lhe_basic_encode_one_hop_per_pixel_block(&s->prec, 
+                lhe_basic_encode_one_hop_per_pixel_block(&s->prec, 
                                                         basic_block_Y,
                                                         component_original_data_Y, component_prediction_flhe, hops_flhe,      
                                                         width_Y, width_flhe, height_Y, height_flhe, frame->linesize[0], 
@@ -1948,13 +1952,15 @@ static float lhe_advanced_encode (LheContext *s, const AVFrame *frame,
                                                         SPS_RATIO_WIDTH, SPS_RATIO_HEIGHT);
         }
     }
-
+        
     lhe_advanced_compute_perceptual_relevance (basic_block_Y,
                                                perceptual_relevance_x, perceptual_relevance_y,
                                                hops_flhe,
                                                width_flhe,  height_flhe,
                                                total_blocks_width,  total_blocks_height,
                                                block_width_flhe,  block_height_flhe);
+    
+    
            
     #pragma omp parallel for
     for (int block_y=0; block_y<total_blocks_height; block_y++) 
@@ -2257,11 +2263,10 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
                                     component_original_data_Y, component_original_data_U, component_original_data_V,
                                     component_prediction_Y, component_prediction_U, component_prediction_V); 
     }
-    
-       
+        
     if (s->pr_metrics)
     {
-        print_csv_pr_metrics(perceptual_relevance_x, perceptual_relevance_y,
+        print_json_pr_metrics(perceptual_relevance_x, perceptual_relevance_y,
                              total_blocks_width, total_blocks_height);  
     }
     
