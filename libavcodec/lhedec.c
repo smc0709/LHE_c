@@ -1345,3 +1345,15 @@ AVCodec ff_lhe_decoder = {
     .decode         = lhe_decode_frame,
     .priv_class     = &decoder_class,
 };
+
+AVCodec ff_mlhe_decoder = {
+    .name           = "mlhe",
+    .long_name      = NULL_IF_CONFIG_SMALL("MLHE"),
+    .type           = AVMEDIA_TYPE_VIDEO,
+    .id             = AV_CODEC_ID_MLHE,
+    .priv_data_size = sizeof(LheState),
+    .init           = lhe_decode_init,
+    .close          = lhe_decode_close,
+    .decode         = lhe_decode_frame,
+    .priv_class     = &decoder_class,
+};

@@ -29,6 +29,13 @@
 #define LHE_YUV422 1
 #define LHE_YUV444 2
 
+//VIDEO PARAMS
+static const uint8_t mlhe_sig[4] = "MLHE";
+
+#define MLHE_TRAILER                 0x3b
+#define MLHE_EXTENSION_INTRODUCER    0x21
+#define MLHE_IMAGE_SEPARATOR         0x2c
+
 //Configuration 
 #define SEQUENTIAL_BASIC_LHE 0
 #define PARAREL_BASIC_LHE 1

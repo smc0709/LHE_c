@@ -2328,3 +2328,21 @@ AVCodec ff_lhe_encoder = {
     },
     .priv_class     = &lhe_class,
 };
+
+AVCodec ff_mlhe_encoder = {
+    .name           = "mlhe",
+    .long_name      = NULL_IF_CONFIG_SMALL("M-LHE"),
+    .type           = AVMEDIA_TYPE_VIDEO,
+    .id             = AV_CODEC_ID_MLHE,
+    .priv_data_size = sizeof(LheContext),
+    .init           = lhe_encode_init,
+    .encode2        = lhe_encode_frame,
+    .close          = lhe_encode_close,
+    .pix_fmts       = (const enum AVPixelFormat[]){
+        AV_PIX_FMT_YUV420P, 
+        AV_PIX_FMT_YUV422P, 
+        AV_PIX_FMT_YUV444P, 
+        AV_PIX_FMT_NONE
+    },
+    .priv_class     = &lhe_class,
+};

@@ -496,6 +496,7 @@ enum AVCodecID {
 
     /* LHE */
     AV_CODEC_ID_LHE,
+    AV_CODEC_ID_MLHE,
 
     /* AMR */
     AV_CODEC_ID_AMR_NB = 0x12000,

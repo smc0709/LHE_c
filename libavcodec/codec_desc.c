@@ -99,6 +99,14 @@ static const AVCodecDescriptor codec_descriptors[] = {
         .props     = AV_CODEC_PROP_INTRA_ONLY | AV_CODEC_PROP_LOSSY,
     },
     {
+        .id        = AV_CODEC_ID_MLHE,
+        .type      = AVMEDIA_TYPE_VIDEO,
+        .name      = "mlhe",
+        .long_name = NULL_IF_CONFIG_SMALL("Motion LHE"),
+        .props     = AV_CODEC_PROP_INTRA_ONLY | AV_CODEC_PROP_LOSSY,
+        .mime_types= MT("image/lhe"),
+    },
+    {
         .id        = AV_CODEC_ID_MPEG4,
         .type      = AVMEDIA_TYPE_VIDEO,
         .name      = "mpeg4",
@@ -1406,7 +1414,16 @@ static const AVCodecDescriptor codec_descriptors[] = {
         .name      = "lhe",
         .long_name = NULL_IF_CONFIG_SMALL("LHE"),
         .mime_types= MT("image/lhe"),
+        .props     = AV_CODEC_PROP_LOSSY,
 
+    },
+    {
+        .id        = AV_CODEC_ID_LHE,
+        .type      = AVMEDIA_TYPE_VIDEO,
+        .name      = "mlhe",
+        .long_name = NULL_IF_CONFIG_SMALL("M-LHE"),
+        .mime_types= MT("image/lhe"),
+        .props     = AV_CODEC_PROP_LOSSY,
     },
     {
         .id        = AV_CODEC_ID_LJPEG,
