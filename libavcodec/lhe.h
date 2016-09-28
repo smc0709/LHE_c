@@ -66,8 +66,7 @@
 
 //SPS Params
 #define NO_SPS_RATIO 1
-#define SPS_RATIO_WIDTH 2
-#define SPS_RATIO_HEIGHT 2
+#define SPS_VALUE 4
 
 //Perceptual Relevance Params
 #define PR_HMAX 4.0
