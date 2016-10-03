@@ -95,10 +95,11 @@ LHE is in lhe_develop branch
 
 ###Options
 
-* basic_lhe true: necessary to play basic lhe. If this option is not set, advanced lhe will be played.
-* pix_fmt format: format can be yuv420p, yuv422p, yuv444p. If this option is not specified, FFmpeg chooses the best suited format for input image.
-* ql value: from 0 to 99. Quality value. If this param is not specified, ql is 50.
-* pr_metrics true: prints PR metrics (testing purpose).
+* *basic_lhe true*: necessary to play basic lhe. If this option is not set, advanced lhe will be played.
+* *pix_fmt format*: format can be yuv420p, yuv422p, yuv444p. If this option is not specified, FFmpeg chooses the best suited format for input image.
+* *ql* value: from 0 to 99. Quality value. If this param is not specified, ql is 50.
+* *pr_metrics* true: prints PR metrics (testing purpose).
+* *subsampling_average* true: Subsampling is made using average of samples. Otherwise samples are taken using single pixel selection (sps)
 
 ###Basic LHE
 

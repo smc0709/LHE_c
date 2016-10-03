@@ -56,6 +56,7 @@ typedef struct LheContext {
     int pr_metrics;
     int basic_lhe;
     int ql;
+    int subsampling_average;
 } LheContext;
 
 /**
@@ -2108,25 +2109,102 @@ static float lhe_advanced_encode (LheContext *s, const AVFrame *frame,
                                                       width_UV, height_UV, 
                                                       ppp_max_theoric,
                                                       block_x, block_y);
+            
+            if (s->subsampling_average)
+            {
+                //LUMINANCE
+                //Downsamples using component original data         
+                lhe_advanced_horizontal_downsample_average (basic_block_Y, advanced_block_Y,
+                                                            component_original_data_Y, 
+                                                            intermediate_downsample_Y,
+                                                            width_Y, height_Y, linesize_Y,
+                                                            block_width_Y, block_height_Y,
+                                                            block_x, block_y);
+                                                        
+
+                lhe_advanced_vertical_downsample_average (basic_block_Y, advanced_block_Y,
+                                                          intermediate_downsample_Y, 
+                                                          downsampled_data_Y,
+                                                          width_Y, height_Y, block_width_Y, block_height_Y,
+                                                          block_x, block_y);
+                
+                //CHROMINANCE U
+                lhe_advanced_horizontal_downsample_average (basic_block_UV, advanced_block_UV,
+                                                            component_original_data_U, 
+                                                            intermediate_downsample_U,
+                                                            width_UV, height_UV, linesize_U,
+                                                            block_width_UV, block_height_UV,
+                                                            block_x, block_y);
+
+                lhe_advanced_vertical_downsample_average (basic_block_UV, advanced_block_UV,  
+                                                          intermediate_downsample_U, 
+                                                          downsampled_data_U,
+                                                          width_UV, height_UV, block_width_UV, block_height_UV,
+                                                          block_x, block_y);
+                
+                //CHROMINANCE_V
+                lhe_advanced_horizontal_downsample_average (basic_block_UV, advanced_block_UV, 
+                                                            component_original_data_V, 
+                                                            intermediate_downsample_V,
+                                                            width_UV, height_UV, linesize_V, 
+                                                            block_width_UV, block_height_UV,
+                                                            block_x, block_y);
+            
+                lhe_advanced_vertical_downsample_average (basic_block_UV, advanced_block_UV,
+                                                          intermediate_downsample_V, 
+                                                          downsampled_data_V,
+                                                          width_UV, height_UV, block_width_UV, block_height_UV,
+                                                          block_x, block_y);
+                 
+            } else {
+                
+                //LUMINANCE
+                lhe_advanced_horizontal_downsample_sps (basic_block_Y, advanced_block_Y,
+                                                        component_original_data_Y, 
+                                                        intermediate_downsample_Y,
+                                                        width_Y, height_Y, linesize_Y,
+                                                        block_width_Y, block_height_Y,
+                                                        block_x, block_y);
+                                                        
+
+                lhe_advanced_vertical_downsample_sps (basic_block_Y, advanced_block_Y,
+                                                      intermediate_downsample_Y, 
+                                                      downsampled_data_Y,
+                                                      width_Y, height_Y, block_width_Y, block_height_Y,
+                                                      block_x, block_y);
+                
+                //CHROMINANCE U
+                lhe_advanced_horizontal_downsample_sps (basic_block_UV, advanced_block_UV,
+                                                        component_original_data_U, 
+                                                        intermediate_downsample_U,
+                                                        width_UV, height_UV, linesize_U,
+                                                        block_width_UV, block_height_UV,
+                                                        block_x, block_y);
+
+                lhe_advanced_vertical_downsample_sps (basic_block_UV, advanced_block_UV,  
+                                                      intermediate_downsample_U, 
+                                                      downsampled_data_U,
+                                                      width_UV, height_UV, block_width_UV, block_height_UV,
+                                                      block_x, block_y);
+                
+                //CHROMINANCE_V
+
+                lhe_advanced_horizontal_downsample_sps (basic_block_UV, advanced_block_UV, 
+                                                        component_original_data_V, 
+                                                        intermediate_downsample_V,
+                                                        width_UV, height_UV, linesize_V, 
+                                                        block_width_UV, block_height_UV,
+                                                        block_x, block_y);
+            
+                lhe_advanced_vertical_downsample_sps (basic_block_UV, advanced_block_UV,
+                                                      intermediate_downsample_V, 
+                                                      downsampled_data_V,
+                                                      width_UV, height_UV, block_width_UV, block_height_UV,
+                                                      block_x, block_y);
+            }
 
             
-            //LUMINANCE
-            //Downsamples using component original data         
-            lhe_advanced_horizontal_downsample_sps (basic_block_Y, advanced_block_Y,
-                                                    component_original_data_Y, 
-                                                    intermediate_downsample_Y,
-                                                    width_Y, height_Y, linesize_Y,
-                                                    block_width_Y, block_height_Y,
-                                                    block_x, block_y);
-                                                       
-           
-            lhe_advanced_vertical_downsample_sps (basic_block_Y, advanced_block_Y,
-                                                  intermediate_downsample_Y, 
-                                                  downsampled_data_Y,
-                                                  width_Y, height_Y, block_width_Y, block_height_Y,
-                                                  block_x, block_y);
-            
-                                                
+            //LUMINANCE                                     
             //Encode downsampled blocks                          
             lhe_advanced_encode_block (&s->prec, 
                                        basic_block_Y, advanced_block_Y, 
@@ -2138,22 +2216,8 @@ static float lhe_advanced_encode (LheContext *s, const AVFrame *frame,
                                        block_width_Y,  block_height_Y);
                                        
             
-            //CHROMINANCES
-            
-            //CHROMINANCE U
-            lhe_advanced_horizontal_downsample_sps (basic_block_UV, advanced_block_UV,
-                                                    component_original_data_U, 
-                                                    intermediate_downsample_U,
-                                                    width_UV, height_UV, linesize_U,
-                                                    block_width_UV, block_height_UV,
-                                                    block_x, block_y);
-            
-            lhe_advanced_vertical_downsample_sps (basic_block_UV, advanced_block_UV,  
-                                                  intermediate_downsample_U, 
-                                                  downsampled_data_U,
-                                                  width_UV, height_UV, block_width_UV, block_height_UV,
-                                                  block_x, block_y);
-                                                                                                              
+            //CHROMINANCES                     
+            //CHROMINANCE U                                    
             lhe_advanced_encode_block (&s->prec, 
                                        basic_block_UV, advanced_block_UV, 
                                        downsampled_data_U, 
@@ -2161,26 +2225,9 @@ static float lhe_advanced_encode (LheContext *s, const AVFrame *frame,
                                        width_UV,  height_UV, 
                                        first_color_block_U, total_blocks_width,
                                        block_x,  block_y,
-                                       block_width_UV,  block_height_UV);
+                                       block_width_UV,  block_height_UV);      
             
-
-
-             
-            //CHROMINANCE_V
-            lhe_advanced_horizontal_downsample_sps (basic_block_UV, advanced_block_UV, 
-                                                    component_original_data_V, 
-                                                    intermediate_downsample_V,
-                                                    width_UV, height_UV, linesize_V, 
-                                                    block_width_UV, block_height_UV,
-                                                    block_x, block_y);
-            
-            lhe_advanced_vertical_downsample_sps (basic_block_UV, advanced_block_UV,
-                                                  intermediate_downsample_V, 
-                                                  downsampled_data_V,
-                                                  width_UV, height_UV, block_width_UV, block_height_UV,
-                                                  block_x, block_y);
-                          
-                                                                 
+            //CHROMINANCE V                                                                                      
             lhe_advanced_encode_block (&s->prec, 
                                        basic_block_UV, advanced_block_UV, 
                                        downsampled_data_V, 
@@ -2424,6 +2471,7 @@ static const AVOption options[] = {
     { "pr_metrics", "Print PR metrics", OFFSET(pr_metrics), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, VE },
     { "basic_lhe", "Basic LHE", OFFSET(basic_lhe), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, VE },
     { "ql", "Quality level from 0 to 99", OFFSET(ql), AV_OPT_TYPE_INT, { .i64 = 50 }, 0, 99, VE },
+    { "subsampling_average", "Average subsampling. Otherwise, sps subsampling is done.", OFFSET(subsampling_average), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, VE },
     { NULL },
 };
 
