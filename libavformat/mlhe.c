@@ -82,7 +82,6 @@ static int flush_packet(AVFormatContext *s, AVPacket *new)
     avio_wl32(pb, pkt->size);
     avio_write(pb, pkt->data, pkt->size);
 
-
     return 0;
 }
 
@@ -134,7 +133,7 @@ static const AVClass mlhe_muxer_class = {
 
 AVOutputFormat ff_mlhe_muxer = {
     .name           = "mlhe",
-    .long_name      = NULL_IF_CONFIG_SMALL("MLHE"),
+    .long_name      = NULL_IF_CONFIG_SMALL("MLHE - LHE Video"),
     .mime_type      = "image/lhe",
     .extensions     = "mlhe",
     .priv_data_size = sizeof(MlheContext),

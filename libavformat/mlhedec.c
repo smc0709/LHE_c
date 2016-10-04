@@ -89,16 +89,12 @@ static int mlhe_read_header(AVFormatContext *s)
     st->codecpar->codec_id   = AV_CODEC_ID_MLHE;
     st->codecpar->width      = width;
     st->codecpar->height     = height;
-    
-    av_log (NULL, AV_LOG_INFO, "READ HEADER width %d height %d \n", width, height);
-    
+        
     return 0;
 }
 
 static int mlhe_read_packet(AVFormatContext *s, AVPacket *pkt)
-{
-    
-    av_log (NULL, AV_LOG_INFO, "MLHE READ PACKET \n");
+{ 
     MlheDemuxContext *mlhe = s->priv_data;
     AVIOContext *pb = s->pb;
     int packed_fields, block_label, ct_size,
@@ -106,9 +102,10 @@ static int mlhe_read_packet(AVFormatContext *s, AVPacket *pkt)
     int64_t frame_start, frame_end;
     uint32_t pkt_size;
     unsigned char buf[6];
+    int read;
     
     frame_parsed = 0;
-
+        
     if ((ret = avio_read(pb, buf, 4)) == 4) {
         keyframe = memcmp(buf, mlhe_sig, 4) == 0;
         
@@ -130,17 +127,16 @@ static int mlhe_read_packet(AVFormatContext *s, AVPacket *pkt)
 
     block_label = avio_r8(pb);
     
-    av_log (NULL, AV_LOG_INFO, "MLHE READ PACKET block_label %d \n", block_label);
-
+    
     while (MLHE_TRAILER != block_label && !avio_feof(pb)) {
         
         if (block_label == MLHE_EXTENSION_INTRODUCER) {            
-            pkt_size = avio_rb32(pb);
+            
+            pkt_size = avio_rl32(pb);
                         
             frame_start = avio_tell(pb);
-            
-            avio_skip(pb, pkt_size);
-            
+                        
+            avio_skip(pb, pkt_size);           
 
             frame_end = avio_tell(pb);
 
@@ -190,7 +186,7 @@ static const AVClass demuxer_class = {
 
 AVInputFormat ff_mlhe_demuxer = {
     .name           = "mlhe",
-    .long_name      = NULL_IF_CONFIG_SMALL("CompuServe Graphics Interchange Format (GIF)"),
+    .long_name      = NULL_IF_CONFIG_SMALL("MLHE - LHE Video"),
     .priv_data_size = sizeof(MlheDemuxContext),
     .read_probe     = mlhe_probe,
     .read_header    = mlhe_read_header,

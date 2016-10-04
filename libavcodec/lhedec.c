@@ -1078,7 +1078,7 @@ static void lhe_init_pixel_format (AVCodecContext *avctx, LheState *s, uint8_t p
 }
 
 static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, AVPacket *avpkt)
-{
+{    
     uint8_t lhe_mode, pixel_format, quality_level;
     uint8_t *hops_Y, *hops_U, *hops_V;
     uint8_t *component_Y, *component_U, *component_V;
@@ -1123,6 +1123,7 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
     avctx->height  = height_Y;    
     
     //Allocates frame
+    av_frame_unref(s->frame);
     if ((ret = ff_get_buffer(avctx, s->frame, 0)) < 0)
         return ret;
  
