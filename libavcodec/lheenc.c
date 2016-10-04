@@ -56,6 +56,7 @@ typedef struct LheContext {
     int pr_metrics;
     int basic_lhe;
     int ql;
+    int subsampling_average;
 } LheContext;
 
 /**
@@ -529,6 +530,7 @@ static uint64_t lhe_advanced_gen_huffman (LheHuffEntry *he_Y, LheHuffEntry *he_U
     bpp = 1.0*n_bits/(width_Y*height_Y);
     
     av_log (NULL, AV_LOG_INFO, "Y bpp: %f ",bpp );
+    av_log (NULL, AV_LOG_PANIC, "%f; ",bpp );
     
     //CHROMINANCES
     //Generate Huffman length chrominance (same Huffman table for both chrominances)
@@ -1210,57 +1212,89 @@ static void lhe_basic_encode_frame_pararell (LheBasicPrec *prec,
 // ADVANCED LHE FUNCTIONS
 //==================================================================
 /**
+ * Performs Basic LHE and computes PRx
  * 
- * Computes Perceptual Relevance for each block
- * 
- * @param **perceptual_relevance_x Perceptual relevance in x
- * @param **perceptual_relevance_y Perceptual relevance in y
- * @param *hops_Y Hops array
- * @param xini_pr_block init x for perceptual relevance block
- * @param xfin_pr_block final x for perceptual relevance block
- * @param yini_pr_block init y for perceptual relevance block
- * @param yfin_pr_block final y for perceptual relevance block
- * @param block_x Block x index
- * @param block_y Block y index
- * @param width image width
+ * @param *prec Pointer to LHE precalculated parameters
+ * @param *component_original_data original image
+ * @param xini initial x coordinate for pr block
+ * @param xfin final x coordinate for pr block
+ * @param yini initial y coordinate for pr block
+ * @param yfin initial y coordinate for pr block
+ * @param linesize rectangle images create a square image in ffmpeg memory. Linesize is width used by ffmpeg in memory
+ * @param sps_ratio_height indicates how often an image sample is taken heightwise to encode
  */
-static void lhe_advanced_compute_perceptual_relevance_block (float **perceptual_relevance_x, float  **perceptual_relevance_y,
-                                                             uint8_t *hops_Y,
-                                                             int xini_pr_block, int xfin_pr_block, int yini_pr_block, int yfin_pr_block,
-                                                             int block_x, int block_y,
-                                                             int width) 
-{
-    int init_pix, pix, dif_pix, weight;
-    uint8_t last_hop, top_hop, hop;
-    float prx, pry;
-    uint64_t hx, hy;
-    uint32_t count_hx, count_hy;  
+static float lhe_advanced_compute_prx (LheBasicPrec *prec, 
+                                       uint8_t *component_original_data, 
+                                       int xini, int xfin, int yini, int yfin, 
+                                       int linesize, 
+                                       uint8_t sps_ratio_height)
+{      
     
-    init_pix = yini_pr_block*width + xini_pr_block;
-    pix = init_pix;
-    dif_pix = width - xfin_pr_block + xini_pr_block;
+    //Hops computation.
+    bool small_hop, last_small_hop;
+    uint8_t predicted_component, hop_1, hop_number, original_color, r_max;
+    int pix, pix_original_data, dif_line, dif_pix_original_data ,num_block, diff_y;
+    
+    int hx, count_hx, weight;
+    uint8_t last_prediction, last_hop_number;
+    float prx;
+       
+    small_hop = false;
+    last_small_hop=false;          // indicates if last hop is small
+    predicted_component=0;         // predicted signal
+    hop_1= START_HOP_1;
+    hop_number=4;                  // pre-selected hop // 4 is NULL HOP
+    pix=0;                         // pixel possition, from 0 to image size        
+    original_color=0;              // original color
+    
+    r_max=PARAM_R;
+    
+    pix = 0;
+    pix_original_data = yini*linesize + xini;
+    
+    dif_pix_original_data = sps_ratio_height * linesize - xfin + xini; //amount of pixels we have to jump in original image
+    
+    for (int y=yini; y < yfin; y+=sps_ratio_height)  {
         
-    hx = 0;
-    hy = 0;
-    count_hx = 0;
-    count_hy = 0;
-    
-    //PRX 
-    for (int y=yini_pr_block; y<yfin_pr_block; y++) 
-    {
-        last_hop = HOP_0;
-
-        for (int x=xini_pr_block; x < xfin_pr_block; x++)  
-        {
-            hop = hops_Y [pix];
+        last_hop_number = HOP_0;
+        
+        for (int x=xini; x < xfin; x++)  {
                         
-            pix++;      
-            if (hop == HOP_0) continue;
+            original_color = component_original_data[pix_original_data]; //This can't be pix because ffmpeg adds empty memory slots. 
+
+            //prediction of signal (predicted_component) , based on pixel's coordinates 
+            //----------------------------------------------------------
+                        
+            if (x == xini) //First column
+            {
+                last_small_hop=false;
+                hop_1=START_HOP_1;
+                predicted_component=original_color;//first pixel always is perfectly predicted! :-)  
+
+            } else {
+                predicted_component=last_prediction;
+            }
+
+            hop_number = prec->best_hop[r_max][hop_1][original_color][predicted_component];          
+            last_prediction = prec -> prec_luminance[predicted_component][r_max][hop_1][hop_number];
+
+            //tunning hop1 for the next hop ( "h1 adaptation")
+            //------------------------------------------------
+            H1_ADAPTATION;
             
-            if (hop == HOP_POS_4 || hop == HOP_NEG_4 || (hop > HOP_0 && last_hop < HOP_0) || (hop < HOP_0 && last_hop > HOP_0)) {
+            //lets go for the next pixel
+            //--------------------------
+            pix++;
+            pix_original_data++; //we jumped number of samples needed
+            
+            //Hops count for PRx
+            //--------------------------
+            if (hop_number == HOP_0) continue;
+            
+            if (hop_number == HOP_POS_4 || hop_number == HOP_NEG_4 || (hop_number > HOP_0 && last_hop_number < HOP_0) || (hop_number < HOP_0 && last_hop_number > HOP_0)) {
     
                 // WEIGHT will be only abs(-4...0...4)
-                weight = hop - HOP_0; 
+                weight = hop_number - HOP_0; 
                 
                 if (weight < 0) weight = -weight;
                 
@@ -1268,92 +1302,193 @@ static void lhe_advanced_compute_perceptual_relevance_block (float **perceptual_
                 count_hx++;
             }      
             
-            last_hop = hop;                               
-        }
-        
-        pix+=dif_pix;
-    }
+            last_hop_number = hop_number;   
+          
+        }//for x
+
+        pix_original_data+=dif_pix_original_data;
+    }//for y    
     
-    //PRY
-    pix = init_pix;
-
-    for (int x=xini_pr_block; x<xfin_pr_block; x++)
-    {
-        top_hop = HOP_0;
-        pix = init_pix - xini_pr_block + x;
-
-                
-        for (int y=yini_pr_block; y<yfin_pr_block;y++) 
-        {
-            hop = hops_Y [pix];
-            pix+=width;
-     
-            if (hop == HOP_0) continue;
-
-            if (hop == HOP_POS_4 || hop == HOP_NEG_4 ||  (hop > HOP_0 && top_hop < HOP_0) || (hop < HOP_0 && top_hop > HOP_0)) {
-      
-                //WEIGHT will be only abs(-4...0...4)
-                 weight = hop - HOP_0;                
-                 if (weight<0) weight = -weight;
-
-                 hy += weight;
-                 count_hy++;
-            } 
-            top_hop = hop;
-        }          
-    }
-
+    
+    //Computes PRX
+    //--------------------------
+    
     if (count_hx == 0) 
     {
-        perceptual_relevance_x[block_y][block_x] = 0;      
+        prx = 0;      
     } else 
     {
         prx = (1.0 * hx) / (count_hx * PR_HMAX);
-            
-        //PR HISTOGRAM EXPANSION
-        prx = (prx-PR_MIN) / PR_DIF;
-              
-        //PR QUANTIZATION
-        if (prx < PR_QUANT_1) {
-            prx = PR_QUANT_0;
-        } else if (prx < PR_QUANT_2) {
-            prx = PR_QUANT_1;
-        } else if (prx < PR_QUANT_3) {
-            prx = PR_QUANT_2;
-        } else if (prx < PR_QUANT_4) {
-            prx = PR_QUANT_3;
-        } else {
-            prx = PR_QUANT_5;
-        }       
- 
-        perceptual_relevance_x[block_y][block_x] = prx;
     }
+    
+    return prx;
+}
 
+/**
+ * Performs Basic LHE and computes PRy
+ * 
+ * @param *prec Pointer to LHE precalculated parameters
+ * @param *component_original_data original image
+ * @param xini initial x coordinate for pr block
+ * @param xfin final x coordinate for pr block
+ * @param yini initial y coordinate for pr block
+ * @param yfin initial y coordinate for pr block
+ * @param height image height
+ * @param linesize rectangle images create a square image in ffmpeg memory. Linesize is width used by ffmpeg in memory
+ * @param sps_ratio_width indicates how often an image sample is taken widthwise to encode
+ */
+static float lhe_advanced_compute_pry (LheBasicPrec *prec, 
+                                        uint8_t *component_original_data, 
+                                        int xini, int xfin, int yini, int yfin, 
+                                        int height, int linesize, 
+                                        uint8_t sps_ratio_width)
+{      
+    
+    //Hops computation.
+    bool small_hop, last_small_hop;
+    uint8_t predicted_component, hop_1, hop_number, original_color, r_max;
+    int pix, pix_original_data, dif_line, dif_pix_sps, dif_pix ,num_block, diff_x;
+    
+    int hy, count_hy, weight;
+    uint8_t last_prediction, top_hop_number;
+    float pry;
+       
+    small_hop = false;
+    last_small_hop=false;          // indicates if last hop is small
+    predicted_component=0;         // predicted signal
+    hop_1= START_HOP_1;
+    hop_number=4;                  // pre-selected hop // 4 is NULL HOP
+    pix=0;                         // pixel possition, from 0 to image size        
+    original_color=0;              // original color
+    
+    r_max=PARAM_R;
+
+    pix = 0;
+    pix_original_data = yini*linesize + xini;
+    
+    dif_pix = height - yfin + yini; //amount of pixels we have to jump in sps image
+    
+    for (int x=xini; x < xfin; x+=sps_ratio_width)  {
+        
+        pix_original_data = yini * linesize + x;
+        top_hop_number = HOP_0;
+        
+        for (int y=yini; y < yfin; y++)  {
+            
+            original_color = component_original_data[pix_original_data]; 
+
+            //prediction of signal (predicted_component) , based on pixel's coordinates 
+            //----------------------------------------------------------                   
+            if (y == yini) //First column
+            {
+                last_small_hop=false;
+                hop_1=START_HOP_1;
+                predicted_component=original_color;//first pixel always is perfectly predicted! :-)  
+
+            } else {
+                predicted_component=last_prediction;
+            }
+            
+
+            hop_number = prec->best_hop[r_max][hop_1][original_color][predicted_component]; 
+            //hops[pix]= hop_number;       
+            //component_prediction[pix]=prec -> prec_luminance[predicted_component][r_max][hop_1][hop_number];
+            last_prediction = prec -> prec_luminance[predicted_component][r_max][hop_1][hop_number];
+
+            //tunning hop1 for the next hop ( "h1 adaptation")
+            //------------------------------------------------
+            H1_ADAPTATION;
+
+            //lets go for the next pixel
+            //--------------------------
+            pix++;
+            pix_original_data+=linesize; //we jump number of samples needed
+            
+            //Hops count for PRx
+            //--------------------------
+            if (hop_number == HOP_0) continue;
+            
+            if (hop_number == HOP_POS_4 || hop_number == HOP_NEG_4 || (hop_number > HOP_0 && top_hop_number < HOP_0) || (hop_number < HOP_0 && top_hop_number > HOP_0)) {
+    
+                // WEIGHT will be only abs(-4...0...4)
+                weight = hop_number - HOP_0; 
+                
+                if (weight < 0) weight = -weight;
+                
+                hy += weight;
+                count_hy++;
+            }      
+            
+            top_hop_number = hop_number;   
+        }//for x
+    }//for y     
+    
+    //Computes PRX
+    //--------------------------
+    
     if (count_hy == 0) 
     {
-        perceptual_relevance_y[block_y][block_x] = 0;
+        pry = 0;      
     } else 
     {
         pry = (1.0 * hy) / (count_hy * PR_HMAX);
+    }
+    
+    return pry;
+}
 
-        //PR HISTOGRAM EXPANSION
-        pry = (pry-PR_MIN) / PR_DIF;
+/**
+ * 
+ * Histogram expansion
+ * PR quantization
+ * 
+ * @param **perceptual_relevance_x Perceptual relevance in x array
+ * @param **perceptual_relevance_y Perceptual relevance in y array
+ * @param prx perceptual relevance in x of the block
+ * @param pry perceptual relevance in y of the block
+ * @param block_x Block x index
+ * @param block_y Block y index
+ */
+static void lhe_advanced_pr_histogram_expansion_and_quantization (float **perceptual_relevance_x, float  **perceptual_relevance_y,
+                                                                  float prx, float pry,
+                                                                  int block_x, int block_y) 
+{
+    //PR HISTOGRAM EXPANSION
+    prx = (prx-PR_MIN) / PR_DIF;
+            
+    //PR QUANTIZATION
+    if (prx < PR_QUANT_1) {
+        prx = PR_QUANT_0;
+    } else if (prx < PR_QUANT_2) {
+        prx = PR_QUANT_1;
+    } else if (prx < PR_QUANT_3) {
+        prx = PR_QUANT_2;
+    } else if (prx < PR_QUANT_4) {
+        prx = PR_QUANT_3;
+    } else {
+        prx = PR_QUANT_5;
+    }       
+
+    perceptual_relevance_x[block_y][block_x] = prx;
         
-        //PR QUANTIZATION
-        if (pry < PR_QUANT_1) {
-            pry = PR_QUANT_0;
-        } else if (pry < PR_QUANT_2) {
-            pry = PR_QUANT_1;
-        } else if (pry < PR_QUANT_3) {
-            pry = PR_QUANT_2;
-        } else if (pry < PR_QUANT_4) {
-            pry = PR_QUANT_3;
-        } else {
-            pry = PR_QUANT_5;
-        }
-      
-        perceptual_relevance_y[block_y][block_x] = pry;
-    }            
+ 
+    //PR HISTOGRAM EXPANSION
+    pry = (pry-PR_MIN) / PR_DIF;
+    
+    //PR QUANTIZATION
+    if (pry < PR_QUANT_1) {
+        pry = PR_QUANT_0;
+    } else if (pry < PR_QUANT_2) {
+        pry = PR_QUANT_1;
+    } else if (pry < PR_QUANT_3) {
+        pry = PR_QUANT_2;
+    } else if (pry < PR_QUANT_4) {
+        pry = PR_QUANT_3;
+    } else {
+        pry = PR_QUANT_5;
+    }
+    
+    perceptual_relevance_y[block_y][block_x] = pry;
 }
 
 
@@ -1370,63 +1505,81 @@ static void lhe_advanced_compute_perceptual_relevance_block (float **perceptual_
  * @param block_width block width
  * @param block_height height block
  */
-static void lhe_advanced_compute_perceptual_relevance (BasicLheBlock **basic_block,
+static void lhe_advanced_compute_perceptual_relevance (LheBasicPrec *prec, 
+                                                       uint8_t *component_original_data_Y,                                           
                                                        float **perceptual_relevance_x, float  **perceptual_relevance_y,
-                                                       uint8_t *hops_Y,
-                                                       int width, int height,
+                                                       int width_image, int height_image, int linesize, 
                                                        uint32_t total_blocks_width, uint32_t total_blocks_height,
-                                                       uint32_t block_width, uint32_t block_height) 
+                                                       uint32_t block_width_image, uint32_t block_height_image) 
 {
     
     int xini, xfin, yini, yfin, xini_pr_block, xfin_pr_block, yini_pr_block, yfin_pr_block;
+    uint32_t block_width_pr, block_height_pr, block_width_pr_sps, block_height_pr_sps;
+    
+    float prx, pry;
     
     #pragma omp parallel for
     for (int block_y=0; block_y<total_blocks_height+1; block_y++)      
     {  
         for (int block_x=0; block_x<total_blocks_width+1; block_x++) 
-        {
+        {     
             //First LHE Block coordinates
-            xini = block_x * block_width;
-            xfin = xini +  block_width;
+            xini = block_x * block_width_image;
+            xfin = xini +  block_width_image;
 
-            yini = block_y * block_height;
-            yfin = yini + block_height;
+            yini = block_y * block_height_image;
+            yfin = yini + block_height_image;
             
             //PR Blocks coordinates 
-            xini_pr_block = xini - (block_width >>1); 
+            xini_pr_block = xini - (block_width_image >>1); 
             
             if (xini_pr_block < 0) 
             {
                 xini_pr_block = 0;
             }
             
-            xfin_pr_block = xfin - (block_width>>1);
+            xfin_pr_block = xfin - (block_width_image>>1);
             
-            if (xfin_pr_block>width) 
+            if (xfin_pr_block>width_image) 
             {
-                xfin_pr_block = width;
+                xfin_pr_block = width_image;
             }    
             
-            yini_pr_block = yini - (block_height>>1);
+            yini_pr_block = yini - (block_height_image>>1);
             
             if (yini_pr_block < 0) 
             {
                 yini_pr_block = 0;
             }
             
-            yfin_pr_block = yfin - (block_height>>1);
+            yfin_pr_block = yfin - (block_height_image>>1);
             
-            if (yfin_pr_block>height)
+            if (yfin_pr_block>height_image)
             {
-                yfin_pr_block = height;
+                yfin_pr_block = height_image;
             }
             
+            block_width_pr = (xfin_pr_block - xini_pr_block);
+            block_height_pr = (yfin_pr_block - yini_pr_block);
+            block_width_pr_sps = (block_width_pr - 1) / SPS_FACTOR + 1;
+            block_height_pr_sps = (block_height_pr - 1) / SPS_FACTOR + 1;
+            
+            prx = lhe_advanced_compute_prx (prec, 
+                                            component_original_data_Y, 
+                                            xini_pr_block, xfin_pr_block, yini_pr_block, yfin_pr_block, 
+                                            linesize, 
+                                            SPS_FACTOR);
+            
+            pry = lhe_advanced_compute_pry (prec, 
+                                            component_original_data_Y, 
+                                            xini_pr_block, xfin_pr_block, yini_pr_block, yfin_pr_block, 
+                                            height_image, linesize, 
+                                            SPS_FACTOR);
+ 
             //Calls method to compute perceptual relevance using calculated coordinates 
-            lhe_advanced_compute_perceptual_relevance_block (perceptual_relevance_x, perceptual_relevance_y,
-                                                             hops_Y,
-                                                             xini_pr_block, xfin_pr_block, yini_pr_block, yfin_pr_block,
-                                                             block_x, block_y,
-                                                             width) ;                                                           
+            lhe_advanced_pr_histogram_expansion_and_quantization (perceptual_relevance_x, perceptual_relevance_y,
+                                                                  prx, pry,
+                                                                  block_x, block_y) ;                                                           
         }
     }
 }
@@ -1897,10 +2050,7 @@ static float lhe_advanced_encode (LheContext *s, const AVFrame *frame,
     float compression_factor;
     uint8_t *downsampled_data_Y, *downsampled_data_U, *downsampled_data_V, *intermediate_downsample_Y, *intermediate_downsample_U, *intermediate_downsample_V;
     uint32_t image_size_Y, image_size_UV, ppp_max_theoric;
-    
-    uint8_t *component_prediction_flhe, *hops_flhe;
-    int width_flhe, height_flhe, image_size_flhe, block_width_flhe, block_height_flhe;
-        
+            
     image_size_Y = width_Y * height_Y;
     image_size_UV = width_UV * height_UV;
     
@@ -1915,16 +2065,6 @@ static float lhe_advanced_encode (LheContext *s, const AVFrame *frame,
     
     downsampled_data_V = malloc (sizeof(uint8_t) * image_size_UV);
     intermediate_downsample_V = malloc (sizeof(uint8_t) * image_size_UV);
- 
-    width_flhe = (width_Y-1) / SPS_RATIO_WIDTH + 1;
-    height_flhe = (height_Y-1) / SPS_RATIO_HEIGHT + 1;
-    image_size_flhe = width_flhe * height_flhe;
-    
-    block_width_flhe = width_flhe / total_blocks_width;
-    block_height_flhe = height_flhe / total_blocks_height;
-    
-    hops_flhe = malloc(sizeof(uint8_t) * image_size_flhe);
-    component_prediction_flhe = malloc(sizeof(uint8_t) * image_size_flhe);
     
     #pragma omp parallel for
     for (int block_y=0; block_y<total_blocks_height; block_y++)      
@@ -1937,30 +2077,16 @@ static float lhe_advanced_encode (LheContext *s, const AVFrame *frame,
                                                 width_Y, height_Y,
                                                 width_UV, height_UV,
                                                 total_blocks_width, total_blocks_height,
-                                                block_x, block_y);
-                
-                
-            
-                lhe_basic_encode_one_hop_per_pixel_block(&s->prec, 
-                                                        basic_block_Y,
-                                                        component_original_data_Y, component_prediction_flhe, hops_flhe,      
-                                                        width_Y, width_flhe, height_Y, height_flhe, frame->linesize[0], 
-                                                        first_color_block_Y, 
-                                                        total_blocks_width, total_blocks_height,
-                                                        block_x, block_y, 
-                                                        block_width_Y, block_width_flhe, block_height_Y, block_height_flhe,
-                                                        SPS_RATIO_WIDTH, SPS_RATIO_HEIGHT);
-                                                        
-                                                        
+                                                block_x, block_y);                                                                                                            
         }
     }
  
-    lhe_advanced_compute_perceptual_relevance (basic_block_Y,
+    lhe_advanced_compute_perceptual_relevance (&s->prec,
+                                               component_original_data_Y,
                                                perceptual_relevance_x, perceptual_relevance_y,
-                                               hops_flhe,
-                                               width_flhe,  height_flhe,
+                                               width_Y, height_Y, linesize_Y,
                                                total_blocks_width,  total_blocks_height,
-                                               block_width_flhe,  block_height_flhe);
+                                               block_width_Y,  block_height_Y);
     
         
     #pragma omp parallel for
@@ -1983,25 +2109,102 @@ static float lhe_advanced_encode (LheContext *s, const AVFrame *frame,
                                                       width_UV, height_UV, 
                                                       ppp_max_theoric,
                                                       block_x, block_y);
+            
+            if (s->subsampling_average)
+            {
+                //LUMINANCE
+                //Downsamples using component original data         
+                lhe_advanced_horizontal_downsample_average (basic_block_Y, advanced_block_Y,
+                                                            component_original_data_Y, 
+                                                            intermediate_downsample_Y,
+                                                            width_Y, height_Y, linesize_Y,
+                                                            block_width_Y, block_height_Y,
+                                                            block_x, block_y);
+                                                        
+
+                lhe_advanced_vertical_downsample_average (basic_block_Y, advanced_block_Y,
+                                                          intermediate_downsample_Y, 
+                                                          downsampled_data_Y,
+                                                          width_Y, height_Y, block_width_Y, block_height_Y,
+                                                          block_x, block_y);
+                
+                //CHROMINANCE U
+                lhe_advanced_horizontal_downsample_average (basic_block_UV, advanced_block_UV,
+                                                            component_original_data_U, 
+                                                            intermediate_downsample_U,
+                                                            width_UV, height_UV, linesize_U,
+                                                            block_width_UV, block_height_UV,
+                                                            block_x, block_y);
+
+                lhe_advanced_vertical_downsample_average (basic_block_UV, advanced_block_UV,  
+                                                          intermediate_downsample_U, 
+                                                          downsampled_data_U,
+                                                          width_UV, height_UV, block_width_UV, block_height_UV,
+                                                          block_x, block_y);
+                
+                //CHROMINANCE_V
+                lhe_advanced_horizontal_downsample_average (basic_block_UV, advanced_block_UV, 
+                                                            component_original_data_V, 
+                                                            intermediate_downsample_V,
+                                                            width_UV, height_UV, linesize_V, 
+                                                            block_width_UV, block_height_UV,
+                                                            block_x, block_y);
+            
+                lhe_advanced_vertical_downsample_average (basic_block_UV, advanced_block_UV,
+                                                          intermediate_downsample_V, 
+                                                          downsampled_data_V,
+                                                          width_UV, height_UV, block_width_UV, block_height_UV,
+                                                          block_x, block_y);
+                 
+            } else {
+                
+                //LUMINANCE
+                lhe_advanced_horizontal_downsample_sps (basic_block_Y, advanced_block_Y,
+                                                        component_original_data_Y, 
+                                                        intermediate_downsample_Y,
+                                                        width_Y, height_Y, linesize_Y,
+                                                        block_width_Y, block_height_Y,
+                                                        block_x, block_y);
+                                                        
+
+                lhe_advanced_vertical_downsample_sps (basic_block_Y, advanced_block_Y,
+                                                      intermediate_downsample_Y, 
+                                                      downsampled_data_Y,
+                                                      width_Y, height_Y, block_width_Y, block_height_Y,
+                                                      block_x, block_y);
+                
+                //CHROMINANCE U
+                lhe_advanced_horizontal_downsample_sps (basic_block_UV, advanced_block_UV,
+                                                        component_original_data_U, 
+                                                        intermediate_downsample_U,
+                                                        width_UV, height_UV, linesize_U,
+                                                        block_width_UV, block_height_UV,
+                                                        block_x, block_y);
+
+                lhe_advanced_vertical_downsample_sps (basic_block_UV, advanced_block_UV,  
+                                                      intermediate_downsample_U, 
+                                                      downsampled_data_U,
+                                                      width_UV, height_UV, block_width_UV, block_height_UV,
+                                                      block_x, block_y);
+                
+                //CHROMINANCE_V
+
+                lhe_advanced_horizontal_downsample_sps (basic_block_UV, advanced_block_UV, 
+                                                        component_original_data_V, 
+                                                        intermediate_downsample_V,
+                                                        width_UV, height_UV, linesize_V, 
+                                                        block_width_UV, block_height_UV,
+                                                        block_x, block_y);
+            
+                lhe_advanced_vertical_downsample_sps (basic_block_UV, advanced_block_UV,
+                                                      intermediate_downsample_V, 
+                                                      downsampled_data_V,
+                                                      width_UV, height_UV, block_width_UV, block_height_UV,
+                                                      block_x, block_y);
+            }
 
             
-            //LUMINANCE
-            //Downsamples using component original data         
-            lhe_advanced_horizontal_downsample_sps (basic_block_Y, advanced_block_Y,
-                                                    component_original_data_Y, 
-                                                    intermediate_downsample_Y,
-                                                    width_Y, height_Y, linesize_Y,
-                                                    block_width_Y, block_height_Y,
-                                                    block_x, block_y);
-                                                       
-           
-            lhe_advanced_vertical_downsample_sps (basic_block_Y, advanced_block_Y,
-                                                  intermediate_downsample_Y, 
-                                                  downsampled_data_Y,
-                                                  width_Y, height_Y, block_width_Y, block_height_Y,
-                                                  block_x, block_y);
-            
-                                                
+            //LUMINANCE                                     
             //Encode downsampled blocks                          
             lhe_advanced_encode_block (&s->prec, 
                                        basic_block_Y, advanced_block_Y, 
@@ -2013,22 +2216,8 @@ static float lhe_advanced_encode (LheContext *s, const AVFrame *frame,
                                        block_width_Y,  block_height_Y);
                                        
             
-            //CHROMINANCES
-            
-            //CHROMINANCE U
-            lhe_advanced_horizontal_downsample_sps (basic_block_UV, advanced_block_UV,
-                                                    component_original_data_U, 
-                                                    intermediate_downsample_U,
-                                                    width_UV, height_UV, linesize_U,
-                                                    block_width_UV, block_height_UV,
-                                                    block_x, block_y);
-            
-            lhe_advanced_vertical_downsample_sps (basic_block_UV, advanced_block_UV,  
-                                                  intermediate_downsample_U, 
-                                                  downsampled_data_U,
-                                                  width_UV, height_UV, block_width_UV, block_height_UV,
-                                                  block_x, block_y);
-                                                                                                              
+            //CHROMINANCES                     
+            //CHROMINANCE U                                    
             lhe_advanced_encode_block (&s->prec, 
                                        basic_block_UV, advanced_block_UV, 
                                        downsampled_data_U, 
@@ -2036,26 +2225,9 @@ static float lhe_advanced_encode (LheContext *s, const AVFrame *frame,
                                        width_UV,  height_UV, 
                                        first_color_block_U, total_blocks_width,
                                        block_x,  block_y,
-                                       block_width_UV,  block_height_UV);
+                                       block_width_UV,  block_height_UV);      
             
-
-
-             
-            //CHROMINANCE_V
-            lhe_advanced_horizontal_downsample_sps (basic_block_UV, advanced_block_UV, 
-                                                    component_original_data_V, 
-                                                    intermediate_downsample_V,
-                                                    width_UV, height_UV, linesize_V, 
-                                                    block_width_UV, block_height_UV,
-                                                    block_x, block_y);
-            
-            lhe_advanced_vertical_downsample_sps (basic_block_UV, advanced_block_UV,
-                                                  intermediate_downsample_V, 
-                                                  downsampled_data_V,
-                                                  width_UV, height_UV, block_width_UV, block_height_UV,
-                                                  block_x, block_y);
-                          
-                                                                 
+            //CHROMINANCE V                                                                                      
             lhe_advanced_encode_block (&s->prec, 
                                        basic_block_UV, advanced_block_UV, 
                                        downsampled_data_V, 
@@ -2267,10 +2439,11 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
         
     if (s->pr_metrics)
     {
-        print_json_pr_metrics(perceptual_relevance_x, perceptual_relevance_y,
+        print_csv_pr_metrics(perceptual_relevance_x, perceptual_relevance_y,
                              total_blocks_width, total_blocks_height);  
     }
     
+    av_log (NULL, AV_LOG_PANIC, " %.0lf; ",time_diff(before , after));
     av_log(NULL, AV_LOG_INFO, "CodingTime %.0lf \n", time_diff(before , after));
 
     pkt->flags |= AV_PKT_FLAG_KEY;
@@ -2298,6 +2471,7 @@ static const AVOption options[] = {
     { "pr_metrics", "Print PR metrics", OFFSET(pr_metrics), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, VE },
     { "basic_lhe", "Basic LHE", OFFSET(basic_lhe), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, VE },
     { "ql", "Quality level from 0 to 99", OFFSET(ql), AV_OPT_TYPE_INT, { .i64 = 50 }, 0, 99, VE },
+    { "subsampling_average", "Average subsampling. Otherwise, sps subsampling is done.", OFFSET(subsampling_average), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, VE },
     { NULL },
 };
 
