@@ -99,8 +99,8 @@ static int mlhe_write_packet(AVFormatContext *s, AVPacket *pkt)
 
 
         ret = av_copy_packet(mlhe->prev_pkt, pkt);
-        
-        return ret;
+        if (ret<0) 
+            return ret;
     }
     
     return flush_packet(s, pkt);
