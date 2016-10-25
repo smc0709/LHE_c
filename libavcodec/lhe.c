@@ -1019,3 +1019,135 @@ void lhe_init_cache (LheBasicPrec *prec)
     
     lhe_init_compression_factor_from_ql (prec); //Inits compression factor cache 
 }
+
+//==================================================================
+// LHE VIDEO 
+// Video methods for both LHE encoder and decoder .
+//==================================================================
+
+void lhe_video_adapt_downsampled_data_resolution (BasicLheBlock **basic_block, 
+                                                  AdvancedLheBlock **advanced_block, AdvancedLheBlock **last_advanced_block,
+                                                  uint8_t *downsampled_data, uint8_t *adapted_downsampled_data,
+                                                  uint32_t width,
+                                                  int block_x, int block_y)
+{
+    uint32_t xini, xfin, yini, yfin, last_xfin, last_yfin;
+    uint32_t downsampled_x_side, downsampled_y_side, last_downsampled_x_side, last_downsampled_y_side;
+    uint32_t xdown, xprev_interpolated, xfin_interpolated, ydown, yprev_interpolated, yfin_interpolated;
+    float step_x, step_y, xfin_interpolated_float, yfin_interpolated_float, xdown_float, ydown_float;
+
+    xini = basic_block[block_y][block_x].x_ini;
+    xfin = advanced_block[block_y][block_x].x_fin_downsampled;
+    yini = basic_block[block_y][block_x].y_ini;
+    yfin = advanced_block[block_y][block_x].y_fin_downsampled;
+    
+    last_xfin = last_advanced_block[block_y][block_x].x_fin_downsampled;
+    last_yfin = last_advanced_block[block_y][block_x].y_fin_downsampled;
+    
+    downsampled_x_side = advanced_block[block_y][block_x].downsampled_x_side;
+    downsampled_y_side = advanced_block[block_y][block_x].downsampled_y_side;
+    last_downsampled_x_side = last_advanced_block[block_y][block_x].downsampled_x_side;
+    last_downsampled_y_side = last_advanced_block[block_y][block_x].downsampled_y_side;
+    
+    //Adapt horizontal resolution
+    if (downsampled_x_side > last_downsampled_x_side) 
+    {       
+        //Nearest neighbour
+        step_x = 1.0 * downsampled_x_side/last_downsampled_x_side;
+        
+        for (int y=yini; y<last_yfin; y++)
+        {        
+        
+            //Interpolated x coordinates
+            xprev_interpolated = xini; 
+            xfin_interpolated_float= xini+step_x;
+
+            for (int x_sc=xini; x_sc<last_xfin; x_sc++)
+            {
+                xfin_interpolated = xfin_interpolated_float + 0.5;            
+                
+                for (int i=xprev_interpolated;i < xfin_interpolated;i++)
+                {
+                    adapted_downsampled_data[y*width+i]=downsampled_data[y*width+x_sc];                  
+                }
+                            
+                xprev_interpolated=xfin_interpolated;
+                xfin_interpolated_float+=step_x;   
+            }//x
+
+        }//y 
+    } else 
+    {
+        step_x = 1.0 * last_downsampled_x_side/downsampled_x_side;
+        
+        //SPS
+        for (int y=yini; y<last_yfin; y++)
+        {        
+            xdown_float=xini + step_x;
+
+            for (int x=xini; x<xfin; x++)
+            {
+                xdown = xdown_float - 0.5;
+                        
+                adapted_downsampled_data[y*width+x]=downsampled_data[y*width+xdown];
+
+                xdown_float+=step_x;
+            }//x
+        }//y
+    }
+    
+    
+    //Adapt vertical resolution
+    if (downsampled_y_side > last_downsampled_y_side) 
+    {
+        //Nearest neighbour
+        step_y = 1.0 * downsampled_y_side/last_downsampled_y_side;
+        
+        //if (xini == 0 && yini==0) av_log (NULL, AV_LOG_INFO, "step_y %f  \n", step_y);
+   
+        for (int x=xini; x < xfin; x++)
+        {
+            //Interpolated y coordinates
+            yprev_interpolated = yini; 
+            yfin_interpolated_float= yini+step_y;
+
+            // bucle for horizontal scanline 
+            // scans the downsampled image, pixel by pixel
+            for (int y_sc=yini;y_sc<last_yfin;y_sc++)
+            {            
+                //if (xini == 0 && yini==0) av_log (NULL, AV_LOG_INFO, "y_sc %d y_prev %d yfin_interpolated %f \n", y_sc, yprev_interpolated, yfin_interpolated_float);
+
+                yfin_interpolated = yfin_interpolated_float + 0.5;  
+                
+                for (int i=yprev_interpolated;i < yfin_interpolated;i++)
+                {
+                    adapted_downsampled_data[i*width+x]=downsampled_data[y_sc*width+x];
+                }
+          
+                yprev_interpolated=yfin_interpolated;
+                yfin_interpolated_float+=step_y;               
+                
+            }//y
+        }//x
+    } else 
+    {
+        step_y = 1.0 * last_downsampled_y_side/downsampled_y_side;
+
+        //SPS
+        for (int x=xini; x < xfin; x++)
+        {
+
+            ydown_float=yini + step_y; 
+        
+            for (int y=yini; y < yfin; y++)
+            {
+                ydown = ydown_float - 0.5;
+
+                adapted_downsampled_data[y*width+x]=downsampled_data[ydown*width+x];
+                                    
+                ydown_float+=step_y;
+            }//ysc
+        }//x
+    } 
+    
+}

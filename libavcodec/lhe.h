@@ -204,3 +204,13 @@ void lhe_advanced_ppp_side_to_rectangle_shape (BasicLheBlock **basic_block, Adva
                                                uint32_t image_width, uint32_t image_height, 
                                                float ppp_max, 
                                                int block_x, int block_y);
+
+/**
+ * VIDEO LHE
+ * Common functions encoder and decoder
+ */
+void lhe_video_adapt_downsampled_data_resolution (BasicLheBlock **basic_block, 
+                                                  AdvancedLheBlock **advanced_block, AdvancedLheBlock **last_advanced_block,
+                                                  uint8_t *downsampled_data, uint8_t *downsampled_data_adapted,
+                                                  uint32_t width,
+                                                  int block_x, int block_y);
