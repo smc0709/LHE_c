@@ -1064,53 +1064,6 @@ static void lhe_advanced_decode_symbols (LheState *s,
                                                                      
         }
     }
-    
-    /*
-    av_log (NULL, AV_LOG_INFO, "COMPONENT Y \n");
-
-   
-    for (int j=0; j<height_Y; j++) 
-    {
-        for (int i=0; i<width_Y; i++) 
-        {  
-
-            av_log (NULL, AV_LOG_INFO, "%d;", component_Y[j*s->frame->linesize[0] + i]);
-
-        }
-        
-        av_log (NULL, AV_LOG_INFO, "\n");  
-    }
-    
-    av_log (NULL, AV_LOG_INFO, "COMPONENT U \n");
-
-   
-    for (int j=0; j<height_UV; j++) 
-    {
-        for (int i=0; i<width_UV; i++) 
-        {  
-
-            av_log (NULL, AV_LOG_INFO, "%d;", component_U[j*s->frame->linesize[1] + i]);
-
-        }
-        
-        av_log (NULL, AV_LOG_INFO, "\n");  
-    }
-    
-    av_log (NULL, AV_LOG_INFO, "COMPONENT V \n");
-
-   
-    for (int j=0; j<height_UV; j++) 
-    {
-        for (int i=0; i<width_UV; i++) 
-        {  
-
-            av_log (NULL, AV_LOG_INFO, "%d;", component_V[j*s->frame->linesize[2] + i]);
-
-        }
-        
-        av_log (NULL, AV_LOG_INFO, "\n");  
-    }
-    */
 }
 
 //==================================================================
@@ -1123,7 +1076,7 @@ static void lhe_add_delta_to_last_frame (LheState *s,
                                          uint32_t width, uint32_t block_x, uint32_t block_y) 
 {
     uint32_t xini, xfin, yini, yfin, pix;
-    int delta;
+    int delta, image;
     
     xini = basic_block[block_y][block_x].x_ini;
     xfin = advanced_block[block_y][block_x].x_fin_downsampled; 
@@ -1131,13 +1084,19 @@ static void lhe_add_delta_to_last_frame (LheState *s,
     yini = basic_block[block_y][block_x].y_ini;
     yfin = advanced_block[block_y][block_x].y_fin_downsampled;
     
+    #pragma omp parallel for
     for (int y=yini; y<yfin; y++) 
     {
         for (int x=xini; x<xfin; x++) 
         {
             pix = y*width + x;
             delta = (delta_frame[pix] - 128.0) * 2.0;
-            downsampled_image[pix] = last_downsampled_image[pix] + delta;
+            image = last_downsampled_image[pix] + delta;
+            
+            if (image > 255) image = 255;
+            if (image <= 0) image = 1;
+
+            downsampled_image[pix] = image;
         }
     }
         
@@ -1160,6 +1119,7 @@ static void lhe_advanced_decode_differential_frame (LheState *s,
                                                     uint32_t total_blocks_width, uint32_t total_blocks_height) 
 {
     uint8_t *delta_frame_Y, *delta_frame_U, *delta_frame_V;
+    uint8_t *intermediate_adapted_downsampled_data_Y, *intermediate_adapted_downsampled_data_U, *intermediate_adapted_downsampled_data_V;
     uint8_t *adapted_downsampled_image_Y, *adapted_downsampled_image_U, *adapted_downsampled_image_V;
     uint8_t *intermediate_interpolated_Y, *intermediate_interpolated_U, *intermediate_interpolated_V;
     
@@ -1171,11 +1131,15 @@ static void lhe_advanced_decode_differential_frame (LheState *s,
     intermediate_interpolated_U = malloc (sizeof(uint8_t) * image_size_UV);
     intermediate_interpolated_V = malloc (sizeof(uint8_t) * image_size_UV);
     
+    intermediate_adapted_downsampled_data_Y = malloc(sizeof(uint8_t) * image_size_Y);  
+    intermediate_adapted_downsampled_data_U = malloc(sizeof(uint8_t) * image_size_UV); 
+    intermediate_adapted_downsampled_data_V = malloc(sizeof(uint8_t) * image_size_UV); 
+    
     adapted_downsampled_image_Y = malloc(sizeof(uint8_t) * image_size_Y);  
     adapted_downsampled_image_U = malloc(sizeof(uint8_t) * image_size_UV); 
     adapted_downsampled_image_V = malloc(sizeof(uint8_t) * image_size_UV); 
     
-   // #pragma omp parallel for
+    #pragma omp parallel for
     for (int block_y=0; block_y<total_blocks_height; block_y++)
     {
         for (int block_x=0; block_x<total_blocks_width; block_x++)
@@ -1191,7 +1155,7 @@ static void lhe_advanced_decode_differential_frame (LheState *s,
             
             lhe_video_adapt_downsampled_data_resolution (basic_block_Y, 
                                                          advanced_block_Y, last_advanced_block_Y,
-                                                         last_downsampled_image_Y, adapted_downsampled_image_Y,
+                                                         last_downsampled_image_Y, intermediate_adapted_downsampled_data_Y, adapted_downsampled_image_Y,
                                                          width_Y,
                                                          block_x, block_y);
             
@@ -1223,7 +1187,7 @@ static void lhe_advanced_decode_differential_frame (LheState *s,
             
             lhe_video_adapt_downsampled_data_resolution (basic_block_UV, 
                                                          advanced_block_UV, last_advanced_block_UV,
-                                                         last_downsampled_image_U, adapted_downsampled_image_U,
+                                                         last_downsampled_image_U, intermediate_adapted_downsampled_data_U, adapted_downsampled_image_U,
                                                          width_UV,
                                                          block_x, block_y);
             
@@ -1254,7 +1218,7 @@ static void lhe_advanced_decode_differential_frame (LheState *s,
                    
             lhe_video_adapt_downsampled_data_resolution (basic_block_UV, 
                                                          advanced_block_UV, last_advanced_block_UV,
-                                                         last_downsampled_image_V, adapted_downsampled_image_V,
+                                                         last_downsampled_image_V, intermediate_adapted_downsampled_data_V, adapted_downsampled_image_V,
                                                          width_UV,
                                                          block_x, block_y);
 
@@ -1273,122 +1237,9 @@ static void lhe_advanced_decode_differential_frame (LheState *s,
                                                                      intermediate_interpolated_V, component_V,
                                                                      width_UV, s->frame->linesize[2],
                                                                      block_width_UV, block_height_UV,
-                                                                     block_x, block_y);  
-                                                                     
-            
-                                                                    
+                                                                     block_x, block_y);                                                                  
         }
-    }
-    
-   
-    /*
-    av_log (NULL, AV_LOG_INFO, "LAST DOWNSAMPLED DATA \n");
-
-   
-    for (int j=0; j<height_Y; j++) 
-    {
-        for (int i=0; i<width_Y; i++) 
-        {  
-
-            av_log (NULL, AV_LOG_INFO, "%d;", last_downsampled_image_Y[j*width_Y + i]);
-
-        }
-        
-        av_log (NULL, AV_LOG_INFO, "\n");  
-    }
-    
-     av_log (NULL, AV_LOG_INFO, "ADAPTED DOWNSAMPLED DATA \n");
-
-   
-    for (int j=0; j<height_Y; j++) 
-    {
-        for (int i=0; i<width_Y; i++) 
-        {  
-
-            av_log (NULL, AV_LOG_INFO, "%d;", adapted_downsampled_image_Y[j*width_Y + i]);
-
-        }
-        
-        av_log (NULL, AV_LOG_INFO, "\n");  
-    }
-    
-    av_log (NULL, AV_LOG_INFO, "DELTA PREDICTION\n");
-
-   
-    for (int j=0; j<height_Y; j++) 
-    {
-        for (int i=0; i<width_Y; i++) 
-        {  
-
-            av_log (NULL, AV_LOG_INFO, "%d;", delta_frame_Y[j*width_Y + i]);
-
-        }
-        
-        av_log (NULL, AV_LOG_INFO, "\n");  
-    }
-    
-    av_log (NULL, AV_LOG_INFO, "DOWNSAMPLED DATA \n");
-
- 
-    for (int j=0; j<height_Y; j++) 
-    {
-        for (int i=0; i<width_Y; i++) 
-        {  
-
-            av_log (NULL, AV_LOG_INFO, "%d;", downsampled_image_Y[j*width_Y + i]);
-
-        }
-        
-        av_log (NULL, AV_LOG_INFO, "\n");  
-    }
-    /*
-    av_log (NULL, AV_LOG_INFO, "FINAL IMAGE \n");
-
- 
-    for (int j=0; j<height_Y; j++) 
-    {
-        for (int i=0; i<width_Y; i++) 
-        {  
-
-            av_log (NULL, AV_LOG_INFO, "%d;", component_Y[j*s->frame->linesize[0] + i]);
-
-        }
-        
-        av_log (NULL, AV_LOG_INFO, "\n");  
-    }
-    
-    av_log (NULL, AV_LOG_INFO, "DELTA PREDICTION\n");
-
-   
-    for (int j=0; j<height_Y; j++) 
-    {
-        for (int i=0; i<width_Y; i++) 
-        {  
-
-            av_log (NULL, AV_LOG_INFO, "%d;", delta_frame_Y[j*width_Y + i]);
-
-        }
-        
-        av_log (NULL, AV_LOG_INFO, "\n");  
-    }
-    
-    av_log (NULL, AV_LOG_INFO, "DELTA \n");
-
-
-    for (int j=0; j<height_Y; j++) 
-    {
-        for (int i=0; i<width_Y; i++) 
-        {  
-
-            av_log (NULL, AV_LOG_INFO, "%d;", delta_frame_Y[j*width_Y + i]);
-
-        }
-        
-        av_log (NULL, AV_LOG_INFO, "\n");  
-    }
-    */
-            
- 
+    }  
 }
 
 //==================================================================
@@ -1685,7 +1536,6 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
         }
     }
     
-    /*
     if (!s->last_advanced_block_Y) 
     {
          s->last_advanced_block_Y = malloc(sizeof(AdvancedLheBlock *) * total_blocks_height);
@@ -1735,8 +1585,7 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
     memset(s->downsampled_image_Y, 0, image_size_Y);
     memset(s->downsampled_image_U, 0, image_size_UV);
     memset(s->downsampled_image_V, 0, image_size_UV);
-    
-*/
+     
     av_log(NULL, AV_LOG_INFO, "DECODING...Width %d Height %d \n", width_Y, height_Y);
 
     if ((ret = av_frame_ref(data, s->frame)) < 0)

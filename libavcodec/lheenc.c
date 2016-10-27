@@ -2266,8 +2266,12 @@ static void lhe_video_calculate_delta_block (BasicLheBlock **basic_block, Advanc
         for (int x=xini; x<xfin; x++) {
             pix = y*width + x;
             
-            delta = downsampled_data[pix] - last_downsampled_data[pix];
-            delta_frame[pix] = delta/2 + 128;
+            delta = (downsampled_data[pix] - last_downsampled_data[pix]) / 2 + 128;
+            
+            if (delta > 255) delta = 255;
+            if (delta < 0) delta = 0;
+            
+            delta_frame[pix] =  delta;
         }
     }
 }
@@ -2292,6 +2296,7 @@ static void lhe_video_frame_delta_encode (LheContext *s,
     uint8_t *intermediate_downsample_Y, *intermediate_downsample_U, *intermediate_downsample_V;
     uint32_t image_size_Y, image_size_UV, ppp_max_theoric;
     uint8_t *delta_frame_Y, *delta_frame_U, *delta_frame_V;
+    uint8_t *intermediate_adapted_downsampled_data_Y, *intermediate_adapted_downsampled_data_U, *intermediate_adapted_downsampled_data_V;
     uint8_t *adapted_downsampled_data_Y, *adapted_downsampled_data_U, *adapted_downsampled_data_V;
     uint8_t *delta_prediction_Y, *delta_prediction_U, *delta_prediction_V;
 
@@ -2308,6 +2313,10 @@ static void lhe_video_frame_delta_encode (LheContext *s,
     delta_frame_Y = malloc(sizeof(uint8_t) * image_size_Y);  
     delta_frame_U = malloc(sizeof(uint8_t) * image_size_UV); 
     delta_frame_V = malloc(sizeof(uint8_t) * image_size_UV); 
+
+    intermediate_adapted_downsampled_data_Y = malloc(sizeof(uint8_t) * image_size_Y);  
+    intermediate_adapted_downsampled_data_U = malloc(sizeof(uint8_t) * image_size_UV); 
+    intermediate_adapted_downsampled_data_V = malloc(sizeof(uint8_t) * image_size_UV); 
     
     adapted_downsampled_data_Y = malloc(sizeof(uint8_t) * image_size_Y);  
     adapted_downsampled_data_U = malloc(sizeof(uint8_t) * image_size_UV); 
@@ -2325,7 +2334,7 @@ static void lhe_video_frame_delta_encode (LheContext *s,
                                                block_width_Y,  block_height_Y);
     
      
-    //#pragma omp parallel for
+    #pragma omp parallel for
     for (int block_y=0; block_y<total_blocks_height; block_y++) 
     {
         for (int block_x=0; block_x<total_blocks_width; block_x++) 
@@ -2363,10 +2372,9 @@ static void lhe_video_frame_delta_encode (LheContext *s,
                                                   width_Y, height_Y, block_width_Y, block_height_Y,
                                                   block_x, block_y);
             
-            
              lhe_video_adapt_downsampled_data_resolution (basic_block_Y, 
                                                          advanced_block_Y, last_advanced_block_Y,
-                                                         last_downsampled_data_Y, adapted_downsampled_data_Y,
+                                                         last_downsampled_data_Y, intermediate_adapted_downsampled_data_Y, adapted_downsampled_data_Y,
                                                          width_Y,
                                                          block_x, block_y);
              
@@ -2401,7 +2409,7 @@ static void lhe_video_frame_delta_encode (LheContext *s,
             
             lhe_video_adapt_downsampled_data_resolution (basic_block_UV, 
                                                          advanced_block_UV, last_advanced_block_UV,
-                                                         last_downsampled_data_U, adapted_downsampled_data_U,
+                                                         last_downsampled_data_U, intermediate_adapted_downsampled_data_U, adapted_downsampled_data_U,
                                                          width_UV,
                                                          block_x, block_y);
             
@@ -2436,7 +2444,7 @@ static void lhe_video_frame_delta_encode (LheContext *s,
                         
             lhe_video_adapt_downsampled_data_resolution (basic_block_UV, 
                                                          advanced_block_UV, last_advanced_block_UV,
-                                                         last_downsampled_data_V, adapted_downsampled_data_V,
+                                                         last_downsampled_data_V, intermediate_adapted_downsampled_data_U, adapted_downsampled_data_V,
                                                          width_UV,
                                                          block_x, block_y);
 
@@ -2457,102 +2465,7 @@ static void lhe_video_frame_delta_encode (LheContext *s,
                                        block_width_UV,  block_height_UV); 
                                        
         }
-    }  
-     /* 
-     av_log (NULL, AV_LOG_INFO, "ORIGINAL IMAGE\n");
-
-   
-    for (int j=0; j<height_Y; j++) 
-    {
-        for (int i=0; i<width_Y; i++) 
-        {  
-
-            av_log (NULL, AV_LOG_INFO, "%d;", component_original_data_Y[j*linesize_Y + i]);
-
-        }
-        
-        av_log (NULL, AV_LOG_INFO, "\n");  
-    }
-    
-      
-     av_log (NULL, AV_LOG_INFO, "DELTA PREDICTION\n");
-
-   
-    for (int j=0; j<height_Y; j++) 
-    {
-        for (int i=0; i<width_Y; i++) 
-        {  
-
-            av_log (NULL, AV_LOG_INFO, "%d;", delta_prediction_Y[j*width_Y + i]);
-
-        }
-        
-        av_log (NULL, AV_LOG_INFO, "\n");  
-    }
-    
-   
-     av_log (NULL, AV_LOG_INFO, "DELTA \n");
-
-   
-    for (int j=0; j<height_Y; j++) 
-    {
-        for (int i=0; i<width_Y; i++) 
-        {  
-
-            av_log (NULL, AV_LOG_INFO, "%d;", delta_frame_Y[j*width_Y + i]);
-
-        }
-        
-        av_log (NULL, AV_LOG_INFO, "\n");  
-    }
-    
-    
-     av_log (NULL, AV_LOG_INFO, "DOWNSAMPLED DATA \n");
-
- 
-    for (int j=0; j<height_Y; j++) 
-    {
-        for (int i=0; i<width_Y; i++) 
-        {  
-
-            av_log (NULL, AV_LOG_INFO, "%d;", downsampled_data_Y[j*width_Y + i]);
-
-        }
-        
-        av_log (NULL, AV_LOG_INFO, "\n");  
-    }
-    
-    av_log (NULL, AV_LOG_INFO, "LAST DOWNSAMPLED DATA \n");
-
-   
-    for (int j=0; j<height_Y; j++) 
-    {
-        for (int i=0; i<width_Y; i++) 
-        {  
-
-            av_log (NULL, AV_LOG_INFO, "%d;", last_downsampled_data_Y[j*width_Y + i]);
-
-        }
-        
-        av_log (NULL, AV_LOG_INFO, "\n");  
-    }
-    
-     av_log (NULL, AV_LOG_INFO, "ADAPTED DOWNSAMPLED DATA \n");
-
-   
-    for (int j=0; j<height_Y; j++) 
-    {
-        for (int i=0; i<width_Y; i++) 
-        {  
-
-            av_log (NULL, AV_LOG_INFO, "%d;", adapted_downsampled_data_Y[j*width_Y + i]);
-
-        }
-        
-        av_log (NULL, AV_LOG_INFO, "\n");  
-    }
-    */
-    
+    } 
 }
 
 
