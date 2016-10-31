@@ -57,14 +57,26 @@ typedef struct LheContext {
     int basic_lhe;
     int ql;
     int subsampling_average;
-    BasicLheBlock **basic_block_Y, **basic_block_UV;
-    AdvancedLheBlock **advanced_block_Y, **advanced_block_UV;
-    AdvancedLheBlock **last_advanced_block_Y, **last_advanced_block_UV;
-    float **perceptual_relevance_x,  **perceptual_relevance_y;
-    uint8_t *component_prediction_Y, *component_prediction_U, *component_prediction_V; 
-    uint8_t *downsampled_data_Y, *downsampled_data_U, *downsampled_data_V;
-    uint8_t *last_downsampled_data_Y, *last_downsampled_data_U, *last_downsampled_data_V; 
-    uint8_t *downsampled_error_data_Y, *downsampled_error_data_U, *downsampled_error_data_V; 
+    BasicLheBlock **basic_block_Y;
+    BasicLheBlock **basic_block_UV;
+    AdvancedLheBlock **advanced_block_Y;
+    AdvancedLheBlock **advanced_block_UV;
+    AdvancedLheBlock **last_advanced_block_Y;
+    AdvancedLheBlock **last_advanced_block_UV;
+    float **perceptual_relevance_x;
+    float **perceptual_relevance_y;
+    uint8_t *component_prediction_Y;
+    uint8_t *component_prediction_U;
+    uint8_t *component_prediction_V; 
+    uint8_t *downsampled_data_Y;
+    uint8_t *downsampled_data_U;
+    uint8_t *downsampled_data_V;
+    uint8_t *last_downsampled_data_Y; 
+    uint8_t *last_downsampled_data_U;
+    uint8_t *last_downsampled_data_V; 
+    uint8_t *downsampled_error_data_Y;
+    uint8_t *downsampled_error_data_U;
+    uint8_t *downsampled_error_data_V; 
     int dif_frames_count;
 } LheContext;
 
@@ -2306,17 +2318,10 @@ static void lhe_video_calculate_error (LheContext *s,
     }
 }
 
-static void lhe_video_frame_delta_encode (LheContext *s, 
-                                          BasicLheBlock **basic_block_Y, BasicLheBlock **basic_block_UV,
-                                          AdvancedLheBlock **advanced_block_Y, AdvancedLheBlock **advanced_block_UV, 
-                                          AdvancedLheBlock **last_advanced_block_Y, AdvancedLheBlock **last_advanced_block_UV, 
+static void lhe_video_frame_delta_encode (LheContext *s,                                
                                           uint8_t *component_original_data_Y, uint8_t *component_original_data_U, uint8_t *component_original_data_V,
-                                          float **perceptual_relevance_x, float **perceptual_relevance_y,
-                                          uint8_t *component_prediction_Y, uint8_t *component_prediction_U, uint8_t *component_prediction_V,
                                           uint8_t *hops_Y, uint8_t *hops_U, uint8_t *hops_V,
                                           uint8_t *first_color_block_Y, uint8_t *first_color_block_U, uint8_t *first_color_block_V,
-                                          uint8_t *last_downsampled_data_Y, uint8_t *last_downsampled_data_U, uint8_t *last_downsampled_data_V,
-                                          uint8_t *downsampled_data_Y, uint8_t *downsampled_data_U, uint8_t *downsampled_data_V,
                                           uint32_t width_Y, uint32_t height_Y, uint32_t width_UV, uint32_t height_UV,
                                           int linesize_Y, int linesize_U, int linesize_V,
                                           uint32_t total_blocks_width, uint32_t total_blocks_height, 
@@ -2358,7 +2363,7 @@ static void lhe_video_frame_delta_encode (LheContext *s,
     
     lhe_advanced_compute_perceptual_relevance (&s->prec,
                                                component_original_data_Y,
-                                               perceptual_relevance_x, perceptual_relevance_y,
+                                               s->perceptual_relevance_x, s->perceptual_relevance_y,
                                                width_Y, height_Y, linesize_Y,
                                                total_blocks_width,  total_blocks_height,
                                                block_width_Y,  block_height_Y);
@@ -2369,25 +2374,25 @@ static void lhe_video_frame_delta_encode (LheContext *s,
     {
         for (int block_x=0; block_x<total_blocks_width; block_x++) 
         {            
-            lhe_advanced_perceptual_relevance_to_ppp(advanced_block_Y, advanced_block_UV,
-                                                     perceptual_relevance_x, perceptual_relevance_y, 
+            lhe_advanced_perceptual_relevance_to_ppp(s->advanced_block_Y, s->advanced_block_UV,
+                                                     s->perceptual_relevance_x, s->perceptual_relevance_y, 
                                                      compression_factor, ppp_max_theoric, 
                                                      block_x, block_y);
             
             
-            lhe_advanced_ppp_side_to_rectangle_shape (basic_block_Y, advanced_block_Y,
+            lhe_advanced_ppp_side_to_rectangle_shape (s->basic_block_Y, s->advanced_block_Y,
                                                       width_Y, height_Y, 
                                                       ppp_max_theoric,
                                                       block_x, block_y);
 
             
-            lhe_advanced_ppp_side_to_rectangle_shape (basic_block_UV, advanced_block_UV,
+            lhe_advanced_ppp_side_to_rectangle_shape (s->basic_block_UV, s->advanced_block_UV,
                                                       width_UV, height_UV, 
                                                       ppp_max_theoric,
                                                       block_x, block_y);
             
             //LUMINANCE
-            lhe_advanced_horizontal_downsample_sps (basic_block_Y, advanced_block_Y,
+            lhe_advanced_horizontal_downsample_sps (s->basic_block_Y, s->advanced_block_Y,
                                                     component_original_data_Y, 
                                                     intermediate_downsample_Y,
                                                     width_Y, height_Y, linesize_Y,
@@ -2396,26 +2401,26 @@ static void lhe_video_frame_delta_encode (LheContext *s,
             
                                                     
 
-            lhe_advanced_vertical_downsample_sps (basic_block_Y, advanced_block_Y,
+            lhe_advanced_vertical_downsample_sps (s->basic_block_Y, s->advanced_block_Y,
                                                   intermediate_downsample_Y, 
-                                                  downsampled_data_Y,
+                                                  s->downsampled_data_Y,
                                                   width_Y, height_Y, block_width_Y, block_height_Y,
                                                   block_x, block_y);
             
-             lhe_video_adapt_downsampled_data_resolution (basic_block_Y, 
-                                                         advanced_block_Y, last_advanced_block_Y,
-                                                         last_downsampled_data_Y, intermediate_adapted_downsampled_data_Y, adapted_downsampled_data_Y,
-                                                         width_Y,
-                                                         block_x, block_y);
+             lhe_video_adapt_downsampled_data_resolution (s->basic_block_Y, 
+                                                          s->advanced_block_Y, s->last_advanced_block_Y,
+                                                          s->last_downsampled_data_Y, intermediate_adapted_downsampled_data_Y, adapted_downsampled_data_Y,
+                                                          width_Y,
+                                                          block_x, block_y);
              
-             lhe_video_calculate_delta_block (basic_block_Y, advanced_block_Y,
+             lhe_video_calculate_delta_block (s->basic_block_Y, s->advanced_block_Y,
                                               delta_frame_Y, 
-                                              downsampled_data_Y, adapted_downsampled_data_Y, 
+                                              s->downsampled_data_Y, adapted_downsampled_data_Y, 
                                               width_Y, linesize_Y, 
                                               block_x, block_y);
              
             lhe_advanced_encode_block (&s->prec, 
-                                       basic_block_Y, advanced_block_Y, 
+                                       s->basic_block_Y, s->advanced_block_Y, 
                                        delta_frame_Y, 
                                        delta_prediction_Y, hops_Y, 
                                        width_Y,  height_Y, 
@@ -2424,40 +2429,40 @@ static void lhe_video_frame_delta_encode (LheContext *s,
                                        block_width_Y,  block_height_Y);
             
             lhe_video_calculate_error (s,
-                                       basic_block_Y, advanced_block_Y,
+                                       s->basic_block_Y, s->advanced_block_Y,
                                        delta_frame_Y, delta_prediction_Y,
-                                       downsampled_data_Y, s->downsampled_error_data_Y,
+                                       s->downsampled_data_Y, s->downsampled_error_data_Y,
                                        width_Y, linesize_Y, 
                                        block_x, block_y);
             
             //CHROMINANCE U
-            lhe_advanced_horizontal_downsample_sps (basic_block_UV, advanced_block_UV,
+            lhe_advanced_horizontal_downsample_sps (s->basic_block_UV, s->advanced_block_UV,
                                                     component_original_data_U, 
                                                     intermediate_downsample_U,
                                                     width_UV, height_UV, linesize_U,
                                                     block_width_UV, block_height_UV,
                                                     block_x, block_y);
 
-            lhe_advanced_vertical_downsample_sps (basic_block_UV, advanced_block_UV,  
+            lhe_advanced_vertical_downsample_sps (s->basic_block_UV, s->advanced_block_UV,  
                                                   intermediate_downsample_U, 
-                                                  downsampled_data_U,
+                                                  s->downsampled_data_U,
                                                   width_UV, height_UV, block_width_UV, block_height_UV,
                                                   block_x, block_y);
             
-            lhe_video_adapt_downsampled_data_resolution (basic_block_UV, 
-                                                         advanced_block_UV, last_advanced_block_UV,
-                                                         last_downsampled_data_U, intermediate_adapted_downsampled_data_U, adapted_downsampled_data_U,
+            lhe_video_adapt_downsampled_data_resolution (s->basic_block_UV, 
+                                                         s->advanced_block_UV, s->last_advanced_block_UV,
+                                                         s->last_downsampled_data_U, intermediate_adapted_downsampled_data_U, adapted_downsampled_data_U,
                                                          width_UV,
                                                          block_x, block_y);
             
-            lhe_video_calculate_delta_block (basic_block_UV, advanced_block_UV,
+            lhe_video_calculate_delta_block (s->basic_block_UV, s->advanced_block_UV,
                                              delta_frame_U, 
-                                             downsampled_data_U, adapted_downsampled_data_U, 
+                                             s->downsampled_data_U, adapted_downsampled_data_U, 
                                              width_UV, linesize_U, 
                                              block_x, block_y);
             
             lhe_advanced_encode_block (&s->prec, 
-                                       basic_block_UV, advanced_block_UV, 
+                                       s->basic_block_UV, s->advanced_block_UV, 
                                        delta_frame_U, 
                                        delta_prediction_U, hops_U, 
                                        width_UV,  height_UV, 
@@ -2466,41 +2471,41 @@ static void lhe_video_frame_delta_encode (LheContext *s,
                                        block_width_UV,  block_height_UV); 
             
             lhe_video_calculate_error (s,
-                                       basic_block_UV, advanced_block_UV,
+                                       s->basic_block_UV, s->advanced_block_UV,
                                        delta_frame_U, delta_prediction_U,
-                                       downsampled_data_U, s->downsampled_error_data_U,
+                                       s->downsampled_data_U, s->downsampled_error_data_U,
                                        width_UV, linesize_U, 
                                        block_x, block_y);
             
             //CHROMINANCE_V
-            lhe_advanced_horizontal_downsample_sps (basic_block_UV, advanced_block_UV, 
+            lhe_advanced_horizontal_downsample_sps (s->basic_block_UV, s->advanced_block_UV, 
                                                     component_original_data_V, 
                                                     intermediate_downsample_V,
                                                     width_UV, height_UV, linesize_V, 
                                                     block_width_UV, block_height_UV,
                                                     block_x, block_y);
         
-            lhe_advanced_vertical_downsample_sps (basic_block_UV, advanced_block_UV,
+            lhe_advanced_vertical_downsample_sps (s->basic_block_UV, s->advanced_block_UV,
                                                   intermediate_downsample_V, 
-                                                  downsampled_data_V,
+                                                  s->downsampled_data_V,
                                                   width_UV, height_UV, block_width_UV, block_height_UV,
                                                   block_x, block_y);     
                         
-            lhe_video_adapt_downsampled_data_resolution (basic_block_UV, 
-                                                         advanced_block_UV, last_advanced_block_UV,
-                                                         last_downsampled_data_V, intermediate_adapted_downsampled_data_U, adapted_downsampled_data_V,
+            lhe_video_adapt_downsampled_data_resolution (s->basic_block_UV, 
+                                                         s->advanced_block_UV, s->last_advanced_block_UV,
+                                                         s->last_downsampled_data_V, intermediate_adapted_downsampled_data_U, adapted_downsampled_data_V,
                                                          width_UV,
                                                          block_x, block_y);
 
             
-            lhe_video_calculate_delta_block (basic_block_UV, advanced_block_UV,
+            lhe_video_calculate_delta_block (s->basic_block_UV, s->advanced_block_UV,
                                              delta_frame_V, 
-                                             downsampled_data_V, adapted_downsampled_data_V, 
+                                             s->downsampled_data_V, adapted_downsampled_data_V, 
                                              width_UV, linesize_V, 
                                              block_x, block_y);
                                                                                      
             lhe_advanced_encode_block (&s->prec, 
-                                       basic_block_UV, advanced_block_UV, 
+                                       s->basic_block_UV, s->advanced_block_UV, 
                                        delta_frame_V, 
                                        delta_prediction_V, hops_V, 
                                        width_UV,  height_UV, 
@@ -2509,9 +2514,9 @@ static void lhe_video_frame_delta_encode (LheContext *s,
                                        block_width_UV,  block_height_UV); 
             
             lhe_video_calculate_error (s,
-                                       basic_block_UV, advanced_block_UV,
+                                       s->basic_block_UV, s->advanced_block_UV,
                                        delta_frame_V, delta_prediction_V,
-                                       downsampled_data_V, s->downsampled_error_data_V,
+                                       s->downsampled_data_V, s->downsampled_error_data_V,
                                        width_UV, linesize_V, 
                                        block_x, block_y);
                                        
@@ -2801,16 +2806,9 @@ static int mlhe_encode_video_frame(AVCodecContext *avctx, AVPacket *pkt,
     {
         s->dif_frames_count++;
         lhe_video_frame_delta_encode (s, 
-                                      s->basic_block_Y, s->basic_block_UV,
-                                      s->advanced_block_Y, s->advanced_block_UV, 
-                                      s->last_advanced_block_Y, s->last_advanced_block_UV, 
                                       component_original_data_Y, component_original_data_U, component_original_data_V,
-                                      s->perceptual_relevance_x, s->perceptual_relevance_y,
-                                      s->component_prediction_Y, s->component_prediction_U, s->component_prediction_V,
                                       hops_Y, hops_U, hops_V,
                                       first_color_block_Y, first_color_block_U, first_color_block_V,
-                                      s->last_downsampled_data_Y, s->last_downsampled_data_U, s->last_downsampled_data_V,
-                                      s->downsampled_data_Y, s->downsampled_data_U, s->downsampled_data_V,
                                       width_Y, height_Y, width_UV, height_UV,
                                       frame->linesize[0], frame->linesize[1], frame->linesize[2],
                                       total_blocks_width, total_blocks_height, 
