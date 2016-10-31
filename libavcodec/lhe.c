@@ -1090,7 +1090,8 @@ void lhe_video_adapt_downsampled_data_resolution (BasicLheBlock **basic_block,
             {
                 xdown = xdown_float - 0.5;
                         
-                intermediate_adapted_downsampled_data[y*width+x]=downsampled_data[y*width+xdown];
+                intermediate_adapted_downsampled_data[y*width+x]=downsampled_data[y*width+xdown];    
+
                 xdown_float+=step_x;
             }//x
         }//y
@@ -1162,7 +1163,7 @@ void lhe_video_adapt_downsampled_data_resolution (BasicLheBlock **basic_block,
         {
             for (int y=yini; y < yfin; y++)
             {                 
-                 //adapted_downsampled_data[y*width+x]=intermediate_adapted_downsampled_data[y*width+x]; 
+                 adapted_downsampled_data[y*width+x]=intermediate_adapted_downsampled_data[y*width+x]; 
             }
         }
     }

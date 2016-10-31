@@ -50,6 +50,7 @@ typedef struct LheState {
     uint8_t *last_downsampled_image_V;
     float **perceptual_relevance_x;
     float **perceptual_relevance_y;
+    int dif_frames_count;
 } LheState;
 
 
@@ -1094,8 +1095,8 @@ static void lhe_add_delta_to_last_frame (LheState *s,
             image = last_downsampled_image[pix] + delta;
             
             if (image > 255) image = 255;
-            if (image <= 0) image = 1;
-
+            if (image < 0) image = 1;
+            
             downsampled_image[pix] = image;
         }
     }
@@ -1239,7 +1240,7 @@ static void lhe_advanced_decode_differential_frame (LheState *s,
                                                                      block_width_UV, block_height_UV,
                                                                      block_x, block_y);                                                                  
         }
-    }  
+    } 
 }
 
 //==================================================================
@@ -1374,55 +1375,8 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
     lhe_read_huffman_table(s, he_Y, LHE_MAX_HUFF_SIZE_SYMBOLS, LHE_HUFFMAN_NODE_BITS_SYMBOLS, LHE_HUFFMAN_NO_OCCURRENCES_SYMBOLS);
     lhe_read_huffman_table(s, he_UV, LHE_MAX_HUFF_SIZE_SYMBOLS, LHE_HUFFMAN_NODE_BITS_SYMBOLS, LHE_HUFFMAN_NO_OCCURRENCES_SYMBOLS);
     
-    
-    if (s->last_downsampled_image_Y) { /*VIDEO*/
-        
-        //MESH Huffman
-        lhe_read_huffman_table(s, he_mesh, LHE_MAX_HUFF_SIZE_MESH, LHE_HUFFMAN_NODE_BITS_MESH, LHE_HUFFMAN_NO_OCCURRENCES_MESH);
-        
-        //Read quality level and calculate compression factor
-        quality_level = get_bits(&s->gb, QL_SIZE_BITS); 
-        ppp_max_theoric = s->block_width_Y/SIDE_MIN;
-        compression_factor = (&s->prec)->compression_factor[ppp_max_theoric][quality_level];        
-       
-        lhe_advanced_read_mesh(s, he_mesh,
-                               s->basic_block_Y, s->basic_block_UV,
-                               s->advanced_block_Y, s->advanced_block_UV,
-                               s->perceptual_relevance_x, s->perceptual_relevance_y,
-                               ppp_max_theoric, compression_factor,
-                               width_Y, height_Y, width_UV, height_UV,
-                               s->block_width_Y, s->block_height_Y, s->block_width_UV, s->block_height_UV,
-                               total_blocks_width, total_blocks_height) ; 
-        
-
-        lhe_advanced_read_all_file_symbols (s, 
-                                            he_Y, he_UV,
-                                            s->basic_block_Y, s->basic_block_UV,
-                                            s->advanced_block_Y, s->advanced_block_UV,
-                                            hops_Y, hops_U, hops_V,
-                                            width_Y, height_Y, width_UV, height_UV, 
-                                            total_blocks_width, total_blocks_height);
-        
-        lhe_advanced_decode_differential_frame (s, 
-                                                he_Y, he_UV,
-                                                s->basic_block_Y, s->basic_block_UV,
-                                                s->advanced_block_Y, s->advanced_block_UV,
-                                                s->last_advanced_block_Y, s->last_advanced_block_UV,
-                                                first_color_block_Y, first_color_block_U, first_color_block_V,
-                                                hops_Y, hops_U, hops_V,
-                                                s->last_downsampled_image_Y, s->last_downsampled_image_U, s->last_downsampled_image_V,
-                                                s->downsampled_image_Y, s->downsampled_image_U, s->downsampled_image_V,
-                                                component_Y, component_U, component_V,
-                                                width_Y, height_Y, width_UV, height_UV,
-                                                image_size_Y, image_size_UV,
-                                                s->block_width_Y, s->block_height_Y, s->block_width_UV, s->block_height_UV,
-                                                total_blocks_width, total_blocks_height);
-    
-        
-    } 
-    else if (lhe_mode == ADVANCED_LHE) /*ADVANCED LHE*/
+    if (lhe_mode == ADVANCED_LHE) /*ADVANCED LHE*/
     {
- 
         s->perceptual_relevance_x = malloc(sizeof(float*) * (total_blocks_height+1));  
     
         for (int i=0; i<total_blocks_height+1; i++) 
@@ -1499,8 +1453,6 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
                                      image_size_Y, image_size_UV,
                                      s->block_width_Y, s->block_height_Y, s->block_width_UV, s->block_height_UV,
                                      total_blocks_width, total_blocks_height);
- 
-  
     }
     else /*BASIC LHE*/       
     {
@@ -1585,9 +1537,320 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
     memset(s->downsampled_image_Y, 0, image_size_Y);
     memset(s->downsampled_image_U, 0, image_size_UV);
     memset(s->downsampled_image_V, 0, image_size_UV);
-     
+    
+    
+    if (s->dif_frames_count>=60)
+    {
+        av_freep(&s->last_downsampled_image_Y);
+        s->dif_frames_count = 0;
+    }
+       
     av_log(NULL, AV_LOG_INFO, "DECODING...Width %d Height %d \n", width_Y, height_Y);
 
+    if ((ret = av_frame_ref(data, s->frame)) < 0)
+        return ret;
+ 
+    *got_frame = 1;
+
+    return 0;
+}
+
+//==================================================================
+// DECODE VIDEO FRAME
+//==================================================================
+static int mlhe_decode_video_frame(AVCodecContext *avctx, void *data, int *got_frame, AVPacket *avpkt)
+{    
+    uint8_t lhe_mode, pixel_format, quality_level;
+    uint8_t *hops_Y, *hops_U, *hops_V;
+    uint8_t *component_Y, *component_U, *component_V;
+    uint8_t *first_color_block_Y, *first_color_block_U, *first_color_block_V;
+    uint32_t total_blocks_width, total_blocks_height, total_blocks;
+    uint32_t pixels_block, width_Y, width_UV, height_Y, height_UV, image_size_Y, image_size_UV;
+    int ret;
+    
+    float compression_factor;
+    uint32_t ppp_max_theoric;
+    
+    LheHuffEntry he_mesh[LHE_MAX_HUFF_SIZE_MESH];
+    LheHuffEntry he_Y[LHE_MAX_HUFF_SIZE_SYMBOLS];
+    LheHuffEntry he_UV[LHE_MAX_HUFF_SIZE_SYMBOLS];
+   
+    LheState *s = avctx->priv_data;
+    
+    const uint8_t *lhe_data = avpkt->data;
+    
+    //LHE mode
+    lhe_mode = bytestream_get_byte(&lhe_data); 
+    
+    //Pixel format byte, init pixel format
+    pixel_format = bytestream_get_byte(&lhe_data); 
+    lhe_init_pixel_format (avctx, s, pixel_format);
+           
+    width_Y  = bytestream_get_le32(&lhe_data);
+    height_Y = bytestream_get_le32(&lhe_data);
+    
+    image_size_Y = width_Y * height_Y;
+    
+    width_UV = (width_Y - 1)/s->chroma_factor_width + 1;
+    height_UV = (height_Y - 1)/s->chroma_factor_height + 1;
+    image_size_UV = width_UV * height_UV;
+    
+    avctx->width  = width_Y;
+    avctx->height  = height_Y;    
+    
+    //Allocates frame
+    av_frame_unref(s->frame);
+    if ((ret = ff_get_buffer(avctx, s->frame, 0)) < 0)
+        return ret;
+ 
+    if (lhe_mode == SEQUENTIAL_BASIC_LHE) 
+    {
+        total_blocks_width = 1;
+        total_blocks_height = 1;
+    } 
+    else 
+    {
+        total_blocks_width = HORIZONTAL_BLOCKS;
+        pixels_block = width_Y / HORIZONTAL_BLOCKS;
+        total_blocks_height = height_Y / pixels_block;
+    }
+    
+    total_blocks = total_blocks_height * total_blocks_width;
+    
+    //First pixel array
+    first_color_block_Y = malloc(sizeof(uint8_t) * image_size_Y);
+    first_color_block_U = malloc(sizeof(uint8_t) * image_size_UV);
+    first_color_block_V = malloc(sizeof(uint8_t) * image_size_UV);
+    
+    for (int i=0; i<total_blocks; i++) 
+    {
+        first_color_block_Y[i] = bytestream_get_byte(&lhe_data); 
+    }
+
+    
+    for (int i=0; i<total_blocks; i++) 
+    {
+        first_color_block_U[i] = bytestream_get_byte(&lhe_data); 
+    }
+    
+        
+    for (int i=0; i<total_blocks; i++) 
+    {
+        first_color_block_V[i] = bytestream_get_byte(&lhe_data); 
+    }
+
+    //Pointers to different color components
+    component_Y = s->frame->data[0];
+    component_U = s->frame->data[1];
+    component_V = s->frame->data[2];
+      
+    hops_Y = malloc(sizeof(uint8_t) * image_size_Y);      
+    hops_U = malloc(sizeof(uint8_t) * image_size_UV);    
+    hops_V = malloc(sizeof(uint8_t) * image_size_UV); 
+    
+    s->basic_block_Y = malloc(sizeof(BasicLheBlock *) * total_blocks_height);
+    
+    for (int i=0; i < total_blocks_height; i++)
+    {
+        s->basic_block_Y[i] = malloc (sizeof(BasicLheBlock) * (total_blocks_width));
+    }
+    
+    s->basic_block_UV = malloc(sizeof(BasicLheBlock *) * total_blocks_height);
+    
+    for (int i=0; i < total_blocks_height; i++)
+    {
+        s->basic_block_UV[i] = malloc (sizeof(BasicLheBlock) * (total_blocks_width));
+    }
+           
+    init_get_bits(&s->gb, lhe_data, avpkt->size * 8);
+
+    lhe_read_huffman_table(s, he_Y, LHE_MAX_HUFF_SIZE_SYMBOLS, LHE_HUFFMAN_NODE_BITS_SYMBOLS, LHE_HUFFMAN_NO_OCCURRENCES_SYMBOLS);
+    lhe_read_huffman_table(s, he_UV, LHE_MAX_HUFF_SIZE_SYMBOLS, LHE_HUFFMAN_NODE_BITS_SYMBOLS, LHE_HUFFMAN_NO_OCCURRENCES_SYMBOLS);
+    
+    
+    if (s->last_downsampled_image_Y) { /*VIDEO*/
+        s->dif_frames_count++;
+        //MESH Huffman
+        lhe_read_huffman_table(s, he_mesh, LHE_MAX_HUFF_SIZE_MESH, LHE_HUFFMAN_NODE_BITS_MESH, LHE_HUFFMAN_NO_OCCURRENCES_MESH);
+        
+        //Read quality level and calculate compression factor
+        quality_level = get_bits(&s->gb, QL_SIZE_BITS); 
+        ppp_max_theoric = s->block_width_Y/SIDE_MIN;
+        compression_factor = (&s->prec)->compression_factor[ppp_max_theoric][quality_level];        
+       
+        lhe_advanced_read_mesh(s, he_mesh,
+                               s->basic_block_Y, s->basic_block_UV,
+                               s->advanced_block_Y, s->advanced_block_UV,
+                               s->perceptual_relevance_x, s->perceptual_relevance_y,
+                               ppp_max_theoric, compression_factor,
+                               width_Y, height_Y, width_UV, height_UV,
+                               s->block_width_Y, s->block_height_Y, s->block_width_UV, s->block_height_UV,
+                               total_blocks_width, total_blocks_height) ; 
+        
+
+        lhe_advanced_read_all_file_symbols (s, 
+                                            he_Y, he_UV,
+                                            s->basic_block_Y, s->basic_block_UV,
+                                            s->advanced_block_Y, s->advanced_block_UV,
+                                            hops_Y, hops_U, hops_V,
+                                            width_Y, height_Y, width_UV, height_UV, 
+                                            total_blocks_width, total_blocks_height);
+        
+        lhe_advanced_decode_differential_frame (s, 
+                                                he_Y, he_UV,
+                                                s->basic_block_Y, s->basic_block_UV,
+                                                s->advanced_block_Y, s->advanced_block_UV,
+                                                s->last_advanced_block_Y, s->last_advanced_block_UV,
+                                                first_color_block_Y, first_color_block_U, first_color_block_V,
+                                                hops_Y, hops_U, hops_V,
+                                                s->last_downsampled_image_Y, s->last_downsampled_image_U, s->last_downsampled_image_V,
+                                                s->downsampled_image_Y, s->downsampled_image_U, s->downsampled_image_V,
+                                                component_Y, component_U, component_V,
+                                                width_Y, height_Y, width_UV, height_UV,
+                                                image_size_Y, image_size_UV,
+                                                s->block_width_Y, s->block_height_Y, s->block_width_UV, s->block_height_UV,
+                                                total_blocks_width, total_blocks_height);
+        
+    } 
+    else 
+    {
+        s->perceptual_relevance_x = malloc(sizeof(float*) * (total_blocks_height+1));  
+    
+        for (int i=0; i<total_blocks_height+1; i++) 
+        {
+            s->perceptual_relevance_x[i] = malloc(sizeof(float) * (total_blocks_width+1));
+        }
+        
+        s->perceptual_relevance_y = malloc(sizeof(float*) * (total_blocks_height+1)); 
+        
+        for (int i=0; i<total_blocks_height+1; i++) 
+        {
+            s->perceptual_relevance_y[i] = malloc(sizeof(float) * (total_blocks_width+1));
+        }   
+
+        s->advanced_block_Y = malloc(sizeof(AdvancedLheBlock *) * total_blocks_height);
+        
+        for (int i=0; i < total_blocks_height; i++)
+        {
+            s->advanced_block_Y[i] = malloc (sizeof(AdvancedLheBlock) * (total_blocks_width));
+        }
+        
+        s->advanced_block_UV = malloc(sizeof(AdvancedLheBlock *) * total_blocks_height);
+        
+        for (int i=0; i < total_blocks_height; i++)
+        {
+            s->advanced_block_UV[i] = malloc (sizeof(AdvancedLheBlock) * (total_blocks_width));
+        }
+        
+        s->block_width_Y = width_Y / total_blocks_width;    
+        s->block_height_Y = height_Y / total_blocks_height;   
+        
+        s->block_width_UV = width_UV / total_blocks_width;
+        s->block_height_UV = height_UV / total_blocks_height; 
+        
+        s->downsampled_image_Y = malloc (sizeof(uint8_t) * image_size_Y);
+        s->downsampled_image_U = malloc (sizeof(uint8_t) * image_size_UV);
+        s->downsampled_image_V = malloc (sizeof(uint8_t) * image_size_UV);
+        
+        //MESH Huffman
+        lhe_read_huffman_table(s, he_mesh, LHE_MAX_HUFF_SIZE_MESH, LHE_HUFFMAN_NODE_BITS_MESH, LHE_HUFFMAN_NO_OCCURRENCES_MESH);
+        
+        //Read quality level and calculate compression factor
+        quality_level = get_bits(&s->gb, QL_SIZE_BITS); 
+        ppp_max_theoric = s->block_width_Y/SIDE_MIN;
+        compression_factor = (&s->prec)->compression_factor[ppp_max_theoric][quality_level];        
+       
+        lhe_advanced_read_mesh(s, he_mesh,
+                               s->basic_block_Y, s->basic_block_UV,
+                               s->advanced_block_Y, s->advanced_block_UV,
+                               s->perceptual_relevance_x, s->perceptual_relevance_y,
+                               ppp_max_theoric, compression_factor,
+                               width_Y, height_Y, width_UV, height_UV,
+                               s->block_width_Y, s->block_height_Y, s->block_width_UV, s->block_height_UV,
+                               total_blocks_width, total_blocks_height) ; 
+        
+
+        lhe_advanced_read_all_file_symbols (s, 
+                                            he_Y, he_UV,
+                                            s->basic_block_Y, s->basic_block_UV,
+                                            s->advanced_block_Y, s->advanced_block_UV,
+                                            hops_Y, hops_U, hops_V,
+                                            width_Y, height_Y, width_UV, height_UV, 
+                                            total_blocks_width, total_blocks_height);
+        
+        lhe_advanced_decode_symbols (s, 
+                                     he_Y, he_UV,
+                                     s->basic_block_Y, s->basic_block_UV,
+                                     s->advanced_block_Y, s->advanced_block_UV,
+                                     first_color_block_Y, first_color_block_U, first_color_block_V,
+                                     hops_Y, hops_U, hops_V,
+                                     s->downsampled_image_Y, s->downsampled_image_U, s->downsampled_image_V,
+                                     component_Y, component_U, component_V,
+                                     width_Y, height_Y, width_UV, height_UV,
+                                     image_size_Y, image_size_UV,
+                                     s->block_width_Y, s->block_height_Y, s->block_width_UV, s->block_height_UV,
+                                     total_blocks_width, total_blocks_height);
+ 
+  
+    }   
+    
+    if (!s->last_advanced_block_Y) 
+    {
+         s->last_advanced_block_Y = malloc(sizeof(AdvancedLheBlock *) * total_blocks_height);
+        
+        for (int i=0; i < total_blocks_height; i++)
+        {
+            s->last_advanced_block_Y[i] = malloc (sizeof(AdvancedLheBlock) * (total_blocks_width));
+        }      
+    }
+    
+    if (!s->last_advanced_block_UV) {
+        s->last_advanced_block_UV = malloc(sizeof(AdvancedLheBlock *) * total_blocks_height);
+        
+        for (int i=0; i < total_blocks_height; i++)
+        {
+            s->last_advanced_block_UV[i] = malloc (sizeof(AdvancedLheBlock) * (total_blocks_width));
+        }
+    }
+
+    
+    if (!s->last_downsampled_image_Y) {
+        s->last_downsampled_image_Y = malloc(sizeof(uint8_t) * image_size_Y);  
+    }
+    
+
+    if (!s->last_downsampled_image_U) {
+        s->last_downsampled_image_U = malloc(sizeof(uint8_t) * image_size_UV); 
+    }
+    
+
+    
+    if (!s->last_downsampled_image_V) {
+        s->last_downsampled_image_V = malloc(sizeof(uint8_t) * image_size_UV);  
+    }
+    
+     for (int i=0; i < total_blocks_height; i++)
+    {
+        memcpy(s->last_advanced_block_Y[i], s->advanced_block_Y[i], sizeof(AdvancedLheBlock) * (total_blocks_width));
+        memcpy(s->last_advanced_block_UV[i], s->advanced_block_UV[i], sizeof(AdvancedLheBlock) * (total_blocks_width));
+    }   
+    
+
+    memcpy (s->last_downsampled_image_Y, s->downsampled_image_Y, image_size_Y);    
+    memcpy (s->last_downsampled_image_U, s->downsampled_image_U, image_size_UV);
+    memcpy (s->last_downsampled_image_V, s->downsampled_image_V, image_size_UV);
+    
+    memset(s->downsampled_image_Y, 0, image_size_Y);
+    memset(s->downsampled_image_U, 0, image_size_UV);
+    memset(s->downsampled_image_V, 0, image_size_UV);
+    
+    
+    if (s->dif_frames_count>=60)
+    {
+        av_freep(&s->last_downsampled_image_Y);
+        s->dif_frames_count = 0;
+    }
+    
     if ((ret = av_frame_ref(data, s->frame)) < 0)
         return ret;
  
@@ -1636,6 +1899,6 @@ AVCodec ff_mlhe_decoder = {
     .priv_data_size = sizeof(LheState),
     .init           = lhe_decode_init,
     .close          = lhe_decode_close,
-    .decode         = lhe_decode_frame,
+    .decode         = mlhe_decode_video_frame,
     .priv_class     = &decoder_class,
 };
