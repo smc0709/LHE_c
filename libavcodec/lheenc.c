@@ -1248,7 +1248,9 @@ static float lhe_advanced_compute_prx (LheBasicPrec *prec,
                                        uint8_t *component_original_data, 
                                        int xini, int xfin, int yini, int yfin, 
                                        int linesize, 
-                                       uint8_t sps_ratio_height)
+                                       uint8_t sps_ratio_height,
+                                       int block_x, int block_y
+                                      )
 {      
     
     //Hops computation.
@@ -1259,6 +1261,10 @@ static float lhe_advanced_compute_prx (LheBasicPrec *prec,
     int hx, count_hx, weight;
     uint8_t last_prediction, last_hop_number;
     float prx;
+    
+    hx = 0;
+    count_hx = 0;
+    prx =0;
        
     small_hop = false;
     last_small_hop=false;          // indicates if last hop is small
@@ -1362,7 +1368,7 @@ static float lhe_advanced_compute_pry (LheBasicPrec *prec,
                                         uint8_t *component_original_data, 
                                         int xini, int xfin, int yini, int yfin, 
                                         int height, int linesize, 
-                                        uint8_t sps_ratio_width)
+                                        uint8_t sps_ratio_width, int block_x, int block_y)
 {      
     
     //Hops computation.
@@ -1373,6 +1379,10 @@ static float lhe_advanced_compute_pry (LheBasicPrec *prec,
     int hy, count_hy, weight;
     uint8_t last_prediction, top_hop_number;
     float pry;
+    
+    hy = 0;
+    count_hy = 0;
+    pry = 0;
        
     small_hop = false;
     last_small_hop=false;          // indicates if last hop is small
@@ -1589,18 +1599,19 @@ static void lhe_advanced_compute_perceptual_relevance (LheBasicPrec *prec,
                                             component_original_data_Y, 
                                             xini_pr_block, xfin_pr_block, yini_pr_block, yfin_pr_block, 
                                             linesize, 
-                                            SPS_FACTOR);
+                                            SPS_FACTOR, block_x, block_y);
             
             pry = lhe_advanced_compute_pry (prec, 
                                             component_original_data_Y, 
                                             xini_pr_block, xfin_pr_block, yini_pr_block, yfin_pr_block, 
                                             height_image, linesize, 
-                                            SPS_FACTOR);
+                                            SPS_FACTOR, block_x, block_y);
  
             //Calls method to compute perceptual relevance using calculated coordinates 
             lhe_advanced_pr_histogram_expansion_and_quantization (perceptual_relevance_x, perceptual_relevance_y,
                                                                   prx, pry,
-                                                                  block_x, block_y) ;                                                           
+                                                                  block_x, block_y) ;  
+                                                                  
         }
     }
 }
@@ -2373,7 +2384,8 @@ static void lhe_video_frame_delta_encode (LheContext *s,
     for (int block_y=0; block_y<total_blocks_height; block_y++) 
     {
         for (int block_x=0; block_x<total_blocks_width; block_x++) 
-        {            
+        {                        
+
             lhe_advanced_perceptual_relevance_to_ppp(s->advanced_block_Y, s->advanced_block_UV,
                                                      s->perceptual_relevance_x, s->perceptual_relevance_y, 
                                                      compression_factor, ppp_max_theoric, 
@@ -2827,8 +2839,9 @@ static int mlhe_encode_video_frame(AVCodecContext *avctx, AVPacket *pkt,
     }      
     else 
     {
-        //ADVANCED LHE
-        //Basic blocks
+        /*Init dif frames count*/
+        s->dif_frames_count = 0;
+
         s->basic_block_Y = malloc(sizeof(BasicLheBlock *) * total_blocks_height);
     
         for (int i=0; i < total_blocks_height; i++)
@@ -2994,12 +3007,12 @@ static int mlhe_encode_video_frame(AVCodecContext *avctx, AVPacket *pkt,
     memset(s->downsampled_error_data_U, 0, image_size_UV);
     memset(s->downsampled_error_data_V, 0, image_size_UV);
     
-    
+    /*
     if (s->dif_frames_count>=60)
     {
         av_freep(&s->last_downsampled_data_Y);
-        s->dif_frames_count = 0;
     }
+    */
 
     pkt->flags |= AV_PKT_FLAG_KEY;
     *got_packet = 1;
