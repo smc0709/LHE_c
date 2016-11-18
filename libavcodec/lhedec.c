@@ -903,7 +903,7 @@ static void lhe_advanced_vertical_nearest_neighbour_interpolation (BasicLheBlock
                 
                 for (int i=yprev_interpolated;i < yfin_interpolated;i++)
                 {
-                    intermediate_interpolated_image[i*width+x]=downsampled_image[y_sc*width+x];
+                    intermediate_interpolated_image[i*width+x]=downsampled_image[y_sc*width+x];                  
                 }
           
                 yprev_interpolated=yfin_interpolated;
@@ -963,7 +963,7 @@ static void lhe_advanced_horizontal_nearest_neighbour_interpolation (BasicLheBlo
                
             for (int i=xprev_interpolated;i < xfin_interpolated;i++)
             {
-                component_Y[y*linesize+i]=intermediate_interpolated_image[y*width+x_sc];                  
+                component_Y[y*linesize+i]=intermediate_interpolated_image[y*width+x_sc];       
             }
                         
             xprev_interpolated=xfin_interpolated;
@@ -1144,8 +1144,7 @@ static void lhe_advanced_decode_differential_frame (LheState *s,
     for (int block_y=0; block_y<total_blocks_height; block_y++)
     {
         for (int block_x=0; block_x<total_blocks_width; block_x++)
-        {                 
-            
+        {                             
             //Luminance
             lhe_advanced_decode_one_hop_per_pixel_block(&s->prec, 
                                                         basic_block_Y, advanced_block_Y,
@@ -1238,7 +1237,7 @@ static void lhe_advanced_decode_differential_frame (LheState *s,
                                                                      intermediate_interpolated_V, component_V,
                                                                      width_UV, s->frame->linesize[2],
                                                                      block_width_UV, block_height_UV,
-                                                                     block_x, block_y);                                                                  
+                                                                     block_x, block_y);               
         }
     }     
 }
@@ -1453,6 +1452,8 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
                                      image_size_Y, image_size_UV,
                                      s->block_width_Y, s->block_height_Y, s->block_width_UV, s->block_height_UV,
                                      total_blocks_width, total_blocks_height);
+        
+        
     }
     else /*BASIC LHE*/       
     {
@@ -1779,21 +1780,13 @@ static int mlhe_decode_video_frame(AVCodecContext *avctx, void *data, int *got_f
         memcpy(s->last_advanced_block_UV[i], s->advanced_block_UV[i], sizeof(AdvancedLheBlock) * (total_blocks_width));
     }   
     
-
     memcpy (s->last_downsampled_image_Y, s->downsampled_image_Y, image_size_Y);    
     memcpy (s->last_downsampled_image_U, s->downsampled_image_U, image_size_UV);
     memcpy (s->last_downsampled_image_V, s->downsampled_image_V, image_size_UV);
     
     memset(s->downsampled_image_Y, 0, image_size_Y);
     memset(s->downsampled_image_U, 0, image_size_UV);
-    memset(s->downsampled_image_V, 0, image_size_UV);
-    
-    /*
-    if (s->dif_frames_count>=60)
-    {
-        av_freep(&s->last_downsampled_image_Y);
-    } 
-    */
+    memset(s->downsampled_image_V, 0, image_size_UV);  
     
     if ((ret = av_frame_ref(data, s->frame)) < 0)
         return ret;
