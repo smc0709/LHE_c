@@ -153,3 +153,8 @@ For example: big_buck with format YUV420.
   ffmpeg -i big_buck.mlhe big_buck_dec.mp4
   ```
 
+####Play
+  ```
+  ffplay big_buck.mlhe 
+  ```
+

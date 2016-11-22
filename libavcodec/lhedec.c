@@ -1070,11 +1070,25 @@ static void lhe_advanced_decode_symbols (LheState *s,
 //==================================================================
 // VIDEO LHE DECODING
 //==================================================================
-static void lhe_add_delta_to_last_frame (LheState *s, 
-                                         BasicLheBlock **basic_block, AdvancedLheBlock **advanced_block, 
-                                         uint8_t *delta_frame, 
-                                         uint8_t *downsampled_image, uint8_t *last_downsampled_image,
-                                         uint32_t width, uint32_t block_x, uint32_t block_y) 
+
+/**
+ * Adds differential info (delta) to last frame
+ * 
+ * @param *s LHE State
+ * @param **basic_block Basic block parameters
+ * @param **advanced_block Advanced block parameters
+ * @param *delta_frame array containing differential info(delta)
+ * @param *downsampled_image final downsampled image
+ * @param *last_downsampled_image array containing last downsampled data
+ * @param width image width
+ * @param block_x block x index
+ * @param block_y block y index
+ */
+static void mlhe_add_delta_to_last_frame (LheState *s, 
+                                          BasicLheBlock **basic_block, AdvancedLheBlock **advanced_block, 
+                                          uint8_t *delta_frame, 
+                                          uint8_t *downsampled_image, uint8_t *last_downsampled_image,
+                                          uint32_t width, uint32_t block_x, uint32_t block_y) 
 {
     uint32_t xini, xfin, yini, yfin, pix;
     int delta, image;
@@ -1104,20 +1118,54 @@ static void lhe_add_delta_to_last_frame (LheState *s,
     
 }
 
-static void lhe_advanced_decode_differential_frame (LheState *s, 
-                                                    LheHuffEntry *he_Y, LheHuffEntry *he_UV,
-                                                    BasicLheBlock **basic_block_Y, BasicLheBlock **basic_block_UV,
-                                                    AdvancedLheBlock **advanced_block_Y, AdvancedLheBlock **advanced_block_UV,
-                                                    AdvancedLheBlock **last_advanced_block_Y, AdvancedLheBlock **last_advanced_block_UV,
-                                                    uint8_t *first_color_block_Y, uint8_t *first_color_block_U, uint8_t *first_color_block_V,
-                                                    uint8_t *symbols_Y, uint8_t *symbols_U, uint8_t *symbols_V,
-                                                    uint8_t *last_downsampled_image_Y, uint8_t *last_downsampled_image_U, uint8_t *last_downsampled_image_V,
-                                                    uint8_t *downsampled_image_Y, uint8_t *downsampled_image_U, uint8_t *downsampled_image_V,
-                                                    uint8_t *component_Y, uint8_t *component_U, uint8_t *component_V,
-                                                    uint32_t width_Y, uint32_t height_Y, uint32_t width_UV, uint32_t height_UV,
-                                                    uint32_t image_size_Y, uint32_t image_size_UV,
-                                                    uint32_t block_width_Y, uint32_t block_height_Y, uint32_t block_width_UV, uint32_t block_height_UV,
-                                                    uint32_t total_blocks_width, uint32_t total_blocks_height) 
+/**
+ * Decodes differential frame
+ * 
+ * @param *s LHE Context
+ * @param *he_Y luminance Huffman data
+ * @param *he_UV chrominance Huffman data
+ * @param *basic_block_Y luminance basic block 
+ * @param *basic_block_UV chrominance basic block 
+ * @param *advanced_block_Y luminance advanced block for current frame
+ * @param *advanced_block_UV chrominance advanced block for current frame
+ * @param *last_advanced_block_Y luminance advanced block for last frame
+ * @param *last_advanced_block_UV chrominance advanced block for last frame
+ * @param *first_color_block_Y luminance first color block 
+ * @param *first_color_block_U chrominance U first color block
+ * @param *first_color_block_V chrominance V first color block
+ * @param *symbols_Y luminance hops array
+ * @param *symbols_U chrominance U hops array
+ * @param *symbols_V chrominance V hops array
+ * @param component_Y luminance original data
+ * @param *component_U chrominance u original data
+ * @param *component_V chrominance v original data
+ * @param width_Y luminance width
+ * @param height_Y luminance height
+ * @param width_UV chrominance width
+ * @param heigth_UV chorminance height
+ * @param image_size_Y luminance image size
+ * @param image_size_UV chrominance image size
+ * @param block_width_Y luminance block width
+ * @param block_height_Y luminance block height
+ * @param block_width_UV chrominance block width
+ * @param block_height_UV chrominance block height
+ * @param total_blocks_width number of blocks widthwise
+ * @param total_blocks_height number of blocks heightwise
+ */
+static void mlhe_decode_delta_frame (LheState *s, 
+                                     LheHuffEntry *he_Y, LheHuffEntry *he_UV,
+                                     BasicLheBlock **basic_block_Y, BasicLheBlock **basic_block_UV,
+                                     AdvancedLheBlock **advanced_block_Y, AdvancedLheBlock **advanced_block_UV,
+                                     AdvancedLheBlock **last_advanced_block_Y, AdvancedLheBlock **last_advanced_block_UV,
+                                     uint8_t *first_color_block_Y, uint8_t *first_color_block_U, uint8_t *first_color_block_V,
+                                     uint8_t *symbols_Y, uint8_t *symbols_U, uint8_t *symbols_V,
+                                     uint8_t *last_downsampled_image_Y, uint8_t *last_downsampled_image_U, uint8_t *last_downsampled_image_V,
+                                     uint8_t *downsampled_image_Y, uint8_t *downsampled_image_U, uint8_t *downsampled_image_V,
+                                     uint8_t *component_Y, uint8_t *component_U, uint8_t *component_V,
+                                     uint32_t width_Y, uint32_t height_Y, uint32_t width_UV, uint32_t height_UV,
+                                     uint32_t image_size_Y, uint32_t image_size_UV,
+                                     uint32_t block_width_Y, uint32_t block_height_Y, uint32_t block_width_UV, uint32_t block_height_UV,
+                                     uint32_t total_blocks_width, uint32_t total_blocks_height) 
 {
     uint8_t *delta_frame_Y, *delta_frame_U, *delta_frame_V;
     uint8_t *intermediate_adapted_downsampled_data_Y, *intermediate_adapted_downsampled_data_U, *intermediate_adapted_downsampled_data_V;
@@ -1153,17 +1201,17 @@ static void lhe_advanced_decode_differential_frame (LheState *s,
                                                         first_color_block_Y, total_blocks_width, 
                                                         block_x, block_y, block_width_Y, block_height_Y); 
             
-            lhe_video_adapt_downsampled_data_resolution (basic_block_Y, 
-                                                         advanced_block_Y, last_advanced_block_Y,
-                                                         last_downsampled_image_Y, intermediate_adapted_downsampled_data_Y, adapted_downsampled_image_Y,
-                                                         width_Y,
-                                                         block_x, block_y);
+             mlhe_adapt_downsampled_data_resolution (basic_block_Y, 
+                                                     advanced_block_Y, last_advanced_block_Y,
+                                                     last_downsampled_image_Y, intermediate_adapted_downsampled_data_Y, adapted_downsampled_image_Y,
+                                                     width_Y,
+                                                     block_x, block_y);
             
-            lhe_add_delta_to_last_frame (s, 
-                                         basic_block_Y, advanced_block_Y, 
-                                         delta_frame_Y, 
-                                         downsampled_image_Y, adapted_downsampled_image_Y,
-                                         width_Y, block_x, block_y);
+             mlhe_add_delta_to_last_frame (s, 
+                                          basic_block_Y, advanced_block_Y, 
+                                          delta_frame_Y, 
+                                          downsampled_image_Y, adapted_downsampled_image_Y,
+                                          width_Y, block_x, block_y);
             
             lhe_advanced_vertical_nearest_neighbour_interpolation (basic_block_Y, advanced_block_Y,
                                                                    downsampled_image_Y, intermediate_interpolated_Y,
@@ -1185,17 +1233,17 @@ static void lhe_advanced_decode_differential_frame (LheState *s,
                                                         first_color_block_U, total_blocks_width, 
                                                         block_x, block_y, block_width_UV, block_height_UV);
             
-            lhe_video_adapt_downsampled_data_resolution (basic_block_UV, 
-                                                         advanced_block_UV, last_advanced_block_UV,
-                                                         last_downsampled_image_U, intermediate_adapted_downsampled_data_U, adapted_downsampled_image_U,
-                                                         width_UV,
-                                                         block_x, block_y);
+            mlhe_adapt_downsampled_data_resolution (basic_block_UV, 
+                                                    advanced_block_UV, last_advanced_block_UV,
+                                                    last_downsampled_image_U, intermediate_adapted_downsampled_data_U, adapted_downsampled_image_U,
+                                                    width_UV,
+                                                    block_x, block_y);
             
-            lhe_add_delta_to_last_frame (s, 
-                                         basic_block_UV, advanced_block_UV, 
-                                         delta_frame_U, 
-                                         downsampled_image_U, adapted_downsampled_image_U,
-                                         width_UV, block_x, block_y);
+            mlhe_add_delta_to_last_frame (s, 
+                                          basic_block_UV, advanced_block_UV, 
+                                          delta_frame_U, 
+                                          downsampled_image_U, adapted_downsampled_image_U,
+                                          width_UV, block_x, block_y);
             
             lhe_advanced_vertical_nearest_neighbour_interpolation (basic_block_UV, advanced_block_UV,
                                                                    downsampled_image_U, intermediate_interpolated_U,
@@ -1216,17 +1264,17 @@ static void lhe_advanced_decode_differential_frame (LheState *s,
                                                         first_color_block_V, total_blocks_width, 
                                                         block_x, block_y, block_width_UV, block_height_UV);
                    
-            lhe_video_adapt_downsampled_data_resolution (basic_block_UV, 
-                                                         advanced_block_UV, last_advanced_block_UV,
-                                                         last_downsampled_image_V, intermediate_adapted_downsampled_data_V, adapted_downsampled_image_V,
-                                                         width_UV,
-                                                         block_x, block_y);
+            mlhe_adapt_downsampled_data_resolution (basic_block_UV, 
+                                                    advanced_block_UV, last_advanced_block_UV,
+                                                    last_downsampled_image_V, intermediate_adapted_downsampled_data_V, adapted_downsampled_image_V,
+                                                    width_UV,
+                                                    block_x, block_y);
 
-            lhe_add_delta_to_last_frame (s, 
-                                         basic_block_UV, advanced_block_UV, 
-                                         delta_frame_V, 
-                                         downsampled_image_V, adapted_downsampled_image_V,
-                                         width_UV, block_x, block_y);
+            mlhe_add_delta_to_last_frame (s, 
+                                          basic_block_UV, advanced_block_UV, 
+                                          delta_frame_V, 
+                                          downsampled_image_V, adapted_downsampled_image_V,
+                                          width_UV, block_x, block_y);
              
             lhe_advanced_vertical_nearest_neighbour_interpolation (basic_block_UV, advanced_block_UV, 
                                                                    downsampled_image_V, intermediate_interpolated_V,
@@ -1502,7 +1550,7 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
 //==================================================================
 // DECODE VIDEO FRAME
 //==================================================================
-static int mlhe_decode_video_frame(AVCodecContext *avctx, void *data, int *got_frame, AVPacket *avpkt)
+static int mlhe_decode_video(AVCodecContext *avctx, void *data, int *got_frame, AVPacket *avpkt)
 {    
     uint8_t lhe_mode, pixel_format, quality_level;
     uint8_t *hops_Y, *hops_U, *hops_V;
@@ -1640,20 +1688,20 @@ static int mlhe_decode_video_frame(AVCodecContext *avctx, void *data, int *got_f
                                             width_Y, height_Y, width_UV, height_UV, 
                                             total_blocks_width, total_blocks_height);
         
-        lhe_advanced_decode_differential_frame (s, 
-                                                he_Y, he_UV,
-                                                s->basic_block_Y, s->basic_block_UV,
-                                                s->advanced_block_Y, s->advanced_block_UV,
-                                                s->last_advanced_block_Y, s->last_advanced_block_UV,
-                                                first_color_block_Y, first_color_block_U, first_color_block_V,
-                                                hops_Y, hops_U, hops_V,
-                                                s->last_downsampled_image_Y, s->last_downsampled_image_U, s->last_downsampled_image_V,
-                                                s->downsampled_image_Y, s->downsampled_image_U, s->downsampled_image_V,
-                                                component_Y, component_U, component_V,
-                                                width_Y, height_Y, width_UV, height_UV,
-                                                image_size_Y, image_size_UV,
-                                                s->block_width_Y, s->block_height_Y, s->block_width_UV, s->block_height_UV,
-                                                total_blocks_width, total_blocks_height);
+        mlhe_decode_delta_frame (s, 
+                                 he_Y, he_UV,
+                                 s->basic_block_Y, s->basic_block_UV,
+                                 s->advanced_block_Y, s->advanced_block_UV,
+                                 s->last_advanced_block_Y, s->last_advanced_block_UV,
+                                 first_color_block_Y, first_color_block_U, first_color_block_V,
+                                 hops_Y, hops_U, hops_V,
+                                 s->last_downsampled_image_Y, s->last_downsampled_image_U, s->last_downsampled_image_V,
+                                 s->downsampled_image_Y, s->downsampled_image_U, s->downsampled_image_V,
+                                 component_Y, component_U, component_V,
+                                 width_Y, height_Y, width_UV, height_UV,
+                                 image_size_Y, image_size_UV,
+                                 s->block_width_Y, s->block_height_Y, s->block_width_UV, s->block_height_UV,
+                                 total_blocks_width, total_blocks_height);
     } 
     else 
     {
@@ -1836,6 +1884,6 @@ AVCodec ff_mlhe_decoder = {
     .priv_data_size = sizeof(LheState),
     .init           = lhe_decode_init,
     .close          = lhe_decode_close,
-    .decode         = mlhe_decode_video_frame,
+    .decode         = mlhe_decode_video,
     .priv_class     = &decoder_class,
 };

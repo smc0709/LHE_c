@@ -363,15 +363,10 @@ float lhe_advanced_perceptual_relevance_to_ppp (AdvancedLheBlock **array_block_Y
  *     2  +-------+  3                             +  
  *          side d                                  any shape
  * 
- * @param **array_block_Y Block parameters for luminance
- * @param block_array_UV Block parameters for chrominances
- * @param ***ppp_x pixels per pixel in x coordinate
- * @param ***ppp_y Pixels per pixel in y coordinate
- * @param width_image_Y Image width for luminance
- * @param height_image_Y Image height for luminance
- * @param width_image_UV Image width for chrominances 
- * @param height_image_UV Image height for chrominances
- * @param block_length Block length
+ * @param **basic_block Block basic parameters
+ * @param **advanced_block Block advanced parameters
+ * @param image_width Image width 
+ * @param image_height Image height 
  * @param ppp_max Maximum number of pixels per pixel
  * @param block_x Block x index
  * @param block_y Block y index                                                        
@@ -1024,12 +1019,24 @@ void lhe_init_cache (LheBasicPrec *prec)
 // LHE VIDEO 
 // Video methods for both LHE encoder and decoder .
 //==================================================================
-
-void lhe_video_adapt_downsampled_data_resolution (BasicLheBlock **basic_block, 
-                                                  AdvancedLheBlock **advanced_block, AdvancedLheBlock **last_advanced_block,
-                                                  uint8_t *downsampled_data, uint8_t *intermediate_adapted_downsampled_data, uint8_t *adapted_downsampled_data,
-                                                  uint32_t width,
-                                                  int block_x, int block_y)
+/**
+ * Adapts resolution of one block from last frame and the same block of the current frame
+ * 
+ * @param **basic_block Block basic parameters
+ * @param **advanced_block Block advanced parameters of the current frame
+ * @param **last_advanced_block Block advanced parameters of the last frame
+ * @param *downsampled_data Array with downsampled data from last frame
+ * @param *intermediate_adapted_downsampled_data Array with y coordinate adapted
+ * @param *adapted_downsampled_data Array with last frame adapted data
+ * @param width image width
+ * @param block_x Block x index
+ * @param block_y Block y index               
+ */
+void mlhe_adapt_downsampled_data_resolution (BasicLheBlock **basic_block, 
+                                             AdvancedLheBlock **advanced_block, AdvancedLheBlock **last_advanced_block,
+                                             uint8_t *downsampled_data, uint8_t *intermediate_adapted_downsampled_data, uint8_t *adapted_downsampled_data,
+                                             uint32_t width,
+                                             int block_x, int block_y)
 {
     uint32_t xini, xfin, yini, yfin, last_xfin, last_yfin;
     uint32_t downsampled_x_side, downsampled_y_side, last_downsampled_x_side, last_downsampled_y_side;

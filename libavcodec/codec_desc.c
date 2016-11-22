@@ -1418,14 +1418,6 @@ static const AVCodecDescriptor codec_descriptors[] = {
 
     },
     {
-        .id        = AV_CODEC_ID_LHE,
-        .type      = AVMEDIA_TYPE_VIDEO,
-        .name      = "mlhe",
-        .long_name = NULL_IF_CONFIG_SMALL("M-LHE"),
-        .mime_types= MT("image/lhe"),
-        .props     = AV_CODEC_PROP_LOSSY,
-    },
-    {
         .id        = AV_CODEC_ID_LJPEG,
         .type      = AVMEDIA_TYPE_VIDEO,
         .name      = "ljpeg",

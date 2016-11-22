@@ -231,8 +231,7 @@ void avcodec_register_all(void)
     REGISTER_DECODER(MIMIC,             mimic);
     REGISTER_ENCDEC (MJPEG,             mjpeg);
     REGISTER_DECODER(MJPEGB,            mjpegb);
-    REGISTER_ENCDEC (MJPEG,             mjpeg);
-    REGISTER_ENCDEC (MLHE,             mlhe);
+    REGISTER_ENCDEC (MLHE,              mlhe);
     REGISTER_DECODER(MMVIDEO,           mmvideo);
     REGISTER_DECODER(MOTIONPIXELS,      motionpixels);
 #if FF_API_XVMC
