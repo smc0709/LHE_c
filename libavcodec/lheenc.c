@@ -51,12 +51,6 @@ typedef struct LheContext {
     AVClass *class;    
     LheBasicPrec prec;
     PutBitContext pb;
-    uint8_t chroma_factor_width;
-    uint8_t chroma_factor_height;
-    int pr_metrics;
-    int basic_lhe;
-    int ql;
-    int subsampling_average;
     BasicLheBlock **basic_block_Y;
     BasicLheBlock **basic_block_UV;
     AdvancedLheBlock **advanced_block_Y;
@@ -77,6 +71,12 @@ typedef struct LheContext {
     uint8_t *downsampled_error_data_Y;
     uint8_t *downsampled_error_data_U;
     uint8_t *downsampled_error_data_V; 
+    uint8_t chroma_factor_width;
+    uint8_t chroma_factor_height;
+    int pr_metrics;
+    int basic_lhe;
+    int ql;
+    int subsampling_average;
     int dif_frames_count;
 } LheContext;
 
@@ -1249,8 +1249,7 @@ static float lhe_advanced_compute_prx (LheBasicPrec *prec,
                                        int xini, int xfin, int yini, int yfin, 
                                        int linesize, 
                                        uint8_t sps_ratio_height)
-{      
-    
+{          
     //Hops computation.
     bool small_hop, last_small_hop;
     uint8_t predicted_component, hop_1, hop_number, original_color, r_max;
@@ -1349,6 +1348,7 @@ static float lhe_advanced_compute_prx (LheBasicPrec *prec,
     return prx;
 }
 
+
 /**
  * Performs Basic LHE and computes PRy
  * 
@@ -1413,7 +1413,6 @@ static float lhe_advanced_compute_pry (LheBasicPrec *prec,
                 last_small_hop=false;
                 hop_1=START_HOP_1;
                 predicted_component=original_color;//first pixel always is perfectly predicted! :-)  
-
             } else {
                 predicted_component=last_prediction;
             }
@@ -1610,7 +1609,6 @@ static void lhe_advanced_compute_perceptual_relevance (LheBasicPrec *prec,
             lhe_advanced_pr_histogram_expansion_and_quantization (perceptual_relevance_x, perceptual_relevance_y,
                                                                   prx, pry,
                                                                   block_x, block_y) ;  
-                                                                  
         }
     }
 }
@@ -2227,7 +2225,6 @@ static float lhe_advanced_encode (LheContext *s, const AVFrame *frame,
                                                       block_x, block_y);
             }
 
-            
             //LUMINANCE                                     
             //Encode downsampled blocks                          
             lhe_advanced_encode_block (&s->prec, 

@@ -65,6 +65,7 @@ You will need yasm
   ```
   sudo apt-get install yasm
   ```
+
 It is recommendable to install OpenMP
 
 Check gcc version:
