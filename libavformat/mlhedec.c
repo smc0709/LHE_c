@@ -34,6 +34,7 @@ typedef struct MlheDemuxContext {
     const AVClass *class;
     int nb_frames;
     int last_duration;
+    int delay;
 } MlheDemuxContext;
 
 
@@ -82,8 +83,7 @@ static int mlhe_read_header(AVFormatContext *s)
     if (!st)
         return AVERROR(ENOMEM);
 
-    /* GIF format operates with time in "hundredths of second",
-     * therefore timebase is 1/100 */
+    /* Timebase is 1/100 */
     avpriv_set_pts_info(st, 64, 1, 100);
     st->codecpar->codec_type = AVMEDIA_TYPE_VIDEO;
     st->codecpar->codec_id   = AV_CODEC_ID_MLHE;
@@ -130,8 +130,9 @@ static int mlhe_read_packet(AVFormatContext *s, AVPacket *pkt)
     
     while (MLHE_TRAILER != block_label && !avio_feof(pb)) {
         
-        if (block_label == MLHE_EXTENSION_INTRODUCER) {            
+        if (block_label == MLHE_EXTENSION_INTRODUCER) {  
             
+            mlhe->delay = avio_rl16(pb);
             pkt_size = avio_rl32(pb);
                         
             frame_start = avio_tell(pb);
@@ -152,7 +153,8 @@ static int mlhe_read_packet(AVFormatContext *s, AVPacket *pkt)
                 pkt->flags |= AV_PKT_FLAG_KEY;
 
             pkt->stream_index = 0;
-
+            pkt->duration = mlhe->delay;
+            
             mlhe->nb_frames ++;
             mlhe->last_duration = pkt->duration;
 
