@@ -240,6 +240,8 @@ const AVCodecTag ff_codec_movvideo_tags[] = {
     { AV_CODEC_ID_GIF,   MKTAG('g', 'i', 'f', ' ') }, /* embedded gif files as frames (usually one "click to play movie" frame) */
     { AV_CODEC_ID_PNG,   MKTAG('p', 'n', 'g', ' ') },
     { AV_CODEC_ID_PNG,   MKTAG('M', 'N', 'G', ' ') },
+    
+    { AV_CODEC_ID_MLHE,   MKTAG('m', 'l', 'h', 'e') }, /* embedded lhe files as frames*/
 
     { AV_CODEC_ID_VC1, MKTAG('v', 'c', '-', '1') }, /* SMPTE RP 2025 */
     { AV_CODEC_ID_CAVS, MKTAG('a', 'v', 's', '2') },

@@ -61,7 +61,11 @@ This project comprises following components:
 - Advanced LHE compressor/decompressor: elegible quality
 
 ###Prerequisites
-
+You will need yasm
+  ```
+  sudo apt-get install yasm
+  ```
+  
 It is recommendable to install OpenMP
 
 Check gcc version:
@@ -81,6 +85,8 @@ Check gcc version:
   ```
   sudo apt-get install libgomp1
   ```
+  
+More instructions can be found here: https://trac.ffmpeg.org/wiki/CompilationGuide/Ubuntu
 
 ###Compile and Install
 
@@ -134,4 +140,22 @@ If extracting planes (YUV) is required:
 
   ```
   ffmpeg -i lena.lhe -filter_complex "extractplanes=y+u+v[y][u][v]" -map [y] lenay.bmp -map [u] lenau.bmp -map [v] lenav.bmp
+  ```
+
+###Video LHE
+For example: big_buck with format YUV420.
+
+####Encode
+  ```
+  ffmpeg -i big_buck.mp4 -pix_fmt yuv420p big_buck.mlhe (care with extension is mlhe instead of lhe)
+  ```
+
+####Decode
+  ```
+  ffmpeg -i big_buck.mlhe big_buck_dec.mp4
+  ```
+
+####Play
+  ```
+  ffplay big_buck.mlhe 
   ```

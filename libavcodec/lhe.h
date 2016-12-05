@@ -29,6 +29,13 @@
 #define LHE_YUV422 1
 #define LHE_YUV444 2
 
+//VIDEO PARAMS
+static const uint8_t mlhe_sig[4] = "MLHE";
+
+#define MLHE_TRAILER                 0x3b
+#define MLHE_EXTENSION_INTRODUCER    0x21
+#define MLHE_IMAGE_SEPARATOR         0x2c
+
 //Configuration 
 #define SEQUENTIAL_BASIC_LHE 0
 #define PARAREL_BASIC_LHE 1
@@ -197,3 +204,13 @@ void lhe_advanced_ppp_side_to_rectangle_shape (BasicLheBlock **basic_block, Adva
                                                uint32_t image_width, uint32_t image_height, 
                                                float ppp_max, 
                                                int block_x, int block_y);
+
+/**
+ * VIDEO LHE
+ * Common functions encoder and decoder
+ */
+void mlhe_adapt_downsampled_data_resolution (BasicLheBlock **basic_block, 
+                                             AdvancedLheBlock **advanced_block, AdvancedLheBlock **last_advanced_block,
+                                             uint8_t *downsampled_data, uint8_t *intermediate_adapted_downsampled_data, uint8_t *downsampled_data_adapted,
+                                             uint32_t width,
+                                             int block_x, int block_y);
