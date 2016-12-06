@@ -2589,6 +2589,208 @@ static void mlhe_delta_frame_encode (LheContext *s,
 
 
 
+/**
+ * Writes MLHE delta frame 
+ * 
+ * @param *avctx Pointer to AVCodec context
+ * @param *pkt Pointer to AVPacket 
+ * @param **basic_block_Y Basic block parameters for luminance signal
+ * @param **basic_block_UV Basic block parameters for chrominance signals
+ * @param **advanced_block_Y Advanced block parameters for luminance signal
+ * @param **advanced_block_UV Advanced block parameters for chrominance signals
+ * @param width_Y Width of luminance
+ * @param heigth_Y Height of luminance
+ * @param width_UV Width of chrominance
+ * @param height_UV Height of chrominance
+ * @param total_blocks_width Number of blocks widthwise
+ * @param total_blocks_height Number of blocks heightwise
+ * @param block_width_Y luminance block width
+ * @param block_with_UV chrominance block width
+ * @param block_height_Y luminance block height
+ * @param block_height_UV chrominance block height
+ * @param *first_pixel_blocks_Y First luminance component of each block
+ * @param *first_pixel_blocks_U First chrominance U component of each block
+ * @param *first_pixel_blocks_V First chrominance V component of each block
+ * @param **perceptual_relevance_x Perceptual Relevance X coordinate
+ * @param **perceptual_relevance_y Perceptual Relevance Y coordinate
+ * @param *hops_Y Luminance hops
+ * @param *hops_U Chrominance U hops
+ * @param *hops_V Chrominance V hops
+ */
+static int mlhe_advanced_write_delta_frame(AVCodecContext *avctx, AVPacket *pkt, 
+                                           BasicLheBlock **basic_block_Y, BasicLheBlock **basic_block_UV,
+                                           AdvancedLheBlock **advanced_block_Y, AdvancedLheBlock **advanced_block_UV,
+                                           uint32_t width_Y, uint32_t height_Y,
+                                           uint32_t width_UV, uint32_t height_UV,
+                                           uint8_t total_blocks_width, uint8_t total_blocks_height,                                       
+                                           uint32_t block_width_Y, uint32_t block_width_UV, uint32_t block_height_Y, uint32_t block_height_UV,
+                                           uint8_t *first_pixel_blocks_Y, uint8_t *first_pixel_blocks_U, uint8_t *first_pixel_blocks_V,
+                                           float **perceptual_relevance_x, float **perceptual_relevance_y,
+                                           uint8_t *hops_Y, uint8_t *hops_U, uint8_t *hops_V) 
+{
+  
+    uint8_t *buf;
+    uint8_t pr_interval;
+    uint64_t n_bits_hops, n_bits_mesh, n_bytes, n_bytes_components, n_bytes_mesh, total_blocks;
+    uint32_t xini_Y, xfin_downsampled_Y, yini_Y, yfin_downsampled_Y, xini_UV, xfin_downsampled_UV, yini_UV, yfin_downsampled_UV; 
+    uint64_t pix;
+        
+    int i, ret;
+        
+    struct timeval before , after;
+   
+    LheHuffEntry he_mesh[LHE_MAX_HUFF_SIZE_MESH]; //Struct for mesh Huffman data
+    LheHuffEntry he_Y[LHE_MAX_HUFF_SIZE_SYMBOLS]; //Struct for luminance Huffman data
+    LheHuffEntry he_UV[LHE_MAX_HUFF_SIZE_SYMBOLS]; //Struct for chrominance Huffman data
+
+    LheContext *s = avctx->priv_data;
+        
+    total_blocks = total_blocks_height * total_blocks_width;
+    
+    //Generates HUffman
+    n_bits_mesh = lhe_advanced_gen_huffman_mesh (he_mesh, 
+                                                 perceptual_relevance_x, perceptual_relevance_y,                                          
+                                                 total_blocks_width, total_blocks_height);
+  
+    n_bytes_mesh = (n_bits_mesh / 8) + 1;
+    
+    n_bits_hops = lhe_advanced_gen_huffman (he_Y, he_UV, 
+                                            basic_block_Y, basic_block_UV,
+                                            advanced_block_Y, advanced_block_UV,
+                                            hops_Y, hops_U, hops_V, 
+                                            width_Y, width_UV, height_Y, height_UV,
+                                            block_width_Y, block_height_Y, block_width_UV, block_height_UV,
+                                            total_blocks_width, total_blocks_height);
+     
+    n_bytes_components = (n_bits_hops/8) + 1;           
+    
+    //File size
+    n_bytes = total_blocks * (sizeof(*first_pixel_blocks_Y) + sizeof(*first_pixel_blocks_U) + sizeof(*first_pixel_blocks_V)) //first pixel blocks array value
+              + LHE_HUFFMAN_TABLE_BYTES_MESH
+              + LHE_HUFFMAN_TABLE_BYTES_SYMBOLS + //huffman table
+              + n_bytes_mesh 
+              + n_bytes_components
+              + FILE_OFFSET_BYTES; //components
+                            
+    //ff_alloc_packet2 reserves n_bytes of memory
+    if ((ret = ff_alloc_packet2(avctx, pkt, n_bytes, 0)) < 0)
+        return ret;
+
+    buf = pkt->data; //Pointer to write buffer   
+
+    //Save first delta for each block
+    for (i=0; i<total_blocks; i++) 
+    {
+        bytestream_put_byte(&buf, first_pixel_blocks_Y[i]);
+    }
+    
+    for (i=0; i<total_blocks; i++) 
+    {
+        bytestream_put_byte(&buf, first_pixel_blocks_U[i]);
+
+    }
+    
+    for (i=0; i<total_blocks; i++) 
+    {
+        bytestream_put_byte(&buf, first_pixel_blocks_V[i]);       
+    }
+         
+    init_put_bits(&s->pb, buf, LHE_HUFFMAN_TABLE_BYTES_MESH + LHE_HUFFMAN_TABLE_BYTES_SYMBOLS + n_bytes_mesh + n_bytes_components + FILE_OFFSET_BYTES);
+
+    //Write Huffman tables 
+    for (i=0; i<LHE_MAX_HUFF_SIZE_SYMBOLS; i++)
+    {
+        if (he_Y[i].len==255) he_Y[i].len=LHE_HUFFMAN_NO_OCCURRENCES_SYMBOLS;
+        put_bits(&s->pb, LHE_HUFFMAN_NODE_BITS_SYMBOLS, he_Y[i].len);
+    }
+    
+    for (i=0; i<LHE_MAX_HUFF_SIZE_SYMBOLS; i++)
+    {
+        if (he_UV[i].len==255) he_UV[i].len=LHE_HUFFMAN_NO_OCCURRENCES_SYMBOLS;
+        put_bits(&s->pb, LHE_HUFFMAN_NODE_BITS_SYMBOLS, he_UV[i].len);
+    } 
+    
+    for (i=0; i<LHE_MAX_HUFF_SIZE_MESH; i++)
+    {
+        if (he_mesh[i].len==255) he_mesh[i].len=LHE_HUFFMAN_NO_OCCURRENCES_MESH;
+        put_bits(&s->pb, LHE_HUFFMAN_NODE_BITS_MESH, he_mesh[i].len);
+    }
+    
+    //Write mesh. First PRX, then PRY because it eases the decoding task
+    //Perceptual Relevance x intervals
+    for (int block_y=0; block_y<total_blocks_height+1; block_y++) 
+    {
+        for (int block_x=0; block_x<total_blocks_width+1; block_x++) 
+        { 
+            pr_interval = lhe_advanced_translate_pr_into_mesh(perceptual_relevance_x[block_y][block_x]);
+            put_bits(&s->pb, he_mesh[pr_interval].len, he_mesh[pr_interval].code);
+        }
+    }
+    
+     //Perceptual relevance y intervals
+    for (int block_y=0; block_y<total_blocks_height+1; block_y++) 
+    {
+        for (int block_x=0; block_x<total_blocks_width+1; block_x++) 
+        { 
+            pr_interval = lhe_advanced_translate_pr_into_mesh(perceptual_relevance_y[block_y][block_x]);
+            put_bits(&s->pb, he_mesh[pr_interval].len, he_mesh[pr_interval].code);
+
+        }
+    }
+    
+    //Write hops
+    for (int block_y=0; block_y<total_blocks_height; block_y++) 
+    {
+        for (int block_x=0; block_x<total_blocks_width; block_x++)
+        {
+            xini_Y = basic_block_Y[block_y][block_x].x_ini;
+            yini_Y = basic_block_Y[block_y][block_x].y_ini;
+            
+            xfin_downsampled_Y = advanced_block_Y[block_y][block_x].x_fin_downsampled;          
+            yfin_downsampled_Y = advanced_block_Y[block_y][block_x].y_fin_downsampled;
+               
+            xini_UV = basic_block_UV[block_y][block_x].x_ini;
+            yini_UV = basic_block_UV[block_y][block_x].y_ini;
+            
+            xfin_downsampled_UV = advanced_block_UV[block_y][block_x].x_fin_downsampled;
+            yfin_downsampled_UV = advanced_block_UV[block_y][block_x].y_fin_downsampled;
+         
+            //LUMINANCE
+            for (int y=yini_Y; y<yfin_downsampled_Y; y++) 
+            {
+                for (int x=xini_Y; x<xfin_downsampled_Y; x++) {
+                    pix = y*width_Y + x;
+                    put_bits(&s->pb, he_Y[hops_Y[pix]].len , he_Y[hops_Y[pix]].code);
+                }
+            }
+            
+            //CHROMINANCE U
+            for (int y=yini_UV; y<yfin_downsampled_UV; y++) 
+            {
+                for (int x=xini_UV; x<xfin_downsampled_UV; x++) {
+                    pix = y*width_UV + x;
+                    put_bits(&s->pb, he_UV[hops_U[pix]].len , he_UV[hops_U[pix]].code);
+                }
+            }
+            
+            //CHROMINANCE_V
+            for (int y=yini_UV; y<yfin_downsampled_UV; y++) 
+            {
+                for (int x=xini_UV; x<xfin_downsampled_UV; x++) {
+                    pix = y*width_UV + x;
+                    put_bits(&s->pb, he_UV[hops_V[pix]].len , he_UV[hops_V[pix]].code);
+                }
+            }
+        }
+    }
+
+    put_bits(&s->pb, FILE_OFFSET_BITS , 0);
+    
+    return n_bytes;
+}
+
+
+
 //==================================================================
 // ENCODE FRAME
 //==================================================================
@@ -2773,8 +2975,7 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
         gettimeofday(&after , NULL);
 
         av_log (NULL, AV_LOG_INFO, "Advanced LHE with ql = %d and cf = %f \n",s->ql, compression_factor); 
-
-
+                   
         lhe_advanced_write_lhe_file(avctx, pkt, 
                                     s->basic_block_Y, s->basic_block_UV, s->advanced_block_Y, s->advanced_block_UV,
                                     image_size_Y, width_Y, height_Y,
@@ -2784,7 +2985,7 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
                                     first_color_block_Y, first_color_block_U, first_color_block_V,
                                     s->perceptual_relevance_x, s->perceptual_relevance_y,                                           
                                     hops_Y, hops_U, hops_V,
-                                    s->ql);         
+                                    s->ql);   
     }
 
     if(avctx->flags&AV_CODEC_FLAG_PSNR){
@@ -2884,17 +3085,17 @@ static int mlhe_encode_video(AVCodecContext *avctx, AVPacket *pkt,
                                  frame->linesize[0], frame->linesize[1], frame->linesize[2],
                                  total_blocks_width, total_blocks_height, 
                                  block_width_Y, block_height_Y, block_width_UV, block_height_UV); 
-                
-        lhe_advanced_write_lhe_file(avctx, pkt, 
-                                    s->basic_block_Y, s->basic_block_UV, s->advanced_block_Y, s->advanced_block_UV,
-                                    image_size_Y, width_Y, height_Y,
-                                    image_size_UV, width_UV, height_UV,
-                                    total_blocks_width, total_blocks_height,                                       
-                                    block_width_Y, block_width_UV, block_height_Y, block_height_UV,
-                                    first_color_block_Y, first_color_block_U, first_color_block_V,
-                                    s->perceptual_relevance_x, s->perceptual_relevance_y,                                           
-                                    hops_Y, hops_U, hops_V,
-                                    s->ql);        
+        
+        mlhe_advanced_write_delta_frame(avctx, pkt, 
+                                        s->basic_block_Y, s->basic_block_UV, s->advanced_block_Y, s->advanced_block_UV,
+                                        width_Y, height_Y,
+                                        width_UV, height_UV,
+                                        total_blocks_width, total_blocks_height,                                       
+                                        block_width_Y, block_width_UV, block_height_Y, block_height_UV,
+                                        first_color_block_Y, first_color_block_U, first_color_block_V,
+                                        s->perceptual_relevance_x, s->perceptual_relevance_y,                                           
+                                        hops_Y, hops_U, hops_V); 
+   
     }      
     else 
     {
