@@ -178,8 +178,21 @@ typedef struct LheProcessing {
     AdvancedLheBlock **advanced_block;
     AdvancedLheBlock **last_advanced_block;
     float **perceptual_relevance_x;
-    float **perceptual_relevance_y;
+    float **perceptual_relevance_y;  
+    uint32_t width;
+    uint32_t height;
+    uint32_t block_width;
+    uint32_t block_height;
 } LheProcessing;
+
+typedef struct LheImage {
+    uint8_t *first_color_block;
+    uint8_t *component_prediction;
+    uint8_t *downsampled_image;
+    uint8_t *last_downsampled_image; 
+    uint8_t *downsampled_error_image;
+    uint8_t *hops;
+} LheImage;
 
 int lhe_generate_huffman_codes(LheHuffEntry *he,  int max_huff_size);
 double time_diff(struct timeval x , struct timeval y);
