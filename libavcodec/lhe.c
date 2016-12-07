@@ -161,6 +161,7 @@ int lhe_generate_huffman_codes(LheHuffEntry *he, int max_huff_size)
 /**
  * Calculates init x, init y, final x, final y for each block of luminance and chrominance signals.
  * 
+ * @param *proc Lhe processing params
  * @param block_array_Y Block parameters for luminance
  * @param block_array_UV Block parameters for chrominances
  * @param block_width_Y Block width for luminance
@@ -174,7 +175,7 @@ int lhe_generate_huffman_codes(LheHuffEntry *he, int max_huff_size)
  * @param block_x block x index
  * @param block_y block y index
  */
-void lhe_calculate_block_coordinates (BasicLheBlock **block_array_Y, BasicLheBlock **block_array_UV,
+void lhe_calculate_block_coordinates (LheProcessing *procY, LheProcessing *procUV,
                                       uint32_t block_width_Y, uint32_t block_height_Y,                             
                                       uint32_t block_width_UV, uint32_t block_height_UV, 
                                       uint32_t width_image_Y, uint32_t height_image_Y,
@@ -214,33 +215,28 @@ void lhe_calculate_block_coordinates (BasicLheBlock **block_array_Y, BasicLheBlo
         yfin_UV = height_image_UV;
     }
 
-    block_array_Y[block_y][block_x].x_ini = xini_Y;
-    block_array_Y[block_y][block_x].x_fin = xfin_Y;
-    block_array_Y[block_y][block_x].y_ini = yini_Y;
-    block_array_Y[block_y][block_x].y_fin = yfin_Y;
+    procY->basic_block[block_y][block_x].x_ini = xini_Y;
+    procY->basic_block[block_y][block_x].x_fin = xfin_Y;
+    procY->basic_block[block_y][block_x].y_ini = yini_Y;
+    procY->basic_block[block_y][block_x].y_fin = yfin_Y;
     
-    block_array_UV[block_y][block_x].x_ini = xini_UV;
-    block_array_UV[block_y][block_x].x_fin = xfin_UV;
-    block_array_UV[block_y][block_x].y_ini = yini_UV;
-    block_array_UV[block_y][block_x].y_fin = yfin_UV;
+    procUV->basic_block[block_y][block_x].x_ini = xini_UV;
+    procUV->basic_block[block_y][block_x].x_fin = xfin_UV;
+    procUV->basic_block[block_y][block_x].y_ini = yini_UV;
+    procUV->basic_block[block_y][block_x].y_fin = yfin_UV;
 }
 
 /**
  * Transforms perceptual relevance to pixels per pixels
  * 
- * @param ***ppp_x pixels per pixel in x coordinate
- * @param ***ppp_y pixels per pixel in y coordinate
- * @param **perceptual_relevance_x perceptual relevance in x coordinate
- * @param **perceptual_relevance_y perceptual relevance in y coordinate
+ * @param *proc Lhe processing params
  * @param compression_factor compression factor 
  * @param ppp_max_theoric maximum number of pixels per pixel
  * @param block_x block x index
  * @param block_y block y index
  */
-float lhe_advanced_perceptual_relevance_to_ppp (AdvancedLheBlock **array_block_Y, AdvancedLheBlock **array_block_UV,
-                                                float ** perceptual_relevance_x, float ** perceptual_relevance_y,
-                                                float compression_factor,
-                                                uint32_t ppp_max_theoric,
+float lhe_advanced_perceptual_relevance_to_ppp (LheProcessing *procY, LheProcessing *procUV,
+                                                float compression_factor, uint32_t ppp_max_theoric,
                                                 int block_x, int block_y) 
 {
     float const1, const2, ppp_min, ppp_max;
@@ -251,15 +247,15 @@ float lhe_advanced_perceptual_relevance_to_ppp (AdvancedLheBlock **array_block_Y
     const1 = ppp_max_theoric - 1.0;
     const2 = ppp_max_theoric * compression_factor;
     
-    perceptual_relevance_x_0 = perceptual_relevance_x[block_y][block_x];
-    perceptual_relevance_x_1 = perceptual_relevance_x[block_y][block_x+1];
-    perceptual_relevance_x_2 = perceptual_relevance_x[block_y+1][block_x];
-    perceptual_relevance_x_3 = perceptual_relevance_x[block_y+1][block_x+1];
+    perceptual_relevance_x_0 = procY->perceptual_relevance_x[block_y][block_x];
+    perceptual_relevance_x_1 = procY->perceptual_relevance_x[block_y][block_x+1];
+    perceptual_relevance_x_2 = procY->perceptual_relevance_x[block_y+1][block_x];
+    perceptual_relevance_x_3 = procY->perceptual_relevance_x[block_y+1][block_x+1];
     
-    perceptual_relevance_y_0 = perceptual_relevance_y[block_y][block_x];
-    perceptual_relevance_y_1 = perceptual_relevance_y[block_y][block_x+1];
-    perceptual_relevance_y_2 = perceptual_relevance_y[block_y+1][block_x];
-    perceptual_relevance_y_3 = perceptual_relevance_y[block_y+1][block_x+1];
+    perceptual_relevance_y_0 = procY->perceptual_relevance_y[block_y][block_x];
+    perceptual_relevance_y_1 = procY->perceptual_relevance_y[block_y][block_x+1];
+    perceptual_relevance_y_2 = procY->perceptual_relevance_y[block_y+1][block_x];
+    perceptual_relevance_y_3 = procY->perceptual_relevance_y[block_y+1][block_x+1];
         
     ppp_x_0 = const2 / (1.0 + const1 * perceptual_relevance_x_0);
     ppp_x_1 = const2 / (1.0 + const1 * perceptual_relevance_x_1);     
@@ -321,25 +317,25 @@ float lhe_advanced_perceptual_relevance_to_ppp (AdvancedLheBlock **array_block_Y
     if (ppp_y_2 > ppp_max) ppp_y_2 = ppp_max;
     if (ppp_y_3 > ppp_max) ppp_y_3 = ppp_max;
     
-    array_block_Y[block_y][block_x].ppp_x[TOP_LEFT_CORNER] = ppp_x_0;
-    array_block_Y[block_y][block_x].ppp_x[TOP_RIGHT_CORNER] = ppp_x_1;
-    array_block_Y[block_y][block_x].ppp_x[BOT_LEFT_CORNER] = ppp_x_2;
-    array_block_Y[block_y][block_x].ppp_x[BOT_RIGHT_CORNER] = ppp_x_3;
+    procY->advanced_block[block_y][block_x].ppp_x[TOP_LEFT_CORNER] = ppp_x_0;
+    procY->advanced_block[block_y][block_x].ppp_x[TOP_RIGHT_CORNER] = ppp_x_1;
+    procY->advanced_block[block_y][block_x].ppp_x[BOT_LEFT_CORNER] = ppp_x_2;
+    procY->advanced_block[block_y][block_x].ppp_x[BOT_RIGHT_CORNER] = ppp_x_3;
     
-    array_block_Y[block_y][block_x].ppp_y[TOP_LEFT_CORNER] = ppp_y_0;
-    array_block_Y[block_y][block_x].ppp_y[TOP_RIGHT_CORNER] = ppp_y_1;
-    array_block_Y[block_y][block_x].ppp_y[BOT_LEFT_CORNER] = ppp_y_2;
-    array_block_Y[block_y][block_x].ppp_y[BOT_RIGHT_CORNER] = ppp_y_3;
+    procY->advanced_block[block_y][block_x].ppp_y[TOP_LEFT_CORNER] = ppp_y_0;
+    procY->advanced_block[block_y][block_x].ppp_y[TOP_RIGHT_CORNER] = ppp_y_1;
+    procY->advanced_block[block_y][block_x].ppp_y[BOT_LEFT_CORNER] = ppp_y_2;
+    procY->advanced_block[block_y][block_x].ppp_y[BOT_RIGHT_CORNER] = ppp_y_3;
     
-    array_block_UV[block_y][block_x].ppp_x[TOP_LEFT_CORNER] = ppp_x_0;
-    array_block_UV[block_y][block_x].ppp_x[TOP_RIGHT_CORNER] = ppp_x_1;
-    array_block_UV[block_y][block_x].ppp_x[BOT_LEFT_CORNER] = ppp_x_2;
-    array_block_UV[block_y][block_x].ppp_x[BOT_RIGHT_CORNER] = ppp_x_3;
+    procUV->advanced_block[block_y][block_x].ppp_x[TOP_LEFT_CORNER] = ppp_x_0;
+    procUV->advanced_block[block_y][block_x].ppp_x[TOP_RIGHT_CORNER] = ppp_x_1;
+    procUV->advanced_block[block_y][block_x].ppp_x[BOT_LEFT_CORNER] = ppp_x_2;
+    procUV->advanced_block[block_y][block_x].ppp_x[BOT_RIGHT_CORNER] = ppp_x_3;
     
-    array_block_UV[block_y][block_x].ppp_y[TOP_LEFT_CORNER] = ppp_y_0;
-    array_block_UV[block_y][block_x].ppp_y[TOP_RIGHT_CORNER] = ppp_y_1;
-    array_block_UV[block_y][block_x].ppp_y[BOT_LEFT_CORNER] = ppp_y_2;
-    array_block_UV[block_y][block_x].ppp_y[BOT_RIGHT_CORNER] = ppp_y_3;
+    procUV->advanced_block[block_y][block_x].ppp_y[TOP_LEFT_CORNER] = ppp_y_0;
+    procUV->advanced_block[block_y][block_x].ppp_y[TOP_RIGHT_CORNER] = ppp_y_1;
+    procUV->advanced_block[block_y][block_x].ppp_y[BOT_LEFT_CORNER] = ppp_y_2;
+    procUV->advanced_block[block_y][block_x].ppp_y[BOT_RIGHT_CORNER] = ppp_y_3;
 
     
     return ppp_max;
@@ -371,7 +367,7 @@ float lhe_advanced_perceptual_relevance_to_ppp (AdvancedLheBlock **array_block_Y
  * @param block_x Block x index
  * @param block_y Block y index                                                        
  */
-void lhe_advanced_ppp_side_to_rectangle_shape (BasicLheBlock **basic_block, AdvancedLheBlock **advanced_block,
+void lhe_advanced_ppp_side_to_rectangle_shape (LheProcessing *proc, 
                                                uint32_t image_width, uint32_t image_height, 
                                                float ppp_max, 
                                                int block_x, int block_y) 
@@ -382,10 +378,10 @@ void lhe_advanced_ppp_side_to_rectangle_shape (BasicLheBlock **basic_block, Adva
     uint32_t block_width, block_height;
     
     //HORIZONTAL ADJUSTMENT
-    ppp_x_0 = advanced_block[block_y][block_x].ppp_x[TOP_LEFT_CORNER];
-    ppp_x_1 = advanced_block[block_y][block_x].ppp_x[TOP_RIGHT_CORNER];
-    ppp_x_2 = advanced_block[block_y][block_x].ppp_x[BOT_LEFT_CORNER];
-    ppp_x_3 = advanced_block[block_y][block_x].ppp_x[BOT_RIGHT_CORNER];
+    ppp_x_0 = proc->advanced_block[block_y][block_x].ppp_x[TOP_LEFT_CORNER];
+    ppp_x_1 = proc->advanced_block[block_y][block_x].ppp_x[TOP_RIGHT_CORNER];
+    ppp_x_2 = proc->advanced_block[block_y][block_x].ppp_x[BOT_LEFT_CORNER];
+    ppp_x_3 = proc->advanced_block[block_y][block_x].ppp_x[BOT_RIGHT_CORNER];
 
     side_c = ppp_x_0 + ppp_x_1;
     side_d = ppp_x_2 + ppp_x_3;
@@ -410,7 +406,7 @@ void lhe_advanced_ppp_side_to_rectangle_shape (BasicLheBlock **basic_block, Adva
     //Block width is calculated as xfin-xini. I calculated block width because it is possible there are 
     //different block sizes. For example, any image whose width cant be divided by 32(number of blocks 
     //widthwise) will have at least one block that is smaller than the others.
-    block_width = basic_block[block_y][block_x].x_fin - basic_block[block_y][block_x].x_ini;     
+    block_width = proc->basic_block[block_y][block_x].x_fin - proc->basic_block[block_y][block_x].x_ini;     
     downsampled_block = 2.0*block_width/ side_average + 0.5;
     
     if (downsampled_block<SIDE_MIN) 
@@ -418,14 +414,14 @@ void lhe_advanced_ppp_side_to_rectangle_shape (BasicLheBlock **basic_block, Adva
         downsampled_block = SIDE_MIN;
     }
     
-    advanced_block[block_y][block_x].downsampled_x_side = downsampled_block;
+    proc->advanced_block[block_y][block_x].downsampled_x_side = downsampled_block;
     
-    x_fin_downsampled = basic_block[block_y][block_x].x_ini + downsampled_block;
+    x_fin_downsampled = proc->basic_block[block_y][block_x].x_ini + downsampled_block;
     if (x_fin_downsampled > image_width) 
     {
         x_fin_downsampled = image_width;
     }
-    advanced_block[block_y][block_x].x_fin_downsampled = x_fin_downsampled;
+    proc->advanced_block[block_y][block_x].x_fin_downsampled = x_fin_downsampled;
 
     side_average=2.0*block_width/downsampled_block;
        
@@ -516,16 +512,16 @@ void lhe_advanced_ppp_side_to_rectangle_shape (BasicLheBlock **basic_block, Adva
 
     }
     
-    advanced_block[block_y][block_x].ppp_x[TOP_LEFT_CORNER] = ppp_x_0;
-    advanced_block[block_y][block_x].ppp_x[TOP_RIGHT_CORNER] = ppp_x_1;
-    advanced_block[block_y][block_x].ppp_x[BOT_LEFT_CORNER] = ppp_x_2;
-    advanced_block[block_y][block_x].ppp_x[BOT_RIGHT_CORNER] = ppp_x_3;
+    proc->advanced_block[block_y][block_x].ppp_x[TOP_LEFT_CORNER] = ppp_x_0;
+    proc->advanced_block[block_y][block_x].ppp_x[TOP_RIGHT_CORNER] = ppp_x_1;
+    proc->advanced_block[block_y][block_x].ppp_x[BOT_LEFT_CORNER] = ppp_x_2;
+    proc->advanced_block[block_y][block_x].ppp_x[BOT_RIGHT_CORNER] = ppp_x_3;
 
     //VERTICAL ADJUSTMENT
-    ppp_y_0 = advanced_block[block_y][block_x].ppp_y[TOP_LEFT_CORNER];
-    ppp_y_1 = advanced_block[block_y][block_x].ppp_y[TOP_RIGHT_CORNER];
-    ppp_y_2 = advanced_block[block_y][block_x].ppp_y[BOT_LEFT_CORNER];
-    ppp_y_3 = advanced_block[block_y][block_x].ppp_y[BOT_RIGHT_CORNER];
+    ppp_y_0 = proc->advanced_block[block_y][block_x].ppp_y[TOP_LEFT_CORNER];
+    ppp_y_1 = proc->advanced_block[block_y][block_x].ppp_y[TOP_RIGHT_CORNER];
+    ppp_y_2 = proc->advanced_block[block_y][block_x].ppp_y[BOT_LEFT_CORNER];
+    ppp_y_3 = proc->advanced_block[block_y][block_x].ppp_y[BOT_RIGHT_CORNER];
     
     side_a = ppp_y_0 + ppp_y_2;
     side_b = ppp_y_1 + ppp_y_3;
@@ -549,7 +545,7 @@ void lhe_advanced_ppp_side_to_rectangle_shape (BasicLheBlock **basic_block, Adva
     
     //Block height is calculated as yfin-yini. I calculated block height because it is possible there are 
     //different block sizes. 
-    block_height = basic_block[block_y][block_x].y_fin - basic_block[block_y][block_x].y_ini;
+    block_height = proc->basic_block[block_y][block_x].y_fin - proc->basic_block[block_y][block_x].y_ini;
     downsampled_block = 2.0*block_height/ side_average + 0.5;    
     
     if (downsampled_block<SIDE_MIN) 
@@ -557,13 +553,13 @@ void lhe_advanced_ppp_side_to_rectangle_shape (BasicLheBlock **basic_block, Adva
         downsampled_block = SIDE_MIN;
     }
     
-    advanced_block[block_y][block_x].downsampled_y_side = downsampled_block;
-    y_fin_downsampled = basic_block[block_y][block_x].y_ini + downsampled_block;
+    proc->advanced_block[block_y][block_x].downsampled_y_side = downsampled_block;
+    y_fin_downsampled = proc->basic_block[block_y][block_x].y_ini + downsampled_block;
     if (y_fin_downsampled > image_height)
     {
         y_fin_downsampled = image_height;
     }
-    advanced_block[block_y][block_x].y_fin_downsampled = y_fin_downsampled;
+    proc->advanced_block[block_y][block_x].y_fin_downsampled = y_fin_downsampled;
 
     side_average=2.0*block_height/downsampled_block;    
     
@@ -654,10 +650,10 @@ void lhe_advanced_ppp_side_to_rectangle_shape (BasicLheBlock **basic_block, Adva
 
     }
     
-    advanced_block[block_y][block_x].ppp_y[TOP_LEFT_CORNER] = ppp_y_0;
-    advanced_block[block_y][block_x].ppp_y[TOP_RIGHT_CORNER] = ppp_y_1;
-    advanced_block[block_y][block_x].ppp_y[BOT_LEFT_CORNER] = ppp_y_2;
-    advanced_block[block_y][block_x].ppp_y[BOT_RIGHT_CORNER] = ppp_y_3;
+    proc->advanced_block[block_y][block_x].ppp_y[TOP_LEFT_CORNER] = ppp_y_0;
+    proc->advanced_block[block_y][block_x].ppp_y[TOP_RIGHT_CORNER] = ppp_y_1;
+    proc->advanced_block[block_y][block_x].ppp_y[BOT_LEFT_CORNER] = ppp_y_2;
+    proc->advanced_block[block_y][block_x].ppp_y[BOT_RIGHT_CORNER] = ppp_y_3;
 }
 
 
@@ -1032,8 +1028,7 @@ void lhe_init_cache (LheBasicPrec *prec)
  * @param block_x Block x index
  * @param block_y Block y index               
  */
-void mlhe_adapt_downsampled_data_resolution (BasicLheBlock **basic_block, 
-                                             AdvancedLheBlock **advanced_block, AdvancedLheBlock **last_advanced_block,
+void mlhe_adapt_downsampled_data_resolution (LheProcessing *proc,
                                              uint8_t *downsampled_data, uint8_t *intermediate_adapted_downsampled_data, uint8_t *adapted_downsampled_data,
                                              uint32_t width,
                                              int block_x, int block_y)
@@ -1043,18 +1038,18 @@ void mlhe_adapt_downsampled_data_resolution (BasicLheBlock **basic_block,
     uint32_t xdown, xprev_interpolated, xfin_interpolated, ydown, yprev_interpolated, yfin_interpolated;
     float step_x, step_y, xfin_interpolated_float, yfin_interpolated_float, xdown_float, ydown_float;
 
-    xini = basic_block[block_y][block_x].x_ini;
-    xfin = advanced_block[block_y][block_x].x_fin_downsampled;
-    yini = basic_block[block_y][block_x].y_ini;
-    yfin = advanced_block[block_y][block_x].y_fin_downsampled;
+    xini = proc->basic_block[block_y][block_x].x_ini;
+    xfin = proc->advanced_block[block_y][block_x].x_fin_downsampled;
+    yini = proc->basic_block[block_y][block_x].y_ini;
+    yfin = proc->advanced_block[block_y][block_x].y_fin_downsampled;
     
-    last_xfin = last_advanced_block[block_y][block_x].x_fin_downsampled;
-    last_yfin = last_advanced_block[block_y][block_x].y_fin_downsampled;
+    last_xfin = proc->last_advanced_block[block_y][block_x].x_fin_downsampled;
+    last_yfin = proc->last_advanced_block[block_y][block_x].y_fin_downsampled;
     
-    downsampled_x_side = advanced_block[block_y][block_x].downsampled_x_side;
-    downsampled_y_side = advanced_block[block_y][block_x].downsampled_y_side;
-    last_downsampled_x_side = last_advanced_block[block_y][block_x].downsampled_x_side;
-    last_downsampled_y_side = last_advanced_block[block_y][block_x].downsampled_y_side;
+    downsampled_x_side = proc->advanced_block[block_y][block_x].downsampled_x_side;
+    downsampled_y_side = proc->advanced_block[block_y][block_x].downsampled_y_side;
+    last_downsampled_x_side = proc->last_advanced_block[block_y][block_x].downsampled_x_side;
+    last_downsampled_y_side = proc->last_advanced_block[block_y][block_x].downsampled_y_side;
     
     //Adapt horizontal resolution
     if (downsampled_x_side > last_downsampled_x_side) 
