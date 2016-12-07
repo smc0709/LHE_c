@@ -1308,11 +1308,9 @@ static void lhe_init_pixel_format (AVCodecContext *avctx, LheState *s, uint8_t p
 static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, AVPacket *avpkt)
 {    
     uint8_t lhe_mode, pixel_format, quality_level;
-    uint8_t *hops_Y, *hops_U, *hops_V;
     uint8_t *component_Y, *component_U, *component_V;
-    uint8_t *first_color_block_Y, *first_color_block_U, *first_color_block_V;
     uint32_t total_blocks_width, total_blocks_height, total_blocks;
-    uint32_t pixels_block, width_Y, width_UV, height_Y, height_UV, image_size_Y, image_size_UV;
+    uint32_t pixels_block, image_size_Y, image_size_UV;
     int ret;
     
     float compression_factor;
@@ -1333,17 +1331,17 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
     pixel_format = bytestream_get_byte(&lhe_data); 
     lhe_init_pixel_format (avctx, s, pixel_format);
            
-    width_Y  = bytestream_get_le32(&lhe_data);
-    height_Y = bytestream_get_le32(&lhe_data);
+    (&s->procY)->width  = bytestream_get_le32(&lhe_data);
+    (&s->procY)->height = bytestream_get_le32(&lhe_data);
     
-    image_size_Y = width_Y * height_Y;
+    image_size_Y = (&s->procY)->width * (&s->procY)->height;
     
-    width_UV = (width_Y - 1)/s->chroma_factor_width + 1;
-    height_UV = (height_Y - 1)/s->chroma_factor_height + 1;
-    image_size_UV = width_UV * height_UV;
+    (&s->procUV)->width = ((&s->procY)->width - 1)/s->chroma_factor_width + 1;
+    (&s->procUV)->height = ((&s->procY)->height - 1)/s->chroma_factor_height + 1;
+    image_size_UV = (&s->procUV)->width * (&s->procUV)->height;
     
-    avctx->width  = width_Y;
-    avctx->height  = height_Y;    
+    avctx->width  = (&s->procY)->width;
+    avctx->height  = (&s->procY)->height;    
     
     //Allocates frame
     av_frame_unref(s->frame);
@@ -1358,32 +1356,32 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
     else 
     {
         total_blocks_width = HORIZONTAL_BLOCKS;
-        pixels_block = width_Y / HORIZONTAL_BLOCKS;
-        total_blocks_height = height_Y / pixels_block;
+        pixels_block = (&s->procY)->width / HORIZONTAL_BLOCKS;
+        total_blocks_height = (&s->procY)->height / pixels_block;
     }
     
     total_blocks = total_blocks_height * total_blocks_width;
     
     //First pixel array
-    first_color_block_Y = malloc(sizeof(uint8_t) * image_size_Y);
-    first_color_block_U = malloc(sizeof(uint8_t) * image_size_UV);
-    first_color_block_V = malloc(sizeof(uint8_t) * image_size_UV);
+    (&s->lheY)->first_color_block = malloc(sizeof(uint8_t) * image_size_Y);
+    (&s->lheU)->first_color_block = malloc(sizeof(uint8_t) * image_size_UV);
+    (&s->lheV)->first_color_block = malloc(sizeof(uint8_t) * image_size_UV);
     
     for (int i=0; i<total_blocks; i++) 
     {
-        first_color_block_Y[i] = bytestream_get_byte(&lhe_data); 
+        (&s->lheY)->first_color_block[i] = bytestream_get_byte(&lhe_data); 
     }
 
     
     for (int i=0; i<total_blocks; i++) 
     {
-        first_color_block_U[i] = bytestream_get_byte(&lhe_data); 
+        (&s->lheU)->first_color_block[i] = bytestream_get_byte(&lhe_data); 
     }
     
         
     for (int i=0; i<total_blocks; i++) 
     {
-        first_color_block_V[i] = bytestream_get_byte(&lhe_data); 
+        (&s->lheV)->first_color_block[i] = bytestream_get_byte(&lhe_data); 
     }
 
     //Pointers to different color components
@@ -1391,9 +1389,9 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
     component_U = s->frame->data[1];
     component_V = s->frame->data[2];
       
-    hops_Y = malloc(sizeof(uint8_t) * image_size_Y);      
-    hops_U = malloc(sizeof(uint8_t) * image_size_UV);    
-    hops_V = malloc(sizeof(uint8_t) * image_size_UV); 
+    (&s->lheY)->hops = malloc(sizeof(uint8_t) * image_size_Y);      
+    (&s->lheU)->hops = malloc(sizeof(uint8_t) * image_size_UV);    
+    (&s->lheV)->hops = malloc(sizeof(uint8_t) * image_size_UV); 
     
     (&s->procY)->basic_block = malloc(sizeof(BasicLheBlock *) * total_blocks_height);
     
@@ -1444,11 +1442,11 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
             (&s->procUV)->advanced_block[i] = malloc (sizeof(AdvancedLheBlock) * (total_blocks_width));
         }
         
-        (&s->procY)-> block_width = width_Y / total_blocks_width;    
-        (&s->procY)-> block_height = height_Y / total_blocks_height;   
+        (&s->procY)-> block_width = (&s->procY)->width / total_blocks_width;    
+        (&s->procY)-> block_height = (&s->procY)->height / total_blocks_height;   
         
-        (&s->procUV)-> block_width = width_UV / total_blocks_width;
-        (&s->procUV)-> block_height = height_UV / total_blocks_height; 
+        (&s->procUV)-> block_width = (&s->procUV)->width / total_blocks_width;
+        (&s->procUV)-> block_height = (&s->procUV)->height / total_blocks_height; 
         
         (&s->lheY)-> downsampled_image = malloc (sizeof(uint8_t) * image_size_Y);
         (&s->lheU)-> downsampled_image = malloc (sizeof(uint8_t) * image_size_UV);
@@ -1467,7 +1465,7 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
                                (&s->procY)->advanced_block, (&s->procUV)->advanced_block,
                                (&s->procY)->perceptual_relevance_x, (&s->procY)->perceptual_relevance_y,
                                ppp_max_theoric, compression_factor,
-                               width_Y, height_Y, width_UV, height_UV,
+                               (&s->procY)->width, (&s->procY)->height, (&s->procUV)->width, (&s->procUV)->height,
                                (&s->procY)->block_width, (&s->procY)->block_height, (&s->procUV)->block_width, (&s->procUV)->block_height,
                                total_blocks_width, total_blocks_height) ; 
         
@@ -1476,19 +1474,19 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
                                             he_Y, he_UV,
                                             (&s->procY)->basic_block, (&s->procUV)->basic_block,
                                             (&s->procY)->advanced_block, (&s->procUV)->advanced_block,
-                                            hops_Y, hops_U, hops_V,
-                                            width_Y, height_Y, width_UV, height_UV, 
+                                            (&s->lheY)->hops, (&s->lheU)->hops, (&s->lheV)->hops,
+                                            (&s->procY)->width, (&s->procY)->height, (&s->procUV)->width, (&s->procUV)->height, 
                                             total_blocks_width, total_blocks_height);
         
         lhe_advanced_decode_symbols (s, 
                                      he_Y, he_UV,
                                      (&s->procY)->basic_block, (&s->procUV)->basic_block,
                                      (&s->procY)->advanced_block, (&s->procUV)->advanced_block,
-                                     first_color_block_Y, first_color_block_U, first_color_block_V,
-                                     hops_Y, hops_U, hops_V,
+                                     (&s->lheY)->first_color_block, (&s->lheU)->first_color_block, (&s->lheV)->first_color_block,
+                                     (&s->lheY)->hops, (&s->lheU)->hops, (&s->lheV)->hops,
                                      (&s->lheY)->downsampled_image, (&s->lheU)->downsampled_image, (&s->lheV)->downsampled_image,
                                      component_Y, component_U, component_V,
-                                     width_Y, height_Y, width_UV, height_UV,
+                                     (&s->procY)->width, (&s->procY)->height, (&s->procUV)->width, (&s->procUV)->height,
                                      image_size_Y, image_size_UV,
                                      (&s->procY)->block_width, (&s->procY)->block_height, (&s->procUV)->block_width, (&s->procUV)->block_height,
                                      total_blocks_width, total_blocks_height);
@@ -1497,38 +1495,38 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
     }
     else /*BASIC LHE*/       
     {
-        lhe_basic_read_file_symbols(s, he_Y, image_size_Y, hops_Y);
-        lhe_basic_read_file_symbols(s, he_UV, image_size_UV, hops_U);
-        lhe_basic_read_file_symbols(s, he_UV, image_size_UV, hops_V);
+        lhe_basic_read_file_symbols(s, he_Y, image_size_Y, (&s->lheY)->hops);
+        lhe_basic_read_file_symbols(s, he_UV, image_size_UV, (&s->lheU)->hops);
+        lhe_basic_read_file_symbols(s, he_UV, image_size_UV, (&s->lheV)->hops);
  
         if (total_blocks > 1 && OPENMP_FLAGS == CONFIG_OPENMP) 
         {
-            (&s->procY)->block_width = width_Y / total_blocks_width;
-            (&s->procY)->block_height = height_Y / total_blocks_height;
-            (&s->procUV)->block_width = width_UV /total_blocks_width;
-            (&s->procUV)->block_height = height_UV /total_blocks_height;
+            (&s->procY)->block_width = (&s->procY)->width / total_blocks_width;
+            (&s->procY)->block_height = (&s->procY)->height / total_blocks_height;
+            (&s->procUV)->block_width = (&s->procUV)->width /total_blocks_width;
+            (&s->procUV)->block_height = (&s->procUV)->height /total_blocks_height;
 
             lhe_basic_decode_frame_pararell (s, &s->prec,
                                              (&s->procY)->basic_block, (&s->procUV)->basic_block,
                                              component_Y, component_U, component_V, 
-                                             hops_Y, hops_U, hops_V,
-                                             width_Y, height_Y, width_UV, height_UV, 
+                                             (&s->lheY)->hops, (&s->lheU)->hops, (&s->lheV)->hops,
+                                             (&s->procY)->width, (&s->procY)->height, (&s->procUV)->width, (&s->procUV)->height, 
                                              s->frame->linesize[0], s->frame->linesize[1], s->frame->linesize[2],
-                                             first_color_block_Y, first_color_block_U, first_color_block_V,
+                                             (&s->lheY)->first_color_block, (&s->lheU)->first_color_block, (&s->lheV)->first_color_block,
                                              total_blocks_width, total_blocks_height,
                                              (&s->procY)->block_width, (&s->procY)->block_height, (&s->procUV)->block_width, (&s->procUV)->block_height);                            
         } else 
         {      
             lhe_basic_decode_frame_sequential (&s->prec, 
-                                            component_Y, component_U, component_V, 
-                                            hops_Y, hops_U, hops_V,
-                                            width_Y, height_Y, width_UV, height_UV, 
-                                            s->frame->linesize[0], s->frame->linesize[1], s->frame->linesize[2],
-                                            first_color_block_Y, first_color_block_U, first_color_block_V);    
+                                               component_Y, component_U, component_V, 
+                                               (&s->lheY)->hops, (&s->lheU)->hops, (&s->lheV)->hops,
+                                               (&s->procY)->width, (&s->procY)->height, (&s->procUV)->width, (&s->procUV)->height, 
+                                               s->frame->linesize[0], s->frame->linesize[1], s->frame->linesize[2],
+                                               (&s->lheY)->first_color_block, (&s->lheU)->first_color_block, (&s->lheV)->first_color_block);    
         }
     }
    
-    av_log(NULL, AV_LOG_INFO, "DECODING...Width %d Height %d \n", width_Y, height_Y);
+    av_log(NULL, AV_LOG_INFO, "DECODING...Width %d Height %d \n", (&s->procY)->width, (&s->procY)->height);
 
     if ((ret = av_frame_ref(data, s->frame)) < 0)
         return ret;

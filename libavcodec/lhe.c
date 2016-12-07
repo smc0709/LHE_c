@@ -185,34 +185,36 @@ void lhe_calculate_block_coordinates (LheProcessing *procY, LheProcessing *procU
 {
     uint32_t xini_Y, xfin_Y, yini_Y, yfin_Y;
     uint32_t xini_UV, xfin_UV, yini_UV, yfin_UV;
+    
+    uint32_t widthY;
 
     //LUMINANCE
-    xini_Y = block_x * block_width_Y;
-    xfin_Y = xini_Y + block_width_Y;
+    xini_Y = block_x * procY->block_width;
+    xfin_Y = xini_Y + procY->block_width;
       
-    yini_Y = block_y * block_height_Y;
-    yfin_Y = yini_Y + block_height_Y ;
+    yini_Y = block_y * procY->block_height;
+    yfin_Y = yini_Y + procY->block_height ;
 
     
     //CHROMINANCE UV
-    xini_UV = block_x * block_width_UV;
-    xfin_UV = xini_UV + block_width_UV;
+    xini_UV = block_x * procUV->block_width;
+    xfin_UV = xini_UV + procUV->block_width;
     
-    yini_UV = block_y * block_height_UV;
-    yfin_UV = yini_UV + block_height_UV ;
-    
+    yini_UV = block_y * procUV->block_height;
+    yfin_UV = yini_UV + procUV->block_height ;
+        
     //LIMITS
     //If width cant be divided by 32, all pixel excess is in the last block
     if (block_x == total_blocks_width -1) 
     {
-        xfin_Y = width_image_Y;
-        xfin_UV = width_image_UV;
+        xfin_Y = procY->width;
+        xfin_UV = procUV->width;
     }
     
     if (block_y == total_blocks_height -1) 
     {
-        yfin_Y = height_image_Y;
-        yfin_UV = height_image_UV;
+        yfin_Y = procY->height;
+        yfin_UV = procUV->height;
     }
 
     procY->basic_block[block_y][block_x].x_ini = xini_Y;
