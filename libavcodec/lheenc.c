@@ -1170,10 +1170,6 @@ static void lhe_basic_encode_frame_pararell (LheContext *s, LheBasicPrec *prec,
         for (int block_x=0; block_x<total_blocks_width; block_x++) 
         {
             lhe_calculate_block_coordinates (&s->procY, &s->procUV,
-                                             block_width_Y, block_height_Y,                             
-                                             block_width_UV, block_height_UV, 
-                                             width_Y, height_Y,
-                                             width_UV, height_UV,
                                              total_blocks_width, total_blocks_height,
                                              block_x, block_y);
 
@@ -1229,7 +1225,7 @@ static void lhe_basic_encode_frame_pararell (LheContext *s, LheBasicPrec *prec,
  * @param linesize rectangle images create a square image in ffmpeg memory. Linesize is width used by ffmpeg in memory
  * @param sps_ratio_height indicates how often an image sample is taken heightwise to encode
  */
-static float lhe_advanced_compute_prx (LheBasicPrec *prec, 
+static float lhe_advanced_compute_prx (LheBasicPrec *prec,
                                        uint8_t *component_original_data, 
                                        int xini, int xfin, int yini, int yfin, 
                                        int linesize, 
@@ -1347,11 +1343,11 @@ static float lhe_advanced_compute_prx (LheBasicPrec *prec,
  * @param linesize rectangle images create a square image in ffmpeg memory. Linesize is width used by ffmpeg in memory
  * @param sps_ratio_width indicates how often an image sample is taken widthwise to encode
  */
-static float lhe_advanced_compute_pry (LheBasicPrec *prec, 
-                                        uint8_t *component_original_data, 
-                                        int xini, int xfin, int yini, int yfin, 
-                                        int height, int linesize, 
-                                        uint8_t sps_ratio_width)
+static float lhe_advanced_compute_pry (LheBasicPrec *prec, LheProcessing *proc,
+                                       uint8_t *component_original_data, 
+                                       int xini, int xfin, int yini, int yfin, 
+                                       int linesize, 
+                                       uint8_t sps_ratio_width)
 {      
     
     //Hops computation.
@@ -1380,7 +1376,7 @@ static float lhe_advanced_compute_pry (LheBasicPrec *prec,
     pix = 0;
     pix_original_data = yini*linesize + xini;
     
-    dif_pix = height - yfin + yini; //amount of pixels we have to jump in sps image
+    dif_pix = proc->height - yfin + yini; //amount of pixels we have to jump in sps image
     
     for (int x=xini; x < xfin; x+=sps_ratio_width)  {
         
@@ -1462,7 +1458,7 @@ static float lhe_advanced_compute_pry (LheBasicPrec *prec,
  * @param block_x Block x index
  * @param block_y Block y index
  */
-static void lhe_advanced_pr_histogram_expansion_and_quantization (float **perceptual_relevance_x, float  **perceptual_relevance_y,
+static void lhe_advanced_pr_histogram_expansion_and_quantization (LheProcessing *proc,
                                                                   float prx, float pry,
                                                                   int block_x, int block_y) 
 {
@@ -1482,7 +1478,7 @@ static void lhe_advanced_pr_histogram_expansion_and_quantization (float **percep
         prx = PR_QUANT_5;
     }       
 
-    perceptual_relevance_x[block_y][block_x] = prx;
+    proc->perceptual_relevance_x[block_y][block_x] = prx;
         
  
     //PR HISTOGRAM EXPANSION
@@ -1501,7 +1497,7 @@ static void lhe_advanced_pr_histogram_expansion_and_quantization (float **percep
         pry = PR_QUANT_5;
     }
     
-    perceptual_relevance_y[block_y][block_x] = pry;
+    proc->perceptual_relevance_y[block_y][block_x] = pry;
 }
 
 
@@ -1519,18 +1515,19 @@ static void lhe_advanced_pr_histogram_expansion_and_quantization (float **percep
  * @param block_width block width
  * @param block_height height block
  */
-static void lhe_advanced_compute_perceptual_relevance (LheBasicPrec *prec, 
-                                                       uint8_t *component_original_data_Y,                                           
-                                                       float **perceptual_relevance_x, float  **perceptual_relevance_y,
-                                                       int width_image, int height_image, int linesize, 
-                                                       uint32_t total_blocks_width, uint32_t total_blocks_height,
-                                                       uint32_t block_width_image, uint32_t block_height_image) 
+static void lhe_advanced_compute_perceptual_relevance (LheContext *s, uint8_t *component_original_data_Y,                                           
+                                                       int linesize, uint32_t total_blocks_width, uint32_t total_blocks_height) 
 {
     
     int xini, xfin, yini, yfin, xini_pr_block, xfin_pr_block, yini_pr_block, yfin_pr_block;
     uint32_t block_width_pr, block_height_pr, block_width_pr_sps, block_height_pr_sps;
-    
     float prx, pry;
+    
+    LheProcessing *proc;
+    LheBasicPrec *prec;
+    
+    proc = &s->procY;
+    prec = &s->prec;
     
     #pragma omp parallel for
     for (int block_y=0; block_y<total_blocks_height+1; block_y++)      
@@ -1538,39 +1535,39 @@ static void lhe_advanced_compute_perceptual_relevance (LheBasicPrec *prec,
         for (int block_x=0; block_x<total_blocks_width+1; block_x++) 
         {     
             //First LHE Block coordinates
-            xini = block_x * block_width_image;
-            xfin = xini +  block_width_image;
+            xini = block_x * proc->block_width;
+            xfin = xini +  proc->block_width;
 
-            yini = block_y * block_height_image;
-            yfin = yini + block_height_image;
+            yini = block_y * proc->block_height;
+            yfin = yini + proc->block_height;
             
             //PR Blocks coordinates 
-            xini_pr_block = xini - (block_width_image >>1); 
+            xini_pr_block = xini - (proc->block_width >>1); 
             
             if (xini_pr_block < 0) 
             {
                 xini_pr_block = 0;
             }
             
-            xfin_pr_block = xfin - (block_width_image>>1);
+            xfin_pr_block = xfin - (proc->block_width>>1);
             
-            if (xfin_pr_block>width_image) 
+            if (xfin_pr_block>proc->width) 
             {
-                xfin_pr_block = width_image;
+                xfin_pr_block = proc->width;
             }    
             
-            yini_pr_block = yini - (block_height_image>>1);
+            yini_pr_block = yini - (proc->block_height>>1);
             
             if (yini_pr_block < 0) 
             {
                 yini_pr_block = 0;
             }
             
-            yfin_pr_block = yfin - (block_height_image>>1);
+            yfin_pr_block = yfin - (proc->block_height>>1);
             
-            if (yfin_pr_block>height_image)
+            if (yfin_pr_block>proc->height)
             {
-                yfin_pr_block = height_image;
+                yfin_pr_block = proc->height;
             }
             
             block_width_pr = (xfin_pr_block - xini_pr_block);
@@ -1578,22 +1575,20 @@ static void lhe_advanced_compute_perceptual_relevance (LheBasicPrec *prec,
             block_width_pr_sps = (block_width_pr - 1) / SPS_FACTOR + 1;
             block_height_pr_sps = (block_height_pr - 1) / SPS_FACTOR + 1;
             
-            prx = lhe_advanced_compute_prx (prec, 
+            prx = lhe_advanced_compute_prx (prec,
                                             component_original_data_Y, 
                                             xini_pr_block, xfin_pr_block, yini_pr_block, yfin_pr_block, 
                                             linesize, 
                                             SPS_FACTOR);
             
-            pry = lhe_advanced_compute_pry (prec, 
+            pry = lhe_advanced_compute_pry (prec, proc,
                                             component_original_data_Y, 
                                             xini_pr_block, xfin_pr_block, yini_pr_block, yfin_pr_block, 
-                                            height_image, linesize, 
+                                            linesize, 
                                             SPS_FACTOR);
  
             //Calls method to compute perceptual relevance using calculated coordinates 
-            lhe_advanced_pr_histogram_expansion_and_quantization (perceptual_relevance_x, perceptual_relevance_y,
-                                                                  prx, pry,
-                                                                  block_x, block_y) ;  
+            lhe_advanced_pr_histogram_expansion_and_quantization (proc, prx, pry, block_x, block_y) ;  
         }
     }
 }
@@ -2079,21 +2074,13 @@ static float lhe_advanced_encode (LheContext *s, const AVFrame *frame,
         for (int block_x=0; block_x<total_blocks_width; block_x++) 
         {
                 lhe_calculate_block_coordinates (&s->procY, &s->procUV,
-                                                block_width_Y, block_height_Y,                             
-                                                block_width_UV, block_height_UV, 
-                                                width_Y, height_Y,
-                                                width_UV, height_UV,
-                                                total_blocks_width, total_blocks_height,
-                                                block_x, block_y);                                                                                                            
+                                                 total_blocks_width, total_blocks_height,
+                                                 block_x, block_y);                                                                                                            
         }
     }
  
-    lhe_advanced_compute_perceptual_relevance (&s->prec,
-                                               component_original_data_Y,
-                                               perceptual_relevance_x, perceptual_relevance_y,
-                                               width_Y, height_Y, linesize_Y,
-                                               total_blocks_width,  total_blocks_height,
-                                               block_width_Y,  block_height_Y);
+    lhe_advanced_compute_perceptual_relevance (s, component_original_data_Y, frame->linesize[0],
+                                               total_blocks_width,  total_blocks_height);
     
         
     //#pragma omp parallel for
@@ -2361,7 +2348,7 @@ static void mlhe_calculate_error (LheContext *s,
  * @param block_width_UV chrominance block width
  * @param block_height_UV chrominance block height
  */
-static void mlhe_delta_frame_encode (LheContext *s,                                
+static void mlhe_delta_frame_encode (LheContext *s, const AVFrame *frame,                               
                                      uint8_t *component_original_data_Y, uint8_t *component_original_data_U, uint8_t *component_original_data_V,
                                      uint8_t *hops_Y, uint8_t *hops_U, uint8_t *hops_V,
                                      uint8_t *first_color_block_Y, uint8_t *first_color_block_U, uint8_t *first_color_block_V,
@@ -2404,12 +2391,8 @@ static void mlhe_delta_frame_encode (LheContext *s,
     delta_prediction_U = malloc(sizeof(uint8_t) * image_size_UV); 
     delta_prediction_V = malloc(sizeof(uint8_t) * image_size_UV);   
     
-    lhe_advanced_compute_perceptual_relevance (&s->prec,
-                                               component_original_data_Y,
-                                               (&s->procY)->perceptual_relevance_x, (&s->procY)->perceptual_relevance_y,
-                                               width_Y, height_Y, linesize_Y,
-                                               total_blocks_width,  total_blocks_height,
-                                               block_width_Y,  block_height_Y);
+    lhe_advanced_compute_perceptual_relevance (s, component_original_data_Y, frame->linesize[0],
+                                               total_blocks_width,  total_blocks_height);
     
      
     #pragma omp parallel for
@@ -3048,7 +3031,7 @@ static int mlhe_encode_video(AVCodecContext *avctx, AVPacket *pkt,
     if ((&s->lheY)->last_downsampled_image) 
     {
         s->dif_frames_count++;
-        mlhe_delta_frame_encode (s, 
+        mlhe_delta_frame_encode (s, frame,
                                  component_original_data_Y, component_original_data_U, component_original_data_V,
                                  (&s->lheY)->hops, (&s->lheU)->hops, (&s->lheV)->hops,
                                  (&s->lheY)->first_color_block, (&s->lheU)->first_color_block, (&s->lheV)->first_color_block,

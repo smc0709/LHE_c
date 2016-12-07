@@ -176,10 +176,6 @@ int lhe_generate_huffman_codes(LheHuffEntry *he, int max_huff_size)
  * @param block_y block y index
  */
 void lhe_calculate_block_coordinates (LheProcessing *procY, LheProcessing *procUV,
-                                      uint32_t block_width_Y, uint32_t block_height_Y,                             
-                                      uint32_t block_width_UV, uint32_t block_height_UV, 
-                                      uint32_t width_image_Y, uint32_t height_image_Y,
-                                      uint32_t width_image_UV, uint32_t height_image_UV,
                                       uint32_t total_blocks_width, uint32_t total_blocks_height,
                                       int block_x, int block_y)
 {

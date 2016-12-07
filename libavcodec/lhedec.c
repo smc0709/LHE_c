@@ -471,10 +471,6 @@ static void lhe_advanced_read_mesh (LheState *s, LheHuffEntry *he_mesh,
         for (int block_x=0; block_x<total_blocks_width; block_x++)
         {
             lhe_calculate_block_coordinates (&s->procY, &s->procUV, 
-                                             block_width_Y, block_height_Y,                             
-                                             block_width_UV, block_height_UV, 
-                                             width_Y, height_Y,
-                                             width_UV, height_UV,
                                              total_blocks_width, total_blocks_height,
                                              block_x, block_y);
 
@@ -716,10 +712,6 @@ static void lhe_basic_decode_frame_pararell (LheState *s, LheBasicPrec *prec,
         for (int block_x=0; block_x<total_blocks_width; block_x++) 
         {
             lhe_calculate_block_coordinates (&s->procY, &s->procUV,
-                                             block_width_Y, block_height_Y,                             
-                                             block_width_UV, block_height_UV, 
-                                             width_Y, height_Y,
-                                             width_UV, height_UV,
                                              total_blocks_width, total_blocks_height,
                                              block_x, block_y);
             
