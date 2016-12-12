@@ -1023,9 +1023,8 @@ void lhe_init_cache (LheBasicPrec *prec)
  * @param block_x Block x index
  * @param block_y Block y index               
  */
-void mlhe_adapt_downsampled_data_resolution (LheProcessing *proc,
-                                             uint8_t *downsampled_data, uint8_t *intermediate_adapted_downsampled_data, uint8_t *adapted_downsampled_data,
-                                             uint32_t width,
+void mlhe_adapt_downsampled_data_resolution (LheProcessing *proc, LheImage *lhe,
+                                             uint8_t *intermediate_adapted_downsampled_data, uint8_t *adapted_downsampled_data,
                                              int block_x, int block_y)
 {
     uint32_t xini, xfin, yini, yfin, last_xfin, last_yfin;
@@ -1065,7 +1064,7 @@ void mlhe_adapt_downsampled_data_resolution (LheProcessing *proc,
                 
                 for (int i=xprev_interpolated;i < xfin_interpolated;i++)
                 {
-                    intermediate_adapted_downsampled_data[y*width+i]=downsampled_data[y*width+x_sc]; 
+                    intermediate_adapted_downsampled_data[y*proc->width+i]=lhe->last_downsampled_image[y*proc->width+x_sc]; 
                 }
                             
                 xprev_interpolated=xfin_interpolated;
@@ -1087,7 +1086,7 @@ void mlhe_adapt_downsampled_data_resolution (LheProcessing *proc,
             {
                 xdown = xdown_float - 0.5;
                         
-                intermediate_adapted_downsampled_data[y*width+x]=downsampled_data[y*width+xdown];    
+                intermediate_adapted_downsampled_data[y*proc->width+x]=lhe->last_downsampled_image[y*proc->width+xdown];    
 
                 xdown_float+=step_x;
             }//x
@@ -1099,7 +1098,7 @@ void mlhe_adapt_downsampled_data_resolution (LheProcessing *proc,
         {        
             for (int x=xini; x<xfin; x++)
             {                        
-                intermediate_adapted_downsampled_data[y*width+x]=downsampled_data[y*width+x];
+                intermediate_adapted_downsampled_data[y*proc->width+x]=lhe->last_downsampled_image[y*proc->width+x];
             }//x
         }//y
     }
@@ -1125,7 +1124,7 @@ void mlhe_adapt_downsampled_data_resolution (LheProcessing *proc,
                 
                 for (int i=yprev_interpolated;i < yfin_interpolated;i++)
                 {
-                    adapted_downsampled_data[i*width+x]=intermediate_adapted_downsampled_data[y_sc*width+x];
+                    adapted_downsampled_data[i*proc->width+x]=intermediate_adapted_downsampled_data[y_sc*proc->width+x];
                 }
           
                 yprev_interpolated=yfin_interpolated;
@@ -1148,7 +1147,7 @@ void mlhe_adapt_downsampled_data_resolution (LheProcessing *proc,
             {
                 ydown = ydown_float - 0.5;
 
-                adapted_downsampled_data[y*width+x]=intermediate_adapted_downsampled_data[ydown*width+x];  
+                adapted_downsampled_data[y*proc->width+x]=intermediate_adapted_downsampled_data[ydown*proc->width+x];  
 
                 ydown_float+=step_y;
             }//ysc
@@ -1160,7 +1159,7 @@ void mlhe_adapt_downsampled_data_resolution (LheProcessing *proc,
         {
             for (int y=yini; y < yfin; y++)
             {                 
-                 adapted_downsampled_data[y*width+x]=intermediate_adapted_downsampled_data[y*width+x]; 
+                 adapted_downsampled_data[y*proc->width+x]=intermediate_adapted_downsampled_data[y*proc->width+x]; 
             }
         }
     }

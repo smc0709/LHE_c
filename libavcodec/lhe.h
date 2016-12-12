@@ -221,7 +221,6 @@ void lhe_advanced_ppp_side_to_rectangle_shape (LheProcessing *proc, float ppp_ma
  * VIDEO LHE
  * Common functions encoder and decoder
  */
-void mlhe_adapt_downsampled_data_resolution (LheProcessing *proc, 
-                                             uint8_t *downsampled_data, uint8_t *intermediate_adapted_downsampled_data, uint8_t *downsampled_data_adapted,
-                                             uint32_t width,
+void mlhe_adapt_downsampled_data_resolution (LheProcessing *proc, LheImage *lhe,
+                                             uint8_t *intermediate_adapted_downsampled_data, uint8_t *downsampled_data_adapted,
                                              int block_x, int block_y);

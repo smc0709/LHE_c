@@ -1178,9 +1178,8 @@ static void mlhe_decode_delta_frame (LheState *s,
                                                         first_color_block_Y, total_blocks_width, 
                                                         block_x, block_y, block_width_Y, block_height_Y); 
             
-             mlhe_adapt_downsampled_data_resolution (&s->procY,
-                                                     last_downsampled_image_Y, intermediate_adapted_downsampled_data_Y, adapted_downsampled_image_Y,
-                                                     width_Y,
+             mlhe_adapt_downsampled_data_resolution (&s->procY, &s->lheY,
+                                                     intermediate_adapted_downsampled_data_Y, adapted_downsampled_image_Y,
                                                      block_x, block_y);
             
              mlhe_add_delta_to_last_frame (s, 
@@ -1209,9 +1208,8 @@ static void mlhe_decode_delta_frame (LheState *s,
                                                         first_color_block_U, total_blocks_width, 
                                                         block_x, block_y, block_width_UV, block_height_UV);
             
-            mlhe_adapt_downsampled_data_resolution (&s->procUV,
-                                                    last_downsampled_image_U, intermediate_adapted_downsampled_data_U, adapted_downsampled_image_U,
-                                                    width_UV,
+            mlhe_adapt_downsampled_data_resolution (&s->procUV, &s->lheU,
+                                                    intermediate_adapted_downsampled_data_U, adapted_downsampled_image_U,
                                                     block_x, block_y);
             
             mlhe_add_delta_to_last_frame (s, 
@@ -1239,9 +1237,8 @@ static void mlhe_decode_delta_frame (LheState *s,
                                                         first_color_block_V, total_blocks_width, 
                                                         block_x, block_y, block_width_UV, block_height_UV);
                    
-            mlhe_adapt_downsampled_data_resolution (&s->procUV,
-                                                    last_downsampled_image_V, intermediate_adapted_downsampled_data_V, adapted_downsampled_image_V,
-                                                    width_UV,
+            mlhe_adapt_downsampled_data_resolution (&s->procUV, &s->lheV,
+                                                    intermediate_adapted_downsampled_data_V, adapted_downsampled_image_V,
                                                     block_x, block_y);
 
             mlhe_add_delta_to_last_frame (s, 
