@@ -295,8 +295,9 @@ static uint64_t lhe_basic_gen_huffman (LheHuffEntry *he_Y, LheHuffEntry *he_UV,
  * @param *hops_U Chrominance U hops
  * @param *hops_V Chrominance V hops
  */
-static int lhe_basic_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt, 
-                                    uint8_t total_blocks_width, uint8_t total_blocks_height) {
+static int lhe_basic_write_file(AVCodecContext *avctx, AVPacket *pkt, 
+                                int image_size_Y, int image_size_UV,
+                                uint8_t total_blocks_width, uint8_t total_blocks_height) {
   
     uint8_t *buf;
     uint8_t lhe_mode, pixel_format;
@@ -304,12 +305,24 @@ static int lhe_basic_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
     
     int i, ret;
         
-    struct timeval before , after;
+    LheContext *s;
+    LheProcessing *procY;
+    LheProcessing *procUV;
+    LheImage *lheY;
+    LheImage *lheU;
+    LheImage *lheV;
     
     LheHuffEntry he_Y[LHE_MAX_HUFF_SIZE_SYMBOLS]; //Struct for luminance Huffman data
     LheHuffEntry he_UV[LHE_MAX_HUFF_SIZE_SYMBOLS]; //Struct for chrominance Huffman data
-
-    LheContext *s = avctx->priv_data;
+    
+    struct timeval before , after;
+    
+    s = avctx->priv_data;
+    procY = &s->procY;
+    procUV = &s->procUV;
+    lheY = &s->lheY;
+    lheU = &s->lheU;
+    lheV = &s->lheV;
     
     total_blocks = total_blocks_height * total_blocks_width; //Number of blocks in the image
     
@@ -317,17 +330,17 @@ static int lhe_basic_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
 
     //Generates Huffman
     n_bits_hops = lhe_basic_gen_huffman (he_Y, he_UV, 
-                                         hops_Y, hops_U, hops_V, 
+                                         (&s->lheY)->hops, (&s->lheU)->hops, (&s->lheV)->hops, 
                                          image_size_Y, image_size_UV);
     
 
-    n_bytes_components = n_bits_hops/8;        
-    
+    n_bytes_components = n_bits_hops/8;          
+       
     //File size
     n_bytes = sizeof(lhe_mode) + sizeof(pixel_format) + //Lhe mode and pixel format
-              + sizeof(width_Y) + sizeof(height_Y) //width and height
+              + sizeof(procY->width) + sizeof(procY->height) //width and height
               + sizeof(total_blocks_height) + sizeof(total_blocks_width) //Number of blocks heightwise and widthwise
-              + total_blocks * (sizeof(*first_pixel_blocks_Y) + sizeof(*first_pixel_blocks_U) + sizeof(*first_pixel_blocks_V)) //first component value for each block array
+              + total_blocks * (sizeof(*lheY->first_color_block) + sizeof(*lheU->first_color_block) + sizeof(*lheV->first_color_block)) 
               + LHE_HUFFMAN_TABLE_BYTES_SYMBOLS + //huffman table
               + n_bytes_components
               + FILE_OFFSET_BYTES; //components
@@ -367,24 +380,24 @@ static int lhe_basic_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
     bytestream_put_byte(&buf, pixel_format);
     
     //save width and height
-    bytestream_put_le32(&buf, width_Y);
-    bytestream_put_le32(&buf, height_Y);  
+    bytestream_put_le32(&buf, procY->width);
+    bytestream_put_le32(&buf, procY->height);  
 
     //Save first component of each signal 
     for (i=0; i<total_blocks; i++) 
     {
-        bytestream_put_byte(&buf, first_pixel_blocks_Y[i]);
+        bytestream_put_byte(&buf, lheY->first_color_block[i]);
     }
     
       for (i=0; i<total_blocks; i++) 
     {
-        bytestream_put_byte(&buf, first_pixel_blocks_U[i]);
+        bytestream_put_byte(&buf, lheU->first_color_block[i]);
 
     }
     
       for (i=0; i<total_blocks; i++) 
     {
-        bytestream_put_byte(&buf, first_pixel_blocks_V[i]);
+        bytestream_put_byte(&buf, lheV->first_color_block[i]);
     }
     
       
@@ -406,17 +419,17 @@ static int lhe_basic_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
     //Write signals of the image
     for (i=0; i<image_size_Y; i++) 
     {        
-        put_bits(&s->pb, he_Y[hops_Y[i]].len , he_Y[hops_Y[i]].code);
+        put_bits(&s->pb, he_Y[lheY->hops[i]].len , he_Y[lheY->hops[i]].code);
     }
     
     for (i=0; i<image_size_UV; i++) 
     {        
-       put_bits(&s->pb, he_UV[hops_U[i]].len , he_UV[hops_U[i]].code);
+       put_bits(&s->pb, he_UV[lheU->hops[i]].len , he_UV[lheU->hops[i]].code);
     }
     
     for (i=0; i<image_size_UV; i++) 
     {
-        put_bits(&s->pb, he_UV[hops_V[i]].len , he_UV[hops_V[i]].code);
+        put_bits(&s->pb, he_UV[lheV->hops[i]].len , he_UV[lheV->hops[i]].code);
     }
     
     put_bits(&s->pb, FILE_OFFSET_BITS , 0);
@@ -458,12 +471,9 @@ static int lhe_basic_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
  * @param total_blocks_height Number of blocks heightwise
  * @return n_bits Number of total bits
  */
-static uint64_t lhe_advanced_gen_huffman (LheHuffEntry *he_Y, LheHuffEntry *he_UV, 
-                                          BasicLheBlock **basic_block_Y, BasicLheBlock **basic_block_UV,
-                                          AdvancedLheBlock **advanced_block_Y, AdvancedLheBlock **advanced_block_UV,
-                                          uint8_t *symbols_Y, uint8_t *symbols_U, uint8_t *symbols_V,
-                                          uint32_t width_Y, uint32_t width_UV, uint32_t height_Y, uint32_t height_UV,
-                                          uint32_t block_width_Y,  uint32_t block_height_Y, uint32_t block_width_UV, uint32_t block_height_UV,
+static uint64_t lhe_advanced_gen_huffman (LheHuffEntry *he_Y, LheHuffEntry *he_UV,
+                                          LheProcessing *procY, LheProcessing *procUV,
+                                          LheImage *lheY, LheImage *lheU, LheImage *lheV,
                                           uint32_t total_blocks_width, uint32_t total_blocks_height)
 {
     int i, ret, n_bits;
@@ -482,23 +492,23 @@ static uint64_t lhe_advanced_gen_huffman (LheHuffEntry *he_Y, LheHuffEntry *he_U
         for (int block_x=0; block_x<total_blocks_width; block_x++)
         {
 
-            xini_Y = basic_block_Y[block_y][block_x].x_ini;
-            yini_Y = basic_block_Y[block_y][block_x].y_ini;
+            xini_Y = procY->basic_block[block_y][block_x].x_ini;
+            yini_Y = procY->basic_block[block_y][block_x].y_ini;
             
-            xfin_downsampled_Y = advanced_block_Y[block_y][block_x].x_fin_downsampled;          
-            yfin_downsampled_Y = advanced_block_Y[block_y][block_x].y_fin_downsampled;
+            xfin_downsampled_Y = procY->advanced_block[block_y][block_x].x_fin_downsampled;          
+            yfin_downsampled_Y = procY->advanced_block[block_y][block_x].y_fin_downsampled;
                
-            xini_UV = basic_block_UV[block_y][block_x].x_ini;
-            yini_UV = basic_block_UV[block_y][block_x].y_ini;
+            xini_UV = procUV->basic_block[block_y][block_x].x_ini;
+            yini_UV = procUV->basic_block[block_y][block_x].y_ini;
             
-            xfin_downsampled_UV = advanced_block_UV[block_y][block_x].x_fin_downsampled;
-            yfin_downsampled_UV = advanced_block_UV[block_y][block_x].y_fin_downsampled;
+            xfin_downsampled_UV = procUV->advanced_block[block_y][block_x].x_fin_downsampled;
+            yfin_downsampled_UV = procUV->advanced_block[block_y][block_x].y_fin_downsampled;
              
             //LUMINANCE
             for (int y=yini_Y; y<yfin_downsampled_Y; y++) 
             {
                 for (int x=xini_Y; x<xfin_downsampled_Y; x++) {
-                    symbol_count_Y[symbols_Y[y*width_Y + x]]++;  //Generates Huffman length for luminance signal               
+                    symbol_count_Y[lheY->hops[y*procY->width + x]]++;  //Generates Huffman length for luminance signal               
                 }
             }  
       
@@ -506,8 +516,8 @@ static uint64_t lhe_advanced_gen_huffman (LheHuffEntry *he_Y, LheHuffEntry *he_U
             for (int y=yini_UV; y<yfin_downsampled_UV; y++) 
             {
                 for (int x=xini_UV; x<xfin_downsampled_UV; x++) {
-                    symbol_count_UV[symbols_U[y*width_UV + x]]++;  //Generates Huffman length for chrominance U signal
-                    symbol_count_UV[symbols_V[y*width_UV + x]]++;  //Generates Huffman length for chrominance V signal
+                    symbol_count_UV[lheU->hops[y*procUV->width + x]]++;  //Generates Huffman length for chrominance U signal
+                    symbol_count_UV[lheV->hops[y*procUV->width + x]]++;  //Generates Huffman length for chrominance V signal
                 }
             } 
         }
@@ -520,7 +530,8 @@ static uint64_t lhe_advanced_gen_huffman (LheHuffEntry *he_Y, LheHuffEntry *he_U
         return ret;
     
     //Fills he_Y struct with data
-    for (i = 0; i < LHE_MAX_HUFF_SIZE_SYMBOLS; i++) {
+    for (i = 0; i < LHE_MAX_HUFF_SIZE_SYMBOLS; i++) 
+    {
         he_Y[i].len = huffman_lengths_Y[i];
         he_Y[i].count = symbol_count_Y[i];
         he_Y[i].sym = i;
@@ -529,7 +540,7 @@ static uint64_t lhe_advanced_gen_huffman (LheHuffEntry *he_Y, LheHuffEntry *he_U
     
     //Generates luminance Huffman codes
     n_bits = lhe_generate_huffman_codes(he_Y, LHE_MAX_HUFF_SIZE_SYMBOLS);
-    bpp = 1.0*n_bits/(width_Y*height_Y);
+    bpp = 1.0*n_bits/(procY->width*procY->height);
     
     av_log (NULL, AV_LOG_INFO, "Y bpp: %f ",bpp );
     av_log (NULL, AV_LOG_PANIC, "%f; ",bpp );
@@ -540,7 +551,8 @@ static uint64_t lhe_advanced_gen_huffman (LheHuffEntry *he_Y, LheHuffEntry *he_U
         return ret;
     
     //Fills he_UV struct with data
-    for (i = 0; i < LHE_MAX_HUFF_SIZE_SYMBOLS; i++) {
+    for (i = 0; i < LHE_MAX_HUFF_SIZE_SYMBOLS; i++) 
+    {
         he_UV[i].len = huffman_lengths_UV[i];
         he_UV[i].count = symbol_count_UV[i];
         he_UV[i].sym = i;
@@ -549,7 +561,7 @@ static uint64_t lhe_advanced_gen_huffman (LheHuffEntry *he_Y, LheHuffEntry *he_U
 
     //Generates chrominance Huffman codes
     n_bits += lhe_generate_huffman_codes(he_UV, LHE_MAX_HUFF_SIZE_SYMBOLS);
-    bpp = 1.0*n_bits/(width_Y*height_Y);
+    bpp = 1.0*n_bits/(procY->width*procY->height);
 
     av_log (NULL, AV_LOG_INFO, "YUV bpp: %f ", bpp);
     
@@ -677,17 +689,9 @@ static uint64_t lhe_advanced_gen_huffman_mesh (LheHuffEntry *he_mesh,
  * @param *hops_V Chrominance V hops
  * @param quality_level quality level of compressed image
  */
-static int lhe_advanced_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt, 
-                                       BasicLheBlock **basic_block_Y, BasicLheBlock **basic_block_UV,
-                                       AdvancedLheBlock **advanced_block_Y, AdvancedLheBlock **advanced_block_UV,
-                                       uint32_t image_size_Y, uint32_t width_Y, uint32_t height_Y,
-                                       uint32_t image_size_UV, uint32_t width_UV, uint32_t height_UV,
-                                       uint8_t total_blocks_width, uint8_t total_blocks_height,                                       
-                                       uint32_t block_width_Y, uint32_t block_width_UV, uint32_t block_height_Y, uint32_t block_height_UV,
-                                       uint8_t *first_pixel_blocks_Y, uint8_t *first_pixel_blocks_U, uint8_t *first_pixel_blocks_V,
-                                       float **perceptual_relevance_x, float **perceptual_relevance_y,
-                                       uint8_t *hops_Y, uint8_t *hops_U, uint8_t *hops_V,
-                                       uint8_t quality_level) 
+static int lhe_advanced_write_file(AVCodecContext *avctx, AVPacket *pkt, 
+                                   uint32_t image_size_Y, uint32_t image_size_UV, 
+                                   uint8_t total_blocks_width, uint8_t total_blocks_height) 
 {
   
     uint8_t *buf;
@@ -695,16 +699,27 @@ static int lhe_advanced_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
     uint64_t n_bits_hops, n_bits_mesh, n_bytes, n_bytes_components, n_bytes_mesh, total_blocks;
     uint32_t xini_Y, xfin_downsampled_Y, yini_Y, yfin_downsampled_Y, xini_UV, xfin_downsampled_UV, yini_UV, yfin_downsampled_UV; 
     uint64_t pix;
-        
     int i, ret;
-        
-    struct timeval before , after;
-   
+            
+    LheContext *s;
+    LheProcessing *procY;
+    LheProcessing *procUV;
+    LheImage *lheY;
+    LheImage *lheU;
+    LheImage *lheV;
+    
     LheHuffEntry he_mesh[LHE_MAX_HUFF_SIZE_MESH]; //Struct for mesh Huffman data
     LheHuffEntry he_Y[LHE_MAX_HUFF_SIZE_SYMBOLS]; //Struct for luminance Huffman data
     LheHuffEntry he_UV[LHE_MAX_HUFF_SIZE_SYMBOLS]; //Struct for chrominance Huffman data
-
-    LheContext *s = avctx->priv_data;
+    
+    struct timeval before , after;
+    
+    s = avctx->priv_data;
+    procY = &s->procY;
+    procUV = &s->procUV;
+    lheY = &s->lheY;
+    lheU = &s->lheU;
+    lheV = &s->lheV;
         
     total_blocks = total_blocks_height * total_blocks_width;
     
@@ -712,26 +727,23 @@ static int lhe_advanced_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
 
     //Generates HUffman
     n_bits_mesh = lhe_advanced_gen_huffman_mesh (he_mesh, 
-                                                 perceptual_relevance_x, perceptual_relevance_y,                                          
+                                                 procY->perceptual_relevance_x, procY->perceptual_relevance_y,                                          
                                                  total_blocks_width, total_blocks_height);
   
     n_bytes_mesh = (n_bits_mesh / 8) + 1;
     
     n_bits_hops = lhe_advanced_gen_huffman (he_Y, he_UV, 
-                                            basic_block_Y, basic_block_UV,
-                                            advanced_block_Y, advanced_block_UV,
-                                            hops_Y, hops_U, hops_V, 
-                                            width_Y, width_UV, height_Y, height_UV,
-                                            block_width_Y, block_height_Y, block_width_UV, block_height_UV,
+                                            procY, procUV, lheY, lheU, lheV,
                                             total_blocks_width, total_blocks_height);
      
-    n_bytes_components = (n_bits_hops/8) + 1;           
+    n_bytes_components = (n_bits_hops/8) + 1;     
+    
     
     //File size
     n_bytes = sizeof(lhe_mode) + sizeof (pixel_format) +
-              + sizeof(width_Y) + sizeof(height_Y) //width and height
-              + total_blocks * (sizeof(*first_pixel_blocks_Y) + sizeof(*first_pixel_blocks_U) + sizeof(*first_pixel_blocks_V)) //first pixel blocks array value
-              + sizeof (quality_level) + //quality level
+              + sizeof(procY->width) + sizeof(procY->height) //width and height
+              + total_blocks * (sizeof(*lheY->first_color_block) + sizeof(*lheU->first_color_block) + sizeof(*lheV->first_color_block)) //first pixel blocks array value
+              + sizeof (s->ql) + //quality level
               + LHE_HUFFMAN_TABLE_BYTES_MESH
               + LHE_HUFFMAN_TABLE_BYTES_SYMBOLS + //huffman table
               + n_bytes_mesh 
@@ -767,27 +779,27 @@ static int lhe_advanced_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
     bytestream_put_byte(&buf, pixel_format);
         
     //save width and height
-    bytestream_put_le32(&buf, width_Y);
-    bytestream_put_le32(&buf, height_Y);  
+    bytestream_put_le32(&buf, procY->width);
+    bytestream_put_le32(&buf, procY->height);  
 
     //Save first pixel for each block
     for (i=0; i<total_blocks; i++) 
     {
-        bytestream_put_byte(&buf, first_pixel_blocks_Y[i]);
+        bytestream_put_byte(&buf, lheY->first_color_block[i]);
     }
     
       for (i=0; i<total_blocks; i++) 
     {
-        bytestream_put_byte(&buf, first_pixel_blocks_U[i]);
+        bytestream_put_byte(&buf, lheU->first_color_block[i]);
 
     }
     
       for (i=0; i<total_blocks; i++) 
     {
-        bytestream_put_byte(&buf, first_pixel_blocks_V[i]);       
+        bytestream_put_byte(&buf, lheV->first_color_block[i]);       
     }
          
-    init_put_bits(&s->pb, buf, LHE_HUFFMAN_TABLE_BYTES_MESH + LHE_HUFFMAN_TABLE_BYTES_SYMBOLS + sizeof(quality_level) + n_bytes_mesh + n_bytes_components + FILE_OFFSET_BYTES);
+    init_put_bits(&s->pb, buf, LHE_HUFFMAN_TABLE_BYTES_MESH + LHE_HUFFMAN_TABLE_BYTES_SYMBOLS + sizeof(s->ql) + n_bytes_mesh + n_bytes_components + FILE_OFFSET_BYTES);
 
     //Write Huffman tables 
     for (i=0; i<LHE_MAX_HUFF_SIZE_SYMBOLS; i++)
@@ -809,7 +821,7 @@ static int lhe_advanced_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
     }
     
     //Advanced LHE quality level
-    put_bits(&s->pb, QL_SIZE_BITS, quality_level);    
+    put_bits(&s->pb, QL_SIZE_BITS, s->ql);    
     
     //Write mesh. First PRX, then PRY because it eases the decoding task
     //Perceptual Relevance x intervals
@@ -817,7 +829,7 @@ static int lhe_advanced_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
     {
         for (int block_x=0; block_x<total_blocks_width+1; block_x++) 
         { 
-            pr_interval = lhe_advanced_translate_pr_into_mesh(perceptual_relevance_x[block_y][block_x]);
+            pr_interval = lhe_advanced_translate_pr_into_mesh(procY->perceptual_relevance_x[block_y][block_x]);
             put_bits(&s->pb, he_mesh[pr_interval].len, he_mesh[pr_interval].code);
         }
     }
@@ -827,7 +839,7 @@ static int lhe_advanced_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
     {
         for (int block_x=0; block_x<total_blocks_width+1; block_x++) 
         { 
-            pr_interval = lhe_advanced_translate_pr_into_mesh(perceptual_relevance_y[block_y][block_x]);
+            pr_interval = lhe_advanced_translate_pr_into_mesh(procY->perceptual_relevance_y[block_y][block_x]);
             put_bits(&s->pb, he_mesh[pr_interval].len, he_mesh[pr_interval].code);
 
         }
@@ -838,24 +850,24 @@ static int lhe_advanced_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
     {
         for (int block_x=0; block_x<total_blocks_width; block_x++)
         {
-            xini_Y = basic_block_Y[block_y][block_x].x_ini;
-            yini_Y = basic_block_Y[block_y][block_x].y_ini;
+            xini_Y = procY->basic_block[block_y][block_x].x_ini;
+            yini_Y = procY->basic_block[block_y][block_x].y_ini;
             
-            xfin_downsampled_Y = advanced_block_Y[block_y][block_x].x_fin_downsampled;          
-            yfin_downsampled_Y = advanced_block_Y[block_y][block_x].y_fin_downsampled;
+            xfin_downsampled_Y = procY->advanced_block[block_y][block_x].x_fin_downsampled;          
+            yfin_downsampled_Y = procY->advanced_block[block_y][block_x].y_fin_downsampled;
                
-            xini_UV = basic_block_UV[block_y][block_x].x_ini;
-            yini_UV = basic_block_UV[block_y][block_x].y_ini;
+            xini_UV = procUV->basic_block[block_y][block_x].x_ini;
+            yini_UV = procUV->basic_block[block_y][block_x].y_ini;
             
-            xfin_downsampled_UV = advanced_block_UV[block_y][block_x].x_fin_downsampled;
-            yfin_downsampled_UV = advanced_block_UV[block_y][block_x].y_fin_downsampled;
+            xfin_downsampled_UV = procUV->advanced_block[block_y][block_x].x_fin_downsampled;
+            yfin_downsampled_UV = procUV->advanced_block[block_y][block_x].y_fin_downsampled;
          
             //LUMINANCE
             for (int y=yini_Y; y<yfin_downsampled_Y; y++) 
             {
                 for (int x=xini_Y; x<xfin_downsampled_Y; x++) {
-                    pix = y*width_Y + x;
-                    put_bits(&s->pb, he_Y[hops_Y[pix]].len , he_Y[hops_Y[pix]].code);
+                    pix = y*procY->width + x;
+                    put_bits(&s->pb, he_Y[lheY->hops[pix]].len , he_Y[lheY->hops[pix]].code);
                 }
             }
             
@@ -863,8 +875,8 @@ static int lhe_advanced_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
             for (int y=yini_UV; y<yfin_downsampled_UV; y++) 
             {
                 for (int x=xini_UV; x<xfin_downsampled_UV; x++) {
-                    pix = y*width_UV + x;
-                    put_bits(&s->pb, he_UV[hops_U[pix]].len , he_UV[hops_U[pix]].code);
+                    pix = y*procUV->width + x;
+                    put_bits(&s->pb, he_UV[lheU->hops[pix]].len , he_UV[lheU->hops[pix]].code);
                 }
             }
             
@@ -872,8 +884,8 @@ static int lhe_advanced_write_lhe_file(AVCodecContext *avctx, AVPacket *pkt,
             for (int y=yini_UV; y<yfin_downsampled_UV; y++) 
             {
                 for (int x=xini_UV; x<xfin_downsampled_UV; x++) {
-                    pix = y*width_UV + x;
-                    put_bits(&s->pb, he_UV[hops_V[pix]].len , he_UV[hops_V[pix]].code);
+                    pix = y*procUV->width + x;
+                    put_bits(&s->pb, he_UV[lheV->hops[pix]].len , he_UV[lheV->hops[pix]].code);
                 }
             }
         }
@@ -2449,14 +2461,26 @@ static int mlhe_advanced_write_delta_frame(AVCodecContext *avctx, AVPacket *pkt,
     uint64_t pix;
         
     int i, ret;
-        
-    struct timeval before , after;
-   
+            
+    LheContext *s;
+    LheProcessing *procY;
+    LheProcessing *procUV;
+    LheImage *lheY;
+    LheImage *lheU;
+    LheImage *lheV;
+    
     LheHuffEntry he_mesh[LHE_MAX_HUFF_SIZE_MESH]; //Struct for mesh Huffman data
     LheHuffEntry he_Y[LHE_MAX_HUFF_SIZE_SYMBOLS]; //Struct for luminance Huffman data
     LheHuffEntry he_UV[LHE_MAX_HUFF_SIZE_SYMBOLS]; //Struct for chrominance Huffman data
-
-    LheContext *s = avctx->priv_data;
+    
+    struct timeval before , after;
+    
+    s = avctx->priv_data;
+    procY = &s->procY;
+    procUV = &s->procUV;
+    lheY = &s->lheY;
+    lheU = &s->lheU;
+    lheV = &s->lheV;  
         
     total_blocks = total_blocks_height * total_blocks_width;
     
@@ -2467,12 +2491,7 @@ static int mlhe_advanced_write_delta_frame(AVCodecContext *avctx, AVPacket *pkt,
   
     n_bytes_mesh = (n_bits_mesh / 8) + 1;
     
-    n_bits_hops = lhe_advanced_gen_huffman (he_Y, he_UV, 
-                                            basic_block_Y, basic_block_UV,
-                                            advanced_block_Y, advanced_block_UV,
-                                            hops_Y, hops_U, hops_V, 
-                                            width_Y, width_UV, height_Y, height_UV,
-                                            block_width_Y, block_height_Y, block_width_UV, block_height_UV,
+    n_bits_hops = lhe_advanced_gen_huffman (he_Y, he_UV, procY, procUV, lheY, lheU, lheV,
                                             total_blocks_width, total_blocks_height);
      
     n_bytes_components = (n_bits_hops/8) + 1;           
@@ -2688,13 +2707,8 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
              
         }
         gettimeofday(&after , NULL);
-
         
-        lhe_basic_write_lhe_file(avctx, pkt,image_size_Y,  (&s->procY)->width,  (&s->procY)->height,
-                                 image_size_UV,  (&s->procUV)->width,  (&s->procUV)->height,
-                                 total_blocks_width, total_blocks_height,
-                                 (&s->lheY)->first_color_block, (&s->lheU)->first_color_block, (&s->lheV)->first_color_block,
-                                 (&s->lheY)->hops, (&s->lheU)->hops, (&s->lheV)->hops);  
+        lhe_basic_write_file(avctx, pkt,image_size_Y, image_size_UV, total_blocks_width, total_blocks_height);  
                           
     } 
     else 
@@ -2757,16 +2771,9 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
 
         av_log (NULL, AV_LOG_INFO, "Advanced LHE with ql = %d and cf = %f \n",s->ql, compression_factor); 
                    
-        lhe_advanced_write_lhe_file(avctx, pkt, 
-                                    (&s->procY)->basic_block, (&s->procUV)->basic_block, (&s->procY)->advanced_block, (&s->procUV)->advanced_block,
-                                    image_size_Y, (&s->procY)->width, (&s->procY)->height,
-                                    image_size_UV, (&s->procUV)->width, (&s->procUV)->height,
-                                    total_blocks_width, total_blocks_height,                                       
-                                    (&s->procY)->block_width, (&s->procUV)->block_width, (&s->procY)->block_height, (&s->procUV)->block_height,
-                                    (&s->lheY)->first_color_block, (&s->lheU)->first_color_block, (&s->lheV)->first_color_block,
-                                    (&s->procY)->perceptual_relevance_x, (&s->procY)->perceptual_relevance_y,                                           
-                                    (&s->lheY)->hops, (&s->lheU)->hops, (&s->lheV)->hops,
-                                    s->ql);   
+        lhe_advanced_write_file(avctx, pkt, 
+                                image_size_Y, image_size_UV, 
+                                total_blocks_width, total_blocks_height);   
     }
 
     if(avctx->flags&AV_CODEC_FLAG_PSNR){
@@ -2925,16 +2932,9 @@ static int mlhe_encode_video(AVCodecContext *avctx, AVPacket *pkt,
                                                    component_original_data_Y, component_original_data_U, component_original_data_V,
                                                    total_blocks_width, total_blocks_height);     
 
-        lhe_advanced_write_lhe_file(avctx, pkt, 
-                                    (&s->procY)->basic_block, (&s->procUV)->basic_block, (&s->procY)->advanced_block, (&s->procUV)->advanced_block,
-                                    image_size_Y, (&s->procY)->width, (&s->procY)->height,
-                                    image_size_UV,(&s->procUV)->width,  (&s->procUV)->height, 
-                                    total_blocks_width, total_blocks_height,                                       
-                                    (&s->procY)->block_width, (&s->procUV)->block_width, (&s->procY)->block_height, (&s->procUV)->block_height,
-                                    (&s->lheY)->first_color_block, (&s->lheU)->first_color_block, (&s->lheV)->first_color_block,
-                                    (&s->procY)->perceptual_relevance_x, (&s->procY)->perceptual_relevance_y,                                           
-                                    (&s->lheY)->hops, (&s->lheU)->hops, (&s->lheV)->hops,
-                                    s->ql);                                      
+        lhe_advanced_write_file(avctx, pkt, 
+                                image_size_Y, image_size_UV, 
+                                total_blocks_width, total_blocks_height);                                      
     }
 
     if(avctx->flags&AV_CODEC_FLAG_PSNR){
