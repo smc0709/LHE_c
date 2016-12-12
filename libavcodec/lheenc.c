@@ -2443,15 +2443,7 @@ static void mlhe_delta_frame_encode (LheContext *s, const AVFrame *frame,
  * @param *hops_V Chrominance V hops
  */
 static int mlhe_advanced_write_delta_frame(AVCodecContext *avctx, AVPacket *pkt, 
-                                           BasicLheBlock **basic_block_Y, BasicLheBlock **basic_block_UV,
-                                           AdvancedLheBlock **advanced_block_Y, AdvancedLheBlock **advanced_block_UV,
-                                           uint32_t width_Y, uint32_t height_Y,
-                                           uint32_t width_UV, uint32_t height_UV,
-                                           uint8_t total_blocks_width, uint8_t total_blocks_height,                                       
-                                           uint32_t block_width_Y, uint32_t block_width_UV, uint32_t block_height_Y, uint32_t block_height_UV,
-                                           uint8_t *first_pixel_blocks_Y, uint8_t *first_pixel_blocks_U, uint8_t *first_pixel_blocks_V,
-                                           float **perceptual_relevance_x, float **perceptual_relevance_y,
-                                           uint8_t *hops_Y, uint8_t *hops_U, uint8_t *hops_V) 
+                                           uint8_t total_blocks_width, uint8_t total_blocks_height) 
 {
   
     uint8_t *buf;
@@ -2486,7 +2478,7 @@ static int mlhe_advanced_write_delta_frame(AVCodecContext *avctx, AVPacket *pkt,
     
     //Generates HUffman
     n_bits_mesh = lhe_advanced_gen_huffman_mesh (he_mesh, 
-                                                 perceptual_relevance_x, perceptual_relevance_y,                                          
+                                                 procY->perceptual_relevance_x, procY->perceptual_relevance_y,                                          
                                                  total_blocks_width, total_blocks_height);
   
     n_bytes_mesh = (n_bits_mesh / 8) + 1;
@@ -2497,7 +2489,7 @@ static int mlhe_advanced_write_delta_frame(AVCodecContext *avctx, AVPacket *pkt,
     n_bytes_components = (n_bits_hops/8) + 1;           
     
     //File size
-    n_bytes = total_blocks * (sizeof(*first_pixel_blocks_Y) + sizeof(*first_pixel_blocks_U) + sizeof(*first_pixel_blocks_V)) //first pixel blocks array value
+    n_bytes = total_blocks * (sizeof(*lheY->first_color_block) + sizeof(*lheU->first_color_block) + sizeof(*lheV->first_color_block)) 
               + LHE_HUFFMAN_TABLE_BYTES_MESH
               + LHE_HUFFMAN_TABLE_BYTES_SYMBOLS + //huffman table
               + n_bytes_mesh 
@@ -2513,18 +2505,18 @@ static int mlhe_advanced_write_delta_frame(AVCodecContext *avctx, AVPacket *pkt,
     //Save first delta for each block
     for (i=0; i<total_blocks; i++) 
     {
-        bytestream_put_byte(&buf, first_pixel_blocks_Y[i]);
+        bytestream_put_byte(&buf, lheY->first_color_block[i]);
     }
     
     for (i=0; i<total_blocks; i++) 
     {
-        bytestream_put_byte(&buf, first_pixel_blocks_U[i]);
+        bytestream_put_byte(&buf, lheU->first_color_block[i]);
 
     }
     
     for (i=0; i<total_blocks; i++) 
     {
-        bytestream_put_byte(&buf, first_pixel_blocks_V[i]);       
+        bytestream_put_byte(&buf, lheV->first_color_block[i]);       
     }
          
     init_put_bits(&s->pb, buf, LHE_HUFFMAN_TABLE_BYTES_MESH + LHE_HUFFMAN_TABLE_BYTES_SYMBOLS + n_bytes_mesh + n_bytes_components + FILE_OFFSET_BYTES);
@@ -2554,7 +2546,7 @@ static int mlhe_advanced_write_delta_frame(AVCodecContext *avctx, AVPacket *pkt,
     {
         for (int block_x=0; block_x<total_blocks_width+1; block_x++) 
         { 
-            pr_interval = lhe_advanced_translate_pr_into_mesh(perceptual_relevance_x[block_y][block_x]);
+            pr_interval = lhe_advanced_translate_pr_into_mesh(procY->perceptual_relevance_x[block_y][block_x]);
             put_bits(&s->pb, he_mesh[pr_interval].len, he_mesh[pr_interval].code);
         }
     }
@@ -2564,7 +2556,7 @@ static int mlhe_advanced_write_delta_frame(AVCodecContext *avctx, AVPacket *pkt,
     {
         for (int block_x=0; block_x<total_blocks_width+1; block_x++) 
         { 
-            pr_interval = lhe_advanced_translate_pr_into_mesh(perceptual_relevance_y[block_y][block_x]);
+            pr_interval = lhe_advanced_translate_pr_into_mesh(procY->perceptual_relevance_y[block_y][block_x]);
             put_bits(&s->pb, he_mesh[pr_interval].len, he_mesh[pr_interval].code);
 
         }
@@ -2575,24 +2567,24 @@ static int mlhe_advanced_write_delta_frame(AVCodecContext *avctx, AVPacket *pkt,
     {
         for (int block_x=0; block_x<total_blocks_width; block_x++)
         {
-            xini_Y = basic_block_Y[block_y][block_x].x_ini;
-            yini_Y = basic_block_Y[block_y][block_x].y_ini;
+            xini_Y = procY->basic_block[block_y][block_x].x_ini;
+            yini_Y = procY->basic_block[block_y][block_x].y_ini;
             
-            xfin_downsampled_Y = advanced_block_Y[block_y][block_x].x_fin_downsampled;          
-            yfin_downsampled_Y = advanced_block_Y[block_y][block_x].y_fin_downsampled;
+            xfin_downsampled_Y = procY->advanced_block[block_y][block_x].x_fin_downsampled;          
+            yfin_downsampled_Y = procY->advanced_block[block_y][block_x].y_fin_downsampled;
                
-            xini_UV = basic_block_UV[block_y][block_x].x_ini;
-            yini_UV = basic_block_UV[block_y][block_x].y_ini;
+            xini_UV = procUV->basic_block[block_y][block_x].x_ini;
+            yini_UV = procUV->basic_block[block_y][block_x].y_ini;
             
-            xfin_downsampled_UV = advanced_block_UV[block_y][block_x].x_fin_downsampled;
-            yfin_downsampled_UV = advanced_block_UV[block_y][block_x].y_fin_downsampled;
+            xfin_downsampled_UV = procUV->advanced_block[block_y][block_x].x_fin_downsampled;
+            yfin_downsampled_UV = procUV->advanced_block[block_y][block_x].y_fin_downsampled;
          
             //LUMINANCE
             for (int y=yini_Y; y<yfin_downsampled_Y; y++) 
             {
                 for (int x=xini_Y; x<xfin_downsampled_Y; x++) {
-                    pix = y*width_Y + x;
-                    put_bits(&s->pb, he_Y[hops_Y[pix]].len , he_Y[hops_Y[pix]].code);
+                    pix = y*procY->width + x;
+                    put_bits(&s->pb, he_Y[lheY->hops[pix]].len , he_Y[lheY->hops[pix]].code);
                 }
             }
             
@@ -2600,8 +2592,8 @@ static int mlhe_advanced_write_delta_frame(AVCodecContext *avctx, AVPacket *pkt,
             for (int y=yini_UV; y<yfin_downsampled_UV; y++) 
             {
                 for (int x=xini_UV; x<xfin_downsampled_UV; x++) {
-                    pix = y*width_UV + x;
-                    put_bits(&s->pb, he_UV[hops_U[pix]].len , he_UV[hops_U[pix]].code);
+                    pix = y*procUV->width + x;
+                    put_bits(&s->pb, he_UV[lheU->hops[pix]].len , he_UV[lheU->hops[pix]].code);
                 }
             }
             
@@ -2609,8 +2601,8 @@ static int mlhe_advanced_write_delta_frame(AVCodecContext *avctx, AVPacket *pkt,
             for (int y=yini_UV; y<yfin_downsampled_UV; y++) 
             {
                 for (int x=xini_UV; x<xfin_downsampled_UV; x++) {
-                    pix = y*width_UV + x;
-                    put_bits(&s->pb, he_UV[hops_V[pix]].len , he_UV[hops_V[pix]].code);
+                    pix = y*procUV->width + x;
+                    put_bits(&s->pb, he_UV[lheV->hops[pix]].len , he_UV[lheV->hops[pix]].code);
                 }
             }
         }
@@ -2867,13 +2859,7 @@ static int mlhe_encode_video(AVCodecContext *avctx, AVPacket *pkt,
                                  total_blocks_width, total_blocks_height);
         
         mlhe_advanced_write_delta_frame(avctx, pkt, 
-                                        (&s->procY)->basic_block, (&s->procUV)->basic_block, (&s->procY)->advanced_block, (&s->procUV)->advanced_block,
-                                        (&s->procY)->width, (&s->procY)->height, (&s->procUV)->width, (&s->procUV)->height,
-                                        total_blocks_width, total_blocks_height,                                       
-                                        (&s->procY)->block_width, (&s->procUV)->block_width, (&s->procY)->block_height, (&s->procUV)->block_height,
-                                        (&s->lheY)->first_color_block, (&s->lheU)->first_color_block, (&s->lheV)->first_color_block,
-                                        (&s->procY)->perceptual_relevance_x, (&s->procY)->perceptual_relevance_y,                                           
-                                        (&s->lheY)->hops, (&s->lheU)->hops, (&s->lheV)->hops); 
+                                        total_blocks_width, total_blocks_height); 
    
     }      
     else 
