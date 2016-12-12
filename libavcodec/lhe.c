@@ -365,10 +365,7 @@ float lhe_advanced_perceptual_relevance_to_ppp (LheProcessing *procY, LheProcess
  * @param block_x Block x index
  * @param block_y Block y index                                                        
  */
-void lhe_advanced_ppp_side_to_rectangle_shape (LheProcessing *proc, 
-                                               uint32_t image_width, uint32_t image_height, 
-                                               float ppp_max, 
-                                               int block_x, int block_y) 
+void lhe_advanced_ppp_side_to_rectangle_shape (LheProcessing *proc, float ppp_max, int block_x, int block_y) 
 {
     float ppp_x_0, ppp_x_1, ppp_x_2, ppp_x_3, ppp_y_0, ppp_y_1, ppp_y_2, ppp_y_3, side_a, side_b, side_c, side_d, side_average, side_max, add;
     
@@ -415,9 +412,9 @@ void lhe_advanced_ppp_side_to_rectangle_shape (LheProcessing *proc,
     proc->advanced_block[block_y][block_x].downsampled_x_side = downsampled_block;
     
     x_fin_downsampled = proc->basic_block[block_y][block_x].x_ini + downsampled_block;
-    if (x_fin_downsampled > image_width) 
+    if (x_fin_downsampled > proc->width) 
     {
-        x_fin_downsampled = image_width;
+        x_fin_downsampled = proc->width;
     }
     proc->advanced_block[block_y][block_x].x_fin_downsampled = x_fin_downsampled;
 
@@ -553,9 +550,9 @@ void lhe_advanced_ppp_side_to_rectangle_shape (LheProcessing *proc,
     
     proc->advanced_block[block_y][block_x].downsampled_y_side = downsampled_block;
     y_fin_downsampled = proc->basic_block[block_y][block_x].y_ini + downsampled_block;
-    if (y_fin_downsampled > image_height)
+    if (y_fin_downsampled > proc->height)
     {
-        y_fin_downsampled = image_height;
+        y_fin_downsampled = proc->height;
     }
     proc->advanced_block[block_y][block_x].y_fin_downsampled = y_fin_downsampled;
 

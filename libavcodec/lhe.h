@@ -215,10 +215,7 @@ float lhe_advanced_perceptual_relevance_to_ppp (LheProcessing *procY, LheProcess
                                                 float compression_factor, uint32_t ppp_max_theoric,
                                                 int block_x, int block_y);
 
-void lhe_advanced_ppp_side_to_rectangle_shape (LheProcessing *proc,
-                                               uint32_t image_width, uint32_t image_height, 
-                                               float ppp_max, 
-                                               int block_x, int block_y);
+void lhe_advanced_ppp_side_to_rectangle_shape (LheProcessing *proc, float ppp_max, int block_x, int block_y);
 
 /**
  * VIDEO LHE

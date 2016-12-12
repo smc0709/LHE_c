@@ -474,22 +474,12 @@ static void lhe_advanced_read_mesh (LheState *s, LheHuffEntry *he_mesh,
                                              total_blocks_width, total_blocks_height,
                                              block_x, block_y);
 
-            lhe_advanced_perceptual_relevance_to_ppp(&s->procY, &s->procUV, 
-                                                     compression_factor, ppp_max_theoric, 
-                                                     block_x, block_y);
+            lhe_advanced_perceptual_relevance_to_ppp(&s->procY, &s->procUV, compression_factor, ppp_max_theoric, block_x, block_y);
             
             //Adjusts luminance ppp to rectangle shape 
-            lhe_advanced_ppp_side_to_rectangle_shape (&s->procY,
-                                                      width_Y, height_Y, 
-                                                      ppp_max_theoric,
-                                                      block_x, block_y);
-            
+            lhe_advanced_ppp_side_to_rectangle_shape (&s->procY, ppp_max_theoric, block_x, block_y);  
             //Adjusts chrominance ppp to rectangle shape
-            lhe_advanced_ppp_side_to_rectangle_shape (&s->procUV,
-                                                      width_UV, height_UV, 
-                                                      ppp_max_theoric,
-                                                      block_x, block_y);
-     
+            lhe_advanced_ppp_side_to_rectangle_shape (&s->procUV, ppp_max_theoric, block_x, block_y);   
         }
     }
 }
