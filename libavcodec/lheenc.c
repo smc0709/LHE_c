@@ -101,17 +101,26 @@ static av_cold int lhe_encode_init(AVCodecContext *avctx)
 //==================================================================
 
 static void lhe_compute_error_for_psnr (AVCodecContext *avctx, const AVFrame *frame,
-                                        int height_Y, int width_Y, int height_UV, int width_UV,
-                                        uint8_t *component_original_data_Y, uint8_t *component_original_data_U, uint8_t *component_original_data_V,
-                                        uint8_t *component_prediction_Y, uint8_t *component_prediction_U, uint8_t *component_prediction_V) 
+                                        uint8_t *component_original_data_Y, uint8_t *component_original_data_U, uint8_t *component_original_data_V) 
 {
     
     int error= 0;
+    LheContext *s;
+    LheProcessing *procY, *procUV;
+    LheImage *lheY, *lheU, *lheV;
+    
+    s = avctx->priv_data;
+    procY = &s->procY;
+    procUV = &s->procUV;
+    
+    lheY = &s->lheY;
+    lheU = &s->lheU;
+    lheV = &s->lheV;
 
     if(frame->data[0]) {
-        for(int y=0; y<height_Y; y++){
-            for(int x=0; x<width_Y; x++){
-                error = component_original_data_Y[y*frame->linesize[0] + x] - component_prediction_Y[y*width_Y + x];
+        for(int y=0; y<procY->height; y++){
+            for(int x=0; x<procY->width; x++){
+                error = component_original_data_Y[y*frame->linesize[0] + x] - lheY->component_prediction[y*procY->width + x];
                 error = abs(error);
                 avctx->error[0] += error*error;
             }
@@ -119,9 +128,9 @@ static void lhe_compute_error_for_psnr (AVCodecContext *avctx, const AVFrame *fr
     }
     
     if(frame->data[1]) {
-        for(int y=0; y<height_UV; y++){
-            for(int x=0; x<width_UV; x++){
-                error = component_original_data_U[y*frame->linesize[1] + x] - component_prediction_U[y*width_UV + x];
+        for(int y=0; y<procUV->height; y++){
+            for(int x=0; x<procUV->width; x++){
+                error = component_original_data_U[y*frame->linesize[1] + x] - lheU->component_prediction[y*procUV->width + x];
                 error = abs(error);
                 avctx->error[1] += error*error;
             }
@@ -129,9 +138,9 @@ static void lhe_compute_error_for_psnr (AVCodecContext *avctx, const AVFrame *fr
     }
     
     if(frame->data[2]) {
-        for(int y=0; y<height_UV; y++){
-            for(int x=0; x<width_UV; x++){
-                error = component_original_data_V[y*frame->linesize[2] + x] - component_prediction_V[y*width_UV + x];
+        for(int y=0; y<procUV->height; y++){
+            for(int x=0; x<procUV->width; x++){
+                error = component_original_data_V[y*frame->linesize[2] + x] - lheV->component_prediction[y*procUV->width + x];
                 error = abs(error);
                 avctx->error[2] += error*error;
             }
@@ -165,8 +174,7 @@ static void print_json_pr_metrics (float** perceptual_relevance_x, float** perce
     av_log (NULL, AV_LOG_PANIC, "]");   
 }
 
-static void print_csv_pr_metrics (float** perceptual_relevance_x, float** perceptual_relevance_y,
-                                   int total_blocks_width, int total_blocks_height) 
+static void print_csv_pr_metrics (LheProcessing *procY, int total_blocks_width, int total_blocks_height) 
 {
     int i,j;
             
@@ -175,7 +183,7 @@ static void print_csv_pr_metrics (float** perceptual_relevance_x, float** percep
         for (i=0; i<total_blocks_width+1; i++) 
         {  
 
-            av_log (NULL, AV_LOG_INFO, "%.4f;%.4f;", perceptual_relevance_x[j][i], perceptual_relevance_y[j][i]);
+            av_log (NULL, AV_LOG_INFO, "%.4f;%.4f;", procY->perceptual_relevance_x[j][i], procY->perceptual_relevance_y[j][i]);
 
         }
         
@@ -2763,23 +2771,12 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
 
         av_log (NULL, AV_LOG_INFO, "Advanced LHE with ql = %d and cf = %f \n",s->ql, compression_factor); 
                    
-        lhe_advanced_write_file(avctx, pkt, 
-                                image_size_Y, image_size_UV, 
-                                total_blocks_width, total_blocks_height);   
+        lhe_advanced_write_file(avctx, pkt, image_size_Y, image_size_UV, total_blocks_width, total_blocks_height);   
     }
 
-    if(avctx->flags&AV_CODEC_FLAG_PSNR){
-        lhe_compute_error_for_psnr (avctx, frame,
-                                    (&s->procY)->height, (&s->procY)->width, (&s->procUV)->height, (&s->procUV)->width,
-                                    component_original_data_Y, component_original_data_U, component_original_data_V,
-                                    (&s->lheY)->component_prediction, (&s->lheU)->component_prediction, (&s->lheV)->component_prediction); 
-    }
-    
-        
     if (s->pr_metrics)
     {
-        print_csv_pr_metrics((&s->procY)->perceptual_relevance_x, (&s->procY)->perceptual_relevance_y,
-                             total_blocks_width, total_blocks_height);  
+        print_csv_pr_metrics(&s->procY, total_blocks_width, total_blocks_height);  
     }
 
     av_log (NULL, AV_LOG_PANIC, " %.0lf; ",time_diff(before , after));
@@ -2924,16 +2921,12 @@ static int mlhe_encode_video(AVCodecContext *avctx, AVPacket *pkt,
     }
 
     if(avctx->flags&AV_CODEC_FLAG_PSNR){
-        lhe_compute_error_for_psnr (avctx, frame,
-                                    (&s->procY)->height, (&s->procY)->width,(&s->procUV)->height, (&s->procUV)->width, 
-                                    component_original_data_Y, component_original_data_U, component_original_data_V,
-                                    (&s->lheY)->component_prediction, (&s->lheU)->component_prediction, (&s->lheV)->component_prediction); 
+        lhe_compute_error_for_psnr (avctx, frame, component_original_data_Y, component_original_data_U, component_original_data_V); 
     }
     
     if (s->pr_metrics)
     {
-        print_csv_pr_metrics((&s->procY)->perceptual_relevance_x, (&s->procY)->perceptual_relevance_y,
-                             total_blocks_width, total_blocks_height);  
+        print_csv_pr_metrics(&s->procY, total_blocks_width, total_blocks_height);  
     }
     
     
