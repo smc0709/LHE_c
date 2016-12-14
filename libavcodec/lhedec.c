@@ -755,7 +755,7 @@ static void lhe_advanced_decode_one_hop_per_pixel_block (LheBasicPrec *prec, Lhe
     for (int y=yini; y < yfin_downsampled; y++)  {
         for (int x=xini; x < xfin_downsampled; x++)     {
             
-            hop = lhe->hops[pix]; 
+            hop = lhe->hops[pix];          
   
             if (x == xini && y==yini) 
             {
@@ -926,11 +926,11 @@ static void lhe_advanced_decode_symbols (LheState *s, LheHuffEntry *he_Y, LheHuf
     intermediate_interpolated_U = malloc (sizeof(uint8_t) * image_size_UV);
     intermediate_interpolated_V = malloc (sizeof(uint8_t) * image_size_UV);
     
-    #pragma omp parallel for
+    //#pragma omp parallel for
     for (int block_y=0; block_y<s->total_blocks_height; block_y++)
     {
         for (int block_x=0; block_x<s->total_blocks_width; block_x++)
-        {                        
+        {             
             //Luminance
             lhe_advanced_decode_one_hop_per_pixel_block(&s->prec, &s->procY, &s->lheY, s->total_blocks_width, block_x, block_y); 
 
@@ -951,8 +951,7 @@ static void lhe_advanced_decode_symbols (LheState *s, LheHuffEntry *he_Y, LheHuf
             lhe_advanced_horizontal_nearest_neighbour_interpolation (&s->procUV, &s->lheU, intermediate_interpolated_U, 
                                                                      s->frame->linesize[1], block_x, block_y);
                                                                         
-        
-            //Chrominance V          
+            //Chrominance V 
             lhe_advanced_decode_one_hop_per_pixel_block(&s->prec, &s->procUV, &s->lheV, s->total_blocks_width, block_x, block_y); 
 
 
@@ -962,7 +961,6 @@ static void lhe_advanced_decode_symbols (LheState *s, LheHuffEntry *he_Y, LheHuf
             
             lhe_advanced_horizontal_nearest_neighbour_interpolation (&s->procUV, &s->lheV, intermediate_interpolated_V, 
                                                                      s->frame->linesize[2], block_x, block_y);    
-                                                                     
         }
     }
 }
@@ -984,38 +982,125 @@ static void lhe_advanced_decode_symbols (LheState *s, LheHuffEntry *he_Y, LheHuf
  * @param block_x block x index
  * @param block_y block y index
  */
-static void mlhe_add_delta_to_last_frame (LheState *s, 
-                                          BasicLheBlock **basic_block, AdvancedLheBlock **advanced_block, 
-                                          uint8_t *delta_frame, 
-                                          uint8_t *downsampled_image, uint8_t *last_downsampled_image,
-                                          uint32_t width, uint32_t block_x, uint32_t block_y) 
+static void mlhe_add_delta_to_last_frame (LheState *s, LheProcessing *proc, LheImage *lhe, 
+                                          uint8_t *adapted_downsampled_image_Y, uint8_t *delta_frame, 
+                                          uint32_t block_x, uint32_t block_y) 
 {
     uint32_t xini, xfin, yini, yfin, pix;
     int delta, image;
     
-    xini = basic_block[block_y][block_x].x_ini;
-    xfin = advanced_block[block_y][block_x].x_fin_downsampled; 
+    xini = proc->basic_block[block_y][block_x].x_ini;
+    xfin = proc->advanced_block[block_y][block_x].x_fin_downsampled; 
  
-    yini = basic_block[block_y][block_x].y_ini;
-    yfin = advanced_block[block_y][block_x].y_fin_downsampled;
+    yini = proc->basic_block[block_y][block_x].y_ini;
+    yfin = proc->advanced_block[block_y][block_x].y_fin_downsampled;
     
     #pragma omp parallel for
     for (int y=yini; y<yfin; y++) 
     {
         for (int x=xini; x<xfin; x++) 
         {
-            pix = y*width + x;
+            pix = y*proc->width + x;
             delta = (delta_frame[pix] - 128.0) * 2.0;
-            image = last_downsampled_image[pix] + delta;
+            image = adapted_downsampled_image_Y[pix] + delta;
             
             if (image > 255) image = 255;
             if (image < 0) image = 1;
             
-            downsampled_image[pix] = image;
+            lhe->downsampled_image[pix] = image;
         }
     }
-        
+}
+
+/**
+ * Decodes one hop per pixel in a block
+ * 
+ * @param *prec Pointer to precalculated lhe data
+ * @param **basic_block Basic block parameters
+ * @param **advanced_block Advanced block parameters
+ * @param *hops array of hops
+ * @param *image final image
+ * @param width image width
+ * @param height image height
+ * @param *first_color_block first component value for each block
+ * @param total_blocks_width number of blocks widthwise
+ * @param block_x block x index
+ * @param block_y block y index
+ * @param block_width block width
+ * @param block_height block height
+ */
+static void mlhe_decode_delta (LheBasicPrec *prec, LheProcessing *proc, LheImage *lhe,
+                               uint8_t *delta_prediction,
+                               uint32_t total_blocks_width, uint32_t block_x, uint32_t block_y) 
+{
+       
+    //Hops computation.
+    uint32_t xini, xfin_downsampled, yini, yfin_downsampled;
+    bool small_hop, last_small_hop;
+    uint8_t hop, predicted_luminance, hop_1, r_max; 
+    uint32_t pix, dif_pix, num_block;
     
+    num_block = block_y * total_blocks_width + block_x;
+    
+    xini = proc->basic_block[block_y][block_x].x_ini;
+    xfin_downsampled = proc->advanced_block[block_y][block_x].x_fin_downsampled; 
+ 
+    yini = proc->basic_block[block_y][block_x].y_ini;
+    yfin_downsampled = proc->advanced_block[block_y][block_x].y_fin_downsampled;
+    
+    small_hop           = false;
+    last_small_hop      = false;        // indicates if last hop is small
+    predicted_luminance = 0;            // predicted signal
+    hop_1               = START_HOP_1;
+    pix                 = 0;            // pixel possition, from 0 to image size        
+    r_max               = PARAM_R;        
+    
+ 
+    pix = yini*proc->width + xini; 
+    dif_pix = proc->width - xfin_downsampled + xini;
+    
+    for (int y=yini; y < yfin_downsampled; y++)  {
+        for (int x=xini; x < xfin_downsampled; x++)     {
+            
+            hop = lhe->hops[pix];          
+  
+            if (x == xini && y==yini) 
+            {
+                predicted_luminance=lhe->first_color_block[num_block];//first pixel always is perfectly predicted! :-)  
+            } 
+            else if (y == yini) 
+            {
+                predicted_luminance=delta_prediction[pix-1];
+            } 
+            else if (x == xini) 
+            {
+                predicted_luminance=delta_prediction[pix-proc->width];
+                last_small_hop=false;
+                hop_1=START_HOP_1;
+            } else if (x == xfin_downsampled -1) 
+            {
+                predicted_luminance=(delta_prediction[pix-1]+delta_prediction[pix-proc->width])>>1;                                                             
+            } 
+            else 
+            {
+                predicted_luminance=(delta_prediction[pix-1]+delta_prediction[pix+1-proc->width])>>1;     
+            }
+            
+          
+            //assignment of component_prediction
+            //This is the uncompressed image
+            delta_prediction[pix]= prec -> prec_luminance[predicted_luminance][r_max][hop_1][hop];
+            
+            //tunning hop1 for the next hop ( "h1 adaptation")
+            //------------------------------------------------
+            H1_ADAPTATION;
+
+            //lets go for the next pixel
+            //--------------------------
+            pix++;
+        }// for x
+        pix+=dif_pix;
+    }// for y
 }
 
 /**
@@ -1052,29 +1137,16 @@ static void mlhe_add_delta_to_last_frame (LheState *s,
  * @param total_blocks_width number of blocks widthwise
  * @param total_blocks_height number of blocks heightwise
  */
-static void mlhe_decode_delta_frame (LheState *s, 
-                                     LheHuffEntry *he_Y, LheHuffEntry *he_UV,
-                                     BasicLheBlock **basic_block_Y, BasicLheBlock **basic_block_UV,
-                                     AdvancedLheBlock **advanced_block_Y, AdvancedLheBlock **advanced_block_UV,
-                                     AdvancedLheBlock **last_advanced_block_Y, AdvancedLheBlock **last_advanced_block_UV,
-                                     uint8_t *first_color_block_Y, uint8_t *first_color_block_U, uint8_t *first_color_block_V,
-                                     uint8_t *symbols_Y, uint8_t *symbols_U, uint8_t *symbols_V,
-                                     uint8_t *last_downsampled_image_Y, uint8_t *last_downsampled_image_U, uint8_t *last_downsampled_image_V,
-                                     uint8_t *downsampled_image_Y, uint8_t *downsampled_image_U, uint8_t *downsampled_image_V,
-                                     uint8_t *component_Y, uint8_t *component_U, uint8_t *component_V,
-                                     uint32_t width_Y, uint32_t height_Y, uint32_t width_UV, uint32_t height_UV,
-                                     uint32_t image_size_Y, uint32_t image_size_UV,
-                                     uint32_t block_width_Y, uint32_t block_height_Y, uint32_t block_width_UV, uint32_t block_height_UV,
-                                     uint32_t total_blocks_width, uint32_t total_blocks_height) 
+static void mlhe_decode_delta_frame (LheState *s, LheHuffEntry *he_Y, LheHuffEntry *he_UV, uint32_t image_size_Y, uint32_t image_size_UV) 
 {
-    uint8_t *delta_frame_Y, *delta_frame_U, *delta_frame_V;
+    uint8_t *delta_prediction_Y, *delta_prediction_U, *delta_prediction_V;
     uint8_t *intermediate_adapted_downsampled_data_Y, *intermediate_adapted_downsampled_data_U, *intermediate_adapted_downsampled_data_V;
     uint8_t *adapted_downsampled_image_Y, *adapted_downsampled_image_U, *adapted_downsampled_image_V;
     uint8_t *intermediate_interpolated_Y, *intermediate_interpolated_U, *intermediate_interpolated_V;
     
-    delta_frame_Y = malloc (sizeof(uint8_t) * image_size_Y);
-    delta_frame_U = malloc (sizeof(uint8_t) * image_size_UV);
-    delta_frame_V = malloc (sizeof(uint8_t) * image_size_UV);
+    delta_prediction_Y = malloc (sizeof(uint8_t) * image_size_Y);
+    delta_prediction_U = malloc (sizeof(uint8_t) * image_size_UV);
+    delta_prediction_V = malloc (sizeof(uint8_t) * image_size_UV);
     
     intermediate_interpolated_Y = malloc (sizeof(uint8_t) * image_size_Y);
     intermediate_interpolated_U = malloc (sizeof(uint8_t) * image_size_UV);
@@ -1089,23 +1161,19 @@ static void mlhe_decode_delta_frame (LheState *s,
     adapted_downsampled_image_V = malloc(sizeof(uint8_t) * image_size_UV); 
     
     #pragma omp parallel for
-    for (int block_y=0; block_y<total_blocks_height; block_y++)
+    for (int block_y=0; block_y<s->total_blocks_height; block_y++)
     {
-        for (int block_x=0; block_x<total_blocks_width; block_x++)
+        for (int block_x=0; block_x<s->total_blocks_width; block_x++)
         {                             
             //Luminance
-            lhe_advanced_decode_one_hop_per_pixel_block(&s->prec, &s->procY, &s->lheY, total_blocks_width, block_x, block_y); 
-
-            
+             mlhe_decode_delta (&s->prec, &s->procY, &s->lheY, delta_prediction_Y, s->total_blocks_width, block_x, block_y);
+        
              mlhe_adapt_downsampled_data_resolution (&s->procY, &s->lheY,
                                                      intermediate_adapted_downsampled_data_Y, adapted_downsampled_image_Y,
                                                      block_x, block_y);
             
-             mlhe_add_delta_to_last_frame (s, 
-                                          basic_block_Y, advanced_block_Y, 
-                                          delta_frame_Y, 
-                                          downsampled_image_Y, adapted_downsampled_image_Y,
-                                          width_Y, block_x, block_y);
+             mlhe_add_delta_to_last_frame (s, &s->procY, &s->lheY, adapted_downsampled_image_Y, delta_prediction_Y, 
+                                           block_x, block_y);
             
             lhe_advanced_vertical_nearest_neighbour_interpolation (&s->procY, &s->lheY, intermediate_interpolated_Y, 
                                                                    block_x, block_y);
@@ -1115,18 +1183,14 @@ static void mlhe_decode_delta_frame (LheState *s,
                                                                      s->frame->linesize[0], block_x, block_y);
 
             //Chrominance U          
-            lhe_advanced_decode_one_hop_per_pixel_block(&s->prec, &s->procUV, &s->lheU, total_blocks_width, block_x, block_y); 
-
-            
+            mlhe_decode_delta (&s->prec, &s->procUV, &s->lheU, delta_prediction_U, s->total_blocks_width, block_x, block_y);
+          
             mlhe_adapt_downsampled_data_resolution (&s->procUV, &s->lheU,
                                                     intermediate_adapted_downsampled_data_U, adapted_downsampled_image_U,
                                                     block_x, block_y);
             
-            mlhe_add_delta_to_last_frame (s, 
-                                          basic_block_UV, advanced_block_UV, 
-                                          delta_frame_U, 
-                                          downsampled_image_U, adapted_downsampled_image_U,
-                                          width_UV, block_x, block_y);
+            mlhe_add_delta_to_last_frame (s, &s->procUV, &s->lheU, adapted_downsampled_image_U, delta_prediction_U, 
+                                          block_x, block_y);
             
             lhe_advanced_vertical_nearest_neighbour_interpolation (&s->procUV, &s->lheU, intermediate_interpolated_U, 
                                                                    block_x, block_y);
@@ -1136,18 +1200,14 @@ static void mlhe_decode_delta_frame (LheState *s,
                                                                      s->frame->linesize[1], block_x, block_y);
 
             //Chrominance V
-            lhe_advanced_decode_one_hop_per_pixel_block(&s->prec, &s->procUV, &s->lheV, total_blocks_width, block_x, block_y); 
-
-                   
-            mlhe_adapt_downsampled_data_resolution (&s->procUV, &s->lheV,
+            mlhe_decode_delta (&s->prec, &s->procUV, &s->lheV, delta_prediction_V, s->total_blocks_width, block_x, block_y);
+              
+            mlhe_adapt_downsampled_data_resolution (&s->procUV, &s->lheV, 
                                                     intermediate_adapted_downsampled_data_V, adapted_downsampled_image_V,
                                                     block_x, block_y);
 
-            mlhe_add_delta_to_last_frame (s, 
-                                          basic_block_UV, advanced_block_UV, 
-                                          delta_frame_V, 
-                                          downsampled_image_V, adapted_downsampled_image_V,
-                                          width_UV, block_x, block_y);
+            mlhe_add_delta_to_last_frame (s, &s->procUV, &s->lheV, adapted_downsampled_image_V, delta_prediction_V, 
+                                          block_x, block_y);
              
             lhe_advanced_vertical_nearest_neighbour_interpolation (&s->procUV, &s->lheV, intermediate_interpolated_V, 
                                                                    block_x, block_y);
@@ -1184,7 +1244,6 @@ static void lhe_init_pixel_format (AVCodecContext *avctx, LheState *s, uint8_t p
 
 static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, AVPacket *avpkt)
 {    
-    uint8_t lhe_mode, pixel_format, quality_level;
     uint32_t total_blocks, pixels_block, image_size_Y, image_size_UV;
     uint8_t *component_Y, *component_U, *component_V;
     int ret;
@@ -1201,11 +1260,11 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
     const uint8_t *lhe_data = avpkt->data;
     
     //LHE mode
-    lhe_mode = bytestream_get_byte(&lhe_data); 
+    s->lhe_mode = bytestream_get_byte(&lhe_data); 
     
     //Pixel format byte, init pixel format
-    pixel_format = bytestream_get_byte(&lhe_data); 
-    lhe_init_pixel_format (avctx, s, pixel_format);
+    s->pixel_format = bytestream_get_byte(&lhe_data); 
+    lhe_init_pixel_format (avctx, s, s->pixel_format);
            
     (&s->procY)->width  = bytestream_get_le32(&lhe_data);
     (&s->procY)->height = bytestream_get_le32(&lhe_data);
@@ -1224,7 +1283,7 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
     if ((ret = ff_get_buffer(avctx, s->frame, 0)) < 0)
         return ret;
  
-    if (lhe_mode == SEQUENTIAL_BASIC_LHE) 
+    if (s->lhe_mode == SEQUENTIAL_BASIC_LHE) 
     {
         s->total_blocks_width = 1;
         s->total_blocks_height = 1;
@@ -1289,7 +1348,7 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
     lhe_read_huffman_table(s, he_Y, LHE_MAX_HUFF_SIZE_SYMBOLS, LHE_HUFFMAN_NODE_BITS_SYMBOLS, LHE_HUFFMAN_NO_OCCURRENCES_SYMBOLS);
     lhe_read_huffman_table(s, he_UV, LHE_MAX_HUFF_SIZE_SYMBOLS, LHE_HUFFMAN_NODE_BITS_SYMBOLS, LHE_HUFFMAN_NO_OCCURRENCES_SYMBOLS);
     
-    if (lhe_mode == ADVANCED_LHE) /*ADVANCED LHE*/
+    if (s->lhe_mode == ADVANCED_LHE) /*ADVANCED LHE*/
     {
         (&s->procY)->perceptual_relevance_x = malloc(sizeof(float*) * (s->total_blocks_height+1));  
     
@@ -1333,9 +1392,9 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
         lhe_read_huffman_table(s, he_mesh, LHE_MAX_HUFF_SIZE_MESH, LHE_HUFFMAN_NODE_BITS_MESH, LHE_HUFFMAN_NO_OCCURRENCES_MESH);
         
         //Read quality level and calculate compression factor
-        quality_level = get_bits(&s->gb, QL_SIZE_BITS); 
+        s->quality_level = get_bits(&s->gb, QL_SIZE_BITS); 
         ppp_max_theoric = (&s->procY)-> block_width/SIDE_MIN;
-        compression_factor = (&s->prec)->compression_factor[ppp_max_theoric][quality_level];        
+        compression_factor = (&s->prec)->compression_factor[ppp_max_theoric][s->quality_level];        
        
         lhe_advanced_read_mesh(s, he_mesh, ppp_max_theoric, compression_factor) ; 
         
@@ -1394,6 +1453,11 @@ static int mlhe_decode_video(AVCodecContext *avctx, void *data, int *got_frame, 
     LheState *s = avctx->priv_data;
     
     const uint8_t *lhe_data = avpkt->data;
+    
+    //Pointers to different color components
+    (&s->lheY)->component_prediction = s->frame->data[0];
+    (&s->lheU)->component_prediction = s->frame->data[1];
+    (&s->lheV)->component_prediction = s->frame->data[2];
 
     
     if ((&s->lheY)->last_downsampled_image) { /*DELTA VIDEO FRAME*/
@@ -1438,11 +1502,6 @@ static int mlhe_decode_video(AVCodecContext *avctx, void *data, int *got_frame, 
         {
             (&s->lheV)->first_color_block[i] = bytestream_get_byte(&lhe_data); 
         }
-
-        //Pointers to different color components
-        component_Y = s->frame->data[0];
-        component_U = s->frame->data[1];
-        component_V = s->frame->data[2];
         
         init_get_bits(&s->gb, lhe_data, avpkt->size * 8);
 
@@ -1460,41 +1519,27 @@ static int mlhe_decode_video(AVCodecContext *avctx, void *data, int *got_frame, 
         
         lhe_advanced_read_all_file_symbols (s, he_Y, he_UV);
         
-        mlhe_decode_delta_frame (s, 
-                                 he_Y, he_UV,
-                                 (&s->procY)->basic_block, (&s->procUV)->basic_block,
-                                 (&s->procY)->advanced_block, (&s->procUV)->advanced_block,
-                                 (&s->procY)->last_advanced_block, (&s->procUV)->last_advanced_block,
-                                 (&s->lheY)->first_color_block, (&s->lheU)->first_color_block, (&s->lheV)->first_color_block,
-                                 (&s->lheY)->hops, (&s->lheU)->hops, (&s->lheV)->hops,
-                                 (&s->lheY)->last_downsampled_image, (&s->lheU)->last_downsampled_image, (&s->lheV)->last_downsampled_image,
-                                 (&s->lheY)->downsampled_image, (&s->lheU)->downsampled_image, (&s->lheV)->downsampled_image,
-                                 component_Y, component_U, component_V,
-                                 (&s->procY)->width, (&s->procY)->height, (&s->procUV)->width, (&s->procUV)->height,
-                                 image_size_Y, image_size_UV,
-                                 (&s->procY)->block_width, (&s->procY)->block_height, (&s->procUV)->block_width, (&s->procUV)->block_height,
-                                 s->total_blocks_width, s->total_blocks_height);
+        mlhe_decode_delta_frame (s, he_Y, he_UV, image_size_Y, image_size_UV);
     } 
     else 
     {
-        //LHE mode
         s->lhe_mode = bytestream_get_byte(&lhe_data); 
-        
+    
         //Pixel format byte, init pixel format
         s->pixel_format = bytestream_get_byte(&lhe_data); 
         lhe_init_pixel_format (avctx, s, s->pixel_format);
             
-        (&s->procY)-> width = bytestream_get_le32(&lhe_data);
-        (&s->procY)-> height = bytestream_get_le32(&lhe_data);
+        (&s->procY)->width  = bytestream_get_le32(&lhe_data);
+        (&s->procY)->height = bytestream_get_le32(&lhe_data);
         
-        image_size_Y = (&s->procY)-> width * (&s->procY)-> height;
+        image_size_Y = (&s->procY)->width * (&s->procY)->height;
         
-        (&s->procUV)-> width = ((&s->procY)-> width - 1)/s->chroma_factor_width + 1;
-        (&s->procUV)-> height = ((&s->procY)-> height - 1)/s->chroma_factor_height + 1;
-        image_size_UV = (&s->procUV)-> width * (&s->procUV)-> height;
+        (&s->procUV)->width = ((&s->procY)->width - 1)/s->chroma_factor_width + 1;
+        (&s->procUV)->height = ((&s->procY)->height - 1)/s->chroma_factor_height + 1;
+        image_size_UV = (&s->procUV)->width * (&s->procUV)->height;
         
-        avctx->width  = (&s->procY)-> width;
-        avctx->height  = (&s->procY)-> height;    
+        avctx->width  = (&s->procY)->width;
+        avctx->height  = (&s->procY)->height;    
         
         //Allocates frame
         av_frame_unref(s->frame);
@@ -1509,16 +1554,16 @@ static int mlhe_decode_video(AVCodecContext *avctx, void *data, int *got_frame, 
         else 
         {
             s->total_blocks_width = HORIZONTAL_BLOCKS;
-            pixels_block = (&s->procY)-> width / HORIZONTAL_BLOCKS;
-            s->total_blocks_height = (&s->procY)-> height / pixels_block;
+            pixels_block = (&s->procY)->width / HORIZONTAL_BLOCKS;
+            s->total_blocks_height = (&s->procY)->height / pixels_block;
         }
         
         total_blocks = s->total_blocks_height * s->total_blocks_width;
         
         //First pixel array
-        (&s->lheY)->first_color_block = malloc(sizeof(uint8_t) * total_blocks);
-        (&s->lheU)->first_color_block = malloc(sizeof(uint8_t) * total_blocks);
-        (&s->lheV)->first_color_block = malloc(sizeof(uint8_t) * total_blocks);
+        (&s->lheY)->first_color_block = malloc(sizeof(uint8_t) * image_size_Y);
+        (&s->lheU)->first_color_block = malloc(sizeof(uint8_t) * image_size_UV);
+        (&s->lheV)->first_color_block = malloc(sizeof(uint8_t) * image_size_UV);
         
         for (int i=0; i<total_blocks; i++) 
         {
@@ -1538,14 +1583,14 @@ static int mlhe_decode_video(AVCodecContext *avctx, void *data, int *got_frame, 
         }
 
         //Pointers to different color components
-        component_Y = s->frame->data[0];
-        component_U = s->frame->data[1];
-        component_V = s->frame->data[2];
+        (&s->lheY)->component_prediction = s->frame->data[0];
+        (&s->lheU)->component_prediction  = s->frame->data[1];
+        (&s->lheV)->component_prediction  = s->frame->data[2];
         
-        (&s->lheY)-> hops = malloc(sizeof(uint8_t) * image_size_Y);      
-        (&s->lheU)-> hops = malloc(sizeof(uint8_t) * image_size_UV);    
-        (&s->lheV)-> hops = malloc(sizeof(uint8_t) * image_size_UV); 
-            
+        
+        (&s->lheY)->hops = malloc(sizeof(uint8_t) * image_size_Y);      
+        (&s->lheU)->hops = malloc(sizeof(uint8_t) * image_size_UV);    
+        (&s->lheV)->hops = malloc(sizeof(uint8_t) * image_size_UV); 
         
         (&s->procY)->basic_block = malloc(sizeof(BasicLheBlock *) * s->total_blocks_height);
         
@@ -1566,12 +1611,8 @@ static int mlhe_decode_video(AVCodecContext *avctx, void *data, int *got_frame, 
         lhe_read_huffman_table(s, he_Y, LHE_MAX_HUFF_SIZE_SYMBOLS, LHE_HUFFMAN_NODE_BITS_SYMBOLS, LHE_HUFFMAN_NO_OCCURRENCES_SYMBOLS);
         lhe_read_huffman_table(s, he_UV, LHE_MAX_HUFF_SIZE_SYMBOLS, LHE_HUFFMAN_NODE_BITS_SYMBOLS, LHE_HUFFMAN_NO_OCCURRENCES_SYMBOLS);
         
-        
-        /*Init dif frames count*/
-        s->dif_frames_count=0;
-
         (&s->procY)->perceptual_relevance_x = malloc(sizeof(float*) * (s->total_blocks_height+1));  
-    
+        
         for (int i=0; i<s->total_blocks_height+1; i++) 
         {
             (&s->procY)->perceptual_relevance_x[i] = malloc(sizeof(float) * (s->total_blocks_width+1));
@@ -1598,15 +1639,15 @@ static int mlhe_decode_video(AVCodecContext *avctx, void *data, int *got_frame, 
             (&s->procUV)->advanced_block[i] = malloc (sizeof(AdvancedLheBlock) * (s->total_blocks_width));
         }
         
-        (&s->procY)-> block_width = (&s->procY)-> width / s->total_blocks_width;    
-        (&s->procY)-> block_height = (&s->procY)-> height / s->total_blocks_height;   
+        (&s->procY)-> block_width = (&s->procY)->width / s->total_blocks_width;    
+        (&s->procY)-> block_height = (&s->procY)->height / s->total_blocks_height;   
         
-        (&s->procUV)-> block_width = (&s->procUV)-> width / s->total_blocks_width;
-        (&s->procUV)-> block_height = (&s->procUV)-> height / s->total_blocks_height; 
+        (&s->procUV)-> block_width = (&s->procUV)->width / s->total_blocks_width;
+        (&s->procUV)-> block_height = (&s->procUV)->height / s->total_blocks_height; 
         
-        (&s->lheY)->downsampled_image = malloc (sizeof(uint8_t) * image_size_Y);
-        (&s->lheU)->downsampled_image = malloc (sizeof(uint8_t) * image_size_UV);
-        (&s->lheV)->downsampled_image = malloc (sizeof(uint8_t) * image_size_UV);
+        (&s->lheY)-> downsampled_image = malloc (sizeof(uint8_t) * image_size_Y);
+        (&s->lheU)-> downsampled_image = malloc (sizeof(uint8_t) * image_size_UV);
+        (&s->lheV)-> downsampled_image = malloc (sizeof(uint8_t) * image_size_UV);
         
         //MESH Huffman
         lhe_read_huffman_table(s, he_mesh, LHE_MAX_HUFF_SIZE_MESH, LHE_HUFFMAN_NODE_BITS_MESH, LHE_HUFFMAN_NO_OCCURRENCES_MESH);
@@ -1615,15 +1656,14 @@ static int mlhe_decode_video(AVCodecContext *avctx, void *data, int *got_frame, 
         s->quality_level = get_bits(&s->gb, QL_SIZE_BITS); 
         ppp_max_theoric = (&s->procY)-> block_width/SIDE_MIN;
         compression_factor = (&s->prec)->compression_factor[ppp_max_theoric][s->quality_level];        
-       
+        
         lhe_advanced_read_mesh(s, he_mesh, ppp_max_theoric, compression_factor) ; 
         
         lhe_advanced_read_all_file_symbols (s, he_Y, he_UV);
-        
+                
         lhe_advanced_decode_symbols (s, he_Y, he_UV, image_size_Y, image_size_UV);
- 
-  
     }   
+
 
     if (!(&s->procY)->last_advanced_block) 
     {
@@ -1672,8 +1712,7 @@ static int mlhe_decode_video(AVCodecContext *avctx, void *data, int *got_frame, 
     memset((&s->lheY)->downsampled_image, 0, image_size_Y);
     memset((&s->lheU)->downsampled_image, 0, image_size_UV);
     memset((&s->lheV)->downsampled_image, 0, image_size_UV);  
-    
-    
+       
     if ((ret = av_frame_ref(data, s->frame)) < 0)
         return ret;
  

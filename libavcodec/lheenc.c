@@ -2929,7 +2929,6 @@ static int mlhe_encode_video(AVCodecContext *avctx, AVPacket *pkt,
         print_csv_pr_metrics(&s->procY, total_blocks_width, total_blocks_height);  
     }
     
-    
     if (!(&s->procY)->last_advanced_block) 
     {
          (&s->procY)->last_advanced_block = malloc(sizeof(AdvancedLheBlock *) * total_blocks_height);
@@ -3004,6 +3003,7 @@ static int mlhe_encode_video(AVCodecContext *avctx, AVPacket *pkt,
     memset((&s->lheY)->downsampled_error_image, 0, image_size_Y);
     memset((&s->lheU)->downsampled_error_image, 0, image_size_UV);
     memset((&s->lheV)->downsampled_error_image, 0, image_size_UV);
+    
     
     pkt->flags |= AV_PKT_FLAG_KEY;
     *got_packet = 1;
