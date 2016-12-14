@@ -362,7 +362,7 @@ static int lhe_basic_write_file(AVCodecContext *avctx, AVPacket *pkt,
     buf = pkt->data; //Pointer to write buffer
         
     //Lhe mode byte
-    if(!OPENMP_FLAGS == CONFIG_OPENMP) 
+    if(OPENMP_FLAGS == CONFIG_OPENMP) 
     {
         lhe_mode = PARAREL_BASIC_LHE; 
     } 
@@ -2692,7 +2692,7 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
         }
         
         //BASIC LHE        
-        if(!OPENMP_FLAGS == CONFIG_OPENMP) {
+        if(OPENMP_FLAGS == CONFIG_OPENMP) {
      
             lhe_basic_encode_frame_pararell (s, frame, component_original_data_Y, component_original_data_U, component_original_data_V, 
                                             total_blocks_width, total_blocks_height);      

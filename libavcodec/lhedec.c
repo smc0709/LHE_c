@@ -240,22 +240,19 @@ static void lhe_basic_read_file_symbols (LheState *s, LheHuffEntry *he, uint32_t
  * @param block_x block x index
  * @param block_y block y index
  */
-static void lhe_advanced_read_file_symbols (LheState *s, LheHuffEntry *he, 
-                                            BasicLheBlock **basic_block, AdvancedLheBlock **advanced_block,
-                                            uint8_t *symbols, 
-                                            uint32_t width, uint32_t height, 
+static void lhe_advanced_read_file_symbols (LheState *s, LheHuffEntry *he, LheProcessing *proc, uint8_t *symbols, 
                                             int block_x, int block_y) 
 {
     uint8_t symbol, count_bits;
     uint32_t huffman_symbol, pix;
     uint32_t xini, xfin_downsampled, yini, yfin_downsampled;
     
-    xini = basic_block[block_y][block_x].x_ini;
-    xfin_downsampled = advanced_block[block_y][block_x].x_fin_downsampled; 
+    xini = proc->basic_block[block_y][block_x].x_ini;
+    xfin_downsampled = proc->advanced_block[block_y][block_x].x_fin_downsampled; 
  
-    yini = basic_block[block_y][block_x].y_ini;
-    yfin_downsampled = advanced_block[block_y][block_x].y_fin_downsampled;
-    
+    yini = proc->basic_block[block_y][block_x].y_ini;
+    yfin_downsampled = proc->advanced_block[block_y][block_x].y_fin_downsampled;
+
     symbol = NO_SYMBOL;
     pix = 0;
     huffman_symbol = 0;
@@ -265,7 +262,7 @@ static void lhe_advanced_read_file_symbols (LheState *s, LheHuffEntry *he,
     {
         for(int x=xini; x<xfin_downsampled;) 
         {
-            pix = y * width + x;
+            pix = y * proc->width + x;
 
             huffman_symbol = (huffman_symbol<<1) | get_bits(&s->gb, 1);
             count_bits++;
@@ -303,37 +300,26 @@ static void lhe_advanced_read_file_symbols (LheState *s, LheHuffEntry *he,
  * @param total_blocks_width number of blocks widthwise
  * @param total_blocks_height number of blocks heightwise
  */
-static void lhe_advanced_read_all_file_symbols (LheState *s, 
-                                                LheHuffEntry *he_Y, LheHuffEntry *he_UV,
-                                                BasicLheBlock **basic_block_Y, BasicLheBlock **basic_block_UV,
-                                                AdvancedLheBlock **advanced_block_Y, AdvancedLheBlock **advanced_block_UV,
-                                                uint8_t *symbols_Y, uint8_t *symbols_U, uint8_t *symbols_V,
-                                                uint32_t width_Y, uint32_t height_Y, uint32_t width_UV, uint32_t height_UV, 
-                                                uint32_t total_blocks_width, uint32_t total_blocks_height) 
+static void lhe_advanced_read_all_file_symbols (LheState *s, LheHuffEntry *he_Y, LheHuffEntry *he_UV) 
 {
+    LheProcessing *procY, *procUV;
+    LheImage *lheY, *lheU, *lheV;
     
-    for (int block_y=0; block_y<total_blocks_height; block_y++)
+    procY = &s->procY;
+    procUV = &s->procUV;
+    
+    lheY = &s->lheY;
+    lheU = &s->lheU;
+    lheV = &s->lheV;
+    
+    for (int block_y=0; block_y<s->total_blocks_height; block_y++)
     {
-        for (int block_x=0; block_x<total_blocks_width; block_x++)
+        for (int block_x=0; block_x<s->total_blocks_width; block_x++)
         {          
 
-            lhe_advanced_read_file_symbols (s, he_Y, 
-                                            basic_block_Y, advanced_block_Y,
-                                            symbols_Y,
-                                            width_Y, height_Y,
-                                            block_x, block_y);  
-                                            
-            lhe_advanced_read_file_symbols (s, he_UV, 
-                                            basic_block_UV, advanced_block_UV,
-                                            symbols_U,
-                                            width_UV, height_UV,
-                                            block_x, block_y);
-            
-            lhe_advanced_read_file_symbols (s, he_UV, 
-                                            basic_block_UV, advanced_block_UV,
-                                            symbols_V, 
-                                            width_UV, height_UV,
-                                            block_x, block_y);
+            lhe_advanced_read_file_symbols (s, he_Y, procY, lheY->hops, block_x, block_y);   
+            lhe_advanced_read_file_symbols (s, he_UV, procUV, lheU->hops, block_x, block_y);            
+            lhe_advanced_read_file_symbols (s, he_UV, procUV, lheV->hops, block_x, block_y);
 
         }
     }
@@ -386,9 +372,7 @@ static float lhe_advance_translate_pr_interval_to_pr_quant (uint8_t perceptual_r
  * @param total_blocks_width number of blocks widthwise
  * @param total_blocks_height number of blocks heightwise
  */
-static void lhe_advanced_read_perceptual_relevance_interval (LheState *s, LheHuffEntry *he_mesh, 
-                                                             float ** perceptual_relevance, 
-                                                             uint32_t total_blocks_width, uint32_t total_blocks_height) 
+static void lhe_advanced_read_perceptual_relevance_interval (LheState *s, LheHuffEntry *he_mesh, float ** perceptual_relevance) 
 {
     uint8_t perceptual_relevance_interval, count_bits;
     uint32_t huffman_symbol;
@@ -397,9 +381,9 @@ static void lhe_advanced_read_perceptual_relevance_interval (LheState *s, LheHuf
     count_bits = 0;
     huffman_symbol = 0;
     
-    for (int block_y=0; block_y<total_blocks_height+1; block_y++) 
+    for (int block_y=0; block_y<s->total_blocks_height+1; block_y++) 
     {
-        for (int block_x=0; block_x<total_blocks_width+1;) 
+        for (int block_x=0; block_x<s->total_blocks_width+1;) 
         { 
             //Reads from file
             huffman_symbol = (huffman_symbol<<1) | get_bits(&s->gb, 1);
@@ -446,40 +430,32 @@ static void lhe_advanced_read_perceptual_relevance_interval (LheState *s, LheHuf
  * @param total_blocks_width Number of blocks widthwise
  * @param total_blocks_height Number of blocks heightwise
  */
-static void lhe_advanced_read_mesh (LheState *s, LheHuffEntry *he_mesh,
-                                    BasicLheBlock **basic_block_Y, BasicLheBlock **basic_block_UV,
-                                    AdvancedLheBlock **advanced_block_Y, AdvancedLheBlock **advanced_block_UV,
-                                    float ** perceptual_relevance_x, float ** perceptual_relevance_y,
-                                    float ppp_max_theoric, float compression_factor,
-                                    uint32_t width_Y, uint32_t height_Y, uint32_t width_UV, uint32_t height_UV,
-                                    uint32_t block_width_Y, uint32_t block_height_Y, uint32_t block_width_UV, uint32_t block_height_UV,
-                                    uint32_t total_blocks_width, uint32_t total_blocks_height) 
+static void lhe_advanced_read_mesh (LheState *s, LheHuffEntry *he_mesh, float ppp_max_theoric, float compression_factor) 
 {
+    LheProcessing *procY, *procUV;
+    LheImage *lheY, *lheU, *lheV;
+    
+    procY = &s->procY;
+    procUV = &s->procUV;
+    
+    lhe_advanced_read_perceptual_relevance_interval (s, he_mesh, procY->perceptual_relevance_x);
+    
+    lhe_advanced_read_perceptual_relevance_interval (s, he_mesh, procY->perceptual_relevance_y);
     
     
-    lhe_advanced_read_perceptual_relevance_interval (s, he_mesh, 
-                                                     perceptual_relevance_x, 
-                                                     total_blocks_width, total_blocks_height);
-    
-    lhe_advanced_read_perceptual_relevance_interval (s, he_mesh, 
-                                                     perceptual_relevance_y, 
-                                                     total_blocks_width, total_blocks_height);
-    
-    
-    for (int block_y=0; block_y<total_blocks_height; block_y++)
+    for (int block_y=0; block_y<s->total_blocks_height; block_y++)
     {
-        for (int block_x=0; block_x<total_blocks_width; block_x++)
+        for (int block_x=0; block_x<s->total_blocks_width; block_x++)
         {
-            lhe_calculate_block_coordinates (&s->procY, &s->procUV, 
-                                             total_blocks_width, total_blocks_height,
+            lhe_calculate_block_coordinates (procY, procUV, s->total_blocks_width, s->total_blocks_height,
                                              block_x, block_y);
 
-            lhe_advanced_perceptual_relevance_to_ppp(&s->procY, &s->procUV, compression_factor, ppp_max_theoric, block_x, block_y);
+            lhe_advanced_perceptual_relevance_to_ppp(procY, procUV, compression_factor, ppp_max_theoric, block_x, block_y);
             
             //Adjusts luminance ppp to rectangle shape 
-            lhe_advanced_ppp_side_to_rectangle_shape (&s->procY, ppp_max_theoric, block_x, block_y);  
+            lhe_advanced_ppp_side_to_rectangle_shape (procY, ppp_max_theoric, block_x, block_y);  
             //Adjusts chrominance ppp to rectangle shape
-            lhe_advanced_ppp_side_to_rectangle_shape (&s->procUV, ppp_max_theoric, block_x, block_y);   
+            lhe_advanced_ppp_side_to_rectangle_shape (procUV, ppp_max_theoric, block_x, block_y);   
         }
     }
 }
@@ -505,29 +481,24 @@ static void lhe_advanced_read_mesh (LheState *s, LheHuffEntry *he_mesh,
  * @param block_width block width
  * @param block_height block height
  */
-static void lhe_basic_decode_one_hop_per_pixel_block (LheBasicPrec *prec,
-                                                      BasicLheBlock **basic_block,
-                                                      uint8_t *hops, uint8_t *image,
-                                                      uint32_t width, uint32_t height, int linesize,
-                                                      uint8_t *first_color_block, 
+static void lhe_basic_decode_one_hop_per_pixel_block (LheBasicPrec *prec, LheProcessing *proc, LheImage *lhe, int linesize,
                                                       uint32_t total_blocks_width, uint32_t total_blocks_height,
-                                                      int block_x, int block_y,
-                                                      uint32_t block_width, uint32_t block_height) 
+                                                      int block_x, int block_y) 
 {
        
     //Hops computation.
     int xini, xfin, yini, yfin;
     bool small_hop, last_small_hop;
     uint8_t hop, predicted_luminance, hop_1, r_max; 
-    int pix, dif_pix, dif_hops, num_block;
+    int pix, pix_original_data,dif_pix, dif_hops, num_block;
     
     num_block = block_y * total_blocks_width + block_x;
     
     //ORIGINAL IMAGE
-    xini = basic_block[block_y][block_x].x_ini;
-    xfin = basic_block[block_y][block_x].x_fin;  
-    yini = basic_block[block_y][block_x].y_ini;
-    yfin = basic_block[block_y][block_x].y_fin;
+    xini = proc->basic_block[block_y][block_x].x_ini;
+    xfin = proc->basic_block[block_y][block_x].x_fin;  
+    yini = proc->basic_block[block_y][block_x].y_ini;
+    yfin = proc->basic_block[block_y][block_x].y_fin;
         
     small_hop           = false;
     last_small_hop      = false;        // indicates if last hop is small
@@ -538,41 +509,41 @@ static void lhe_basic_decode_one_hop_per_pixel_block (LheBasicPrec *prec,
     
  
     pix = yini*linesize + xini; 
-    hops += (yini*width + xini);
+    pix_original_data = yini * proc->width + xini;
     dif_pix = linesize - xfin + xini;
-    dif_hops = width - xfin + xini;
+    dif_hops = proc->width - xfin + xini;
     
     for (int y=yini; y < yfin; y++)  {
         for (int x=xini; x < xfin; x++)     {
             
-            hop = *hops++; 
+            hop = lhe->hops[pix_original_data];
   
             if (x == xini && y==yini) 
             {
-                predicted_luminance=first_color_block[num_block];//first pixel always is perfectly predicted! :-)  
+                predicted_luminance=lhe->first_color_block[num_block];//first pixel always is perfectly predicted! :-)  
             } 
             else if (y == yini) 
             {
-                predicted_luminance=image[pix-1];
+                predicted_luminance=lhe->component_prediction[pix-1];
             } 
             else if (x == xini) 
             {
-                predicted_luminance=image[pix-linesize];
+                predicted_luminance=lhe->component_prediction[pix-linesize];
                 last_small_hop=false;
                 hop_1=START_HOP_1;
             } else if (x == xfin -1) 
             {
-                predicted_luminance=(image[pix-1]+image[pix-linesize])>>1;                                                             
+                predicted_luminance=(lhe->component_prediction[pix-1]+lhe->component_prediction[pix-linesize])>>1;                                                             
             } 
             else 
             {
-                predicted_luminance=(image[pix-1]+image[pix+1-linesize])>>1;     
+                predicted_luminance=(lhe->component_prediction[pix-1]+lhe->component_prediction[pix+1-linesize])>>1;     
             }
             
           
             //assignment of component_prediction
             //This is the uncompressed image
-            image[pix]= prec -> prec_luminance[predicted_luminance][r_max][hop_1][hop];
+            lhe->component_prediction[pix]= prec -> prec_luminance[predicted_luminance][r_max][hop_1][hop];
             
             //tunning hop1 for the next hop ( "h1 adaptation")
             //------------------------------------------------
@@ -581,9 +552,10 @@ static void lhe_basic_decode_one_hop_per_pixel_block (LheBasicPrec *prec,
             //lets go for the next pixel
             //--------------------------
             pix++;
+            pix_original_data++;
         }// for x
         pix+=dif_pix;
-        hops+=dif_hops;
+        pix_original_data+=dif_hops;
     }// for y
     
 }
@@ -599,55 +571,53 @@ static void lhe_basic_decode_one_hop_per_pixel_block (LheBasicPrec *prec,
  * @param height image height
  * @param linesize rectangle images create a square image in ffmpeg memory. Linesize is width used by ffmpeg in memory
  */
-static void lhe_basic_decode_one_hop_per_pixel (LheBasicPrec *prec, uint8_t *hops, uint8_t *image,
-                                                uint8_t first_color, uint32_t width, uint32_t height, 
-                                                int linesize) {
+static void lhe_basic_decode_one_hop_per_pixel (LheBasicPrec *prec, LheProcessing *proc, LheImage *lhe, int linesize) {
        
     //Hops computation.
     bool small_hop, last_small_hop;
     uint8_t hop, predicted_luminance, hop_1, r_max; 
-    int pix, dif_pix;
+    int pix, pix_original_data, dif_pix;
     
     small_hop           = false;
     last_small_hop      = false;        // indicates if last hop is small
     predicted_luminance = 0;            // predicted signal
     hop_1               = START_HOP_1;
-    pix                 = 0;            // pixel possition, from 0 to image size        
+    pix                 = 0;            // pixel possition, from 0 to image size       
+    pix_original_data   = 0;
     r_max               = PARAM_R;        
     
-    dif_pix = linesize - width;
+    dif_pix = linesize - proc->width;
  
-    for (int y=0; y < height; y++)  {
-        for (int x=0; x < width; x++)     {
+    for (int y=0; y < proc->height; y++)  {
+        for (int x=0; x < proc->width; x++)     {
             
-            hop = *hops++; 
+            hop = lhe->hops[pix_original_data]; 
             
             if (x==0 && y==0)
             {
-                predicted_luminance=first_color;//first pixel always is perfectly predicted! :-)  
+                predicted_luminance=lhe->first_color_block[0];//first pixel always is perfectly predicted! :-)  
             }
             else if (y == 0)
             {
-                predicted_luminance=image[pix-1];            
+                predicted_luminance=lhe->component_prediction[pix-1];            
             }
             else if (x == 0)
             {
-                predicted_luminance=image[pix-linesize];
+                predicted_luminance=lhe->component_prediction[pix-linesize];
                 last_small_hop=false;
                 hop_1=START_HOP_1;
             } 
-            else if (x == width -1)
+            else if (x == proc->width -1)
             {
-                predicted_luminance=(image[pix-1]+image[pix-linesize])>>1;                                                       
+                predicted_luminance=(lhe->component_prediction[pix-1]+lhe->component_prediction[pix-linesize])>>1;                                                       
             }
             else 
             {
-                predicted_luminance=(image[pix-1]+image[pix+1-linesize])>>1;     
+                predicted_luminance=(lhe->component_prediction[pix-1]+lhe->component_prediction[pix+1-linesize])>>1;     
             }
     
             //assignment of component_prediction
-            //This is the uncompressed image
-            image[pix]= prec -> prec_luminance[predicted_luminance][r_max][hop_1][hop];
+            lhe->component_prediction[pix]= prec -> prec_luminance[predicted_luminance][r_max][hop_1][hop];
             
             //tunning hop1 for the next hop ( "h1 adaptation")
             //------------------------------------------------
@@ -656,6 +626,7 @@ static void lhe_basic_decode_one_hop_per_pixel (LheBasicPrec *prec, uint8_t *hop
             //lets go for the next pixel
             //--------------------------
             pix++;
+            pix_original_data++;
         }// for x
         pix+=dif_pix;
     }// for y
@@ -665,69 +636,69 @@ static void lhe_basic_decode_one_hop_per_pixel (LheBasicPrec *prec, uint8_t *hop
 /**
  * Calls methods to decode sequentially
  */
-static void lhe_basic_decode_frame_sequential (LheBasicPrec *prec, 
-                                               uint8_t *component_Y, uint8_t *component_U, uint8_t *component_V,
-                                               uint8_t *hops_Y, uint8_t *hops_U, uint8_t *hops_V,
-                                               int width_Y, int height_Y, int width_UV, int height_UV, 
-                                               int linesize_Y, int linesize_U, int linesize_V, 
-                                               uint8_t *first_color_block_Y, uint8_t *first_color_block_U, uint8_t *first_color_block_V) 
+static void lhe_basic_decode_frame_sequential (LheState *s) 
 {
+    AVFrame *frame;
+    LheBasicPrec *prec;
+    LheProcessing *procY, *procUV;
+    LheImage *lheY, *lheU, *lheV;
+    
+    frame = s->frame;
+    prec = &s->prec;
+    procY = &s->procY;
+    procUV = &s->procUV;
+    lheY = &s->lheY;
+    lheU = &s->lheU;
+    lheV = &s->lheV;
+    
     //Luminance
-    lhe_basic_decode_one_hop_per_pixel(prec, hops_Y, component_Y, first_color_block_Y[0], width_Y, height_Y, linesize_Y);
+    lhe_basic_decode_one_hop_per_pixel(prec, procY, lheY, frame->linesize[0]);
 
     //Chrominance U
-    lhe_basic_decode_one_hop_per_pixel(prec, hops_U, component_U, first_color_block_U[0], width_UV, height_UV, linesize_U);
+    lhe_basic_decode_one_hop_per_pixel(prec, procUV, lheU, frame->linesize[1]);
 
     //Chrominance V
-    lhe_basic_decode_one_hop_per_pixel(prec, hops_V, component_V, first_color_block_V[0], width_UV, height_UV, linesize_V);
+    lhe_basic_decode_one_hop_per_pixel(prec, procUV, lheV, frame->linesize[2]);
 }
 
 /**
  * Calls methods to decode pararell
  */
-static void lhe_basic_decode_frame_pararell (LheState *s, LheBasicPrec *prec, 
-                                             BasicLheBlock **basic_block_Y, BasicLheBlock **basic_block_UV,
-                                             uint8_t *component_Y, uint8_t *component_U, uint8_t *component_V,
-                                             uint8_t *hops_Y, uint8_t *hops_U, uint8_t *hops_V,
-                                             uint32_t width_Y, uint32_t height_Y, uint32_t width_UV, uint32_t height_UV, 
-                                             int linesize_Y, int linesize_U, int linesize_V, 
-                                             uint8_t *first_color_block_Y, uint8_t *first_color_block_U, uint8_t *first_color_block_V,
-                                             uint32_t total_blocks_width, uint32_t total_blocks_height,
-                                             uint32_t block_width_Y, uint32_t block_height_Y, uint32_t block_width_UV, uint32_t block_height_UV) 
+static void lhe_basic_decode_frame_pararell (LheState *s) 
 {
+    AVFrame *frame;
+    LheBasicPrec *prec;
+    LheProcessing *procY, *procUV;
+    LheImage *lheY, *lheU, *lheV;
+    
+    frame = s->frame;
+    prec = &s->prec;
+    procY = &s->procY;
+    procUV = &s->procUV;
+    lheY = &s->lheY;
+    lheU = &s->lheU;
+    lheV = &s->lheV;
     
     #pragma omp parallel for
-    for (int block_y=0; block_y<total_blocks_height; block_y++)      
+    for (int block_y=0; block_y<s->total_blocks_height; block_y++)      
     {  
-        for (int block_x=0; block_x<total_blocks_width; block_x++) 
+        for (int block_x=0; block_x<s->total_blocks_width; block_x++) 
         {
             lhe_calculate_block_coordinates (&s->procY, &s->procUV,
-                                             total_blocks_width, total_blocks_height,
+                                             s->total_blocks_width, s->total_blocks_height,
                                              block_x, block_y);
             
             //Luminance
-            lhe_basic_decode_one_hop_per_pixel_block(prec, basic_block_Y, 
-                                                     hops_Y, component_Y, 
-                                                     width_Y, height_Y, linesize_Y, 
-                                                     first_color_block_Y, 
-                                                     total_blocks_width, total_blocks_height,
-                                                     block_x, block_y, block_width_Y, block_height_Y);
+            lhe_basic_decode_one_hop_per_pixel_block(prec, procY,lheY, frame->linesize[0], s->total_blocks_width, s->total_blocks_height, 
+                                                     block_x, block_y);
 
             //Chrominance U
-            lhe_basic_decode_one_hop_per_pixel_block(prec, basic_block_UV,
-                                                     hops_U, component_U, 
-                                                     width_UV, height_UV, linesize_U,
-                                                     first_color_block_U, 
-                                                     total_blocks_width, total_blocks_height,
-                                                     block_x, block_y, block_width_UV, block_height_UV);
+            lhe_basic_decode_one_hop_per_pixel_block(prec, procUV, lheU, frame->linesize[1], s->total_blocks_width, s->total_blocks_height, 
+                                                     block_x, block_y);
         
             //Chrominance V
-            lhe_basic_decode_one_hop_per_pixel_block(prec, basic_block_UV,
-                                                     hops_V, component_V, 
-                                                     width_UV, height_UV, linesize_V,
-                                                     first_color_block_V, 
-                                                     total_blocks_width, total_blocks_height,
-                                                     block_x, block_y, block_width_UV, block_height_UV);
+            lhe_basic_decode_one_hop_per_pixel_block(prec, procUV, lheV, frame->linesize[0], s->total_blocks_width, s->total_blocks_height, 
+                                                     block_x, block_y);
         }
     }
 }
@@ -1287,9 +1258,8 @@ static void lhe_init_pixel_format (AVCodecContext *avctx, LheState *s, uint8_t p
 static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, AVPacket *avpkt)
 {    
     uint8_t lhe_mode, pixel_format, quality_level;
+    uint32_t total_blocks, pixels_block, image_size_Y, image_size_UV;
     uint8_t *component_Y, *component_U, *component_V;
-    uint32_t total_blocks_width, total_blocks_height, total_blocks;
-    uint32_t pixels_block, image_size_Y, image_size_UV;
     int ret;
     
     float compression_factor;
@@ -1329,17 +1299,17 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
  
     if (lhe_mode == SEQUENTIAL_BASIC_LHE) 
     {
-        total_blocks_width = 1;
-        total_blocks_height = 1;
+        s->total_blocks_width = 1;
+        s->total_blocks_height = 1;
     } 
     else 
     {
-        total_blocks_width = HORIZONTAL_BLOCKS;
+        s->total_blocks_width = HORIZONTAL_BLOCKS;
         pixels_block = (&s->procY)->width / HORIZONTAL_BLOCKS;
-        total_blocks_height = (&s->procY)->height / pixels_block;
+        s->total_blocks_height = (&s->procY)->height / pixels_block;
     }
     
-    total_blocks = total_blocks_height * total_blocks_width;
+    total_blocks = s->total_blocks_height * s->total_blocks_width;
     
     //First pixel array
     (&s->lheY)->first_color_block = malloc(sizeof(uint8_t) * image_size_Y);
@@ -1364,26 +1334,27 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
     }
 
     //Pointers to different color components
-    component_Y = s->frame->data[0];
-    component_U = s->frame->data[1];
-    component_V = s->frame->data[2];
+    (&s->lheY)->component_prediction = s->frame->data[0];
+    (&s->lheU)->component_prediction  = s->frame->data[1];
+    (&s->lheV)->component_prediction  = s->frame->data[2];
+    
       
     (&s->lheY)->hops = malloc(sizeof(uint8_t) * image_size_Y);      
     (&s->lheU)->hops = malloc(sizeof(uint8_t) * image_size_UV);    
     (&s->lheV)->hops = malloc(sizeof(uint8_t) * image_size_UV); 
     
-    (&s->procY)->basic_block = malloc(sizeof(BasicLheBlock *) * total_blocks_height);
+    (&s->procY)->basic_block = malloc(sizeof(BasicLheBlock *) * s->total_blocks_height);
     
-    for (int i=0; i < total_blocks_height; i++)
+    for (int i=0; i < s->total_blocks_height; i++)
     {
-        (&s->procY)->basic_block[i] = malloc (sizeof(BasicLheBlock) * (total_blocks_width));
+        (&s->procY)->basic_block[i] = malloc (sizeof(BasicLheBlock) * (s->total_blocks_width));
     }
     
-    (&s->procUV)->basic_block = malloc(sizeof(BasicLheBlock *) * total_blocks_height);
+    (&s->procUV)->basic_block = malloc(sizeof(BasicLheBlock *) * s->total_blocks_height);
     
-    for (int i=0; i < total_blocks_height; i++)
+    for (int i=0; i < s->total_blocks_height; i++)
     {
-        (&s->procUV)->basic_block[i] = malloc (sizeof(BasicLheBlock) * (total_blocks_width));
+        (&s->procUV)->basic_block[i] = malloc (sizeof(BasicLheBlock) * (s->total_blocks_width));
     }
            
     init_get_bits(&s->gb, lhe_data, avpkt->size * 8);
@@ -1393,39 +1364,39 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
     
     if (lhe_mode == ADVANCED_LHE) /*ADVANCED LHE*/
     {
-        (&s->procY)->perceptual_relevance_x = malloc(sizeof(float*) * (total_blocks_height+1));  
+        (&s->procY)->perceptual_relevance_x = malloc(sizeof(float*) * (s->total_blocks_height+1));  
     
-        for (int i=0; i<total_blocks_height+1; i++) 
+        for (int i=0; i<s->total_blocks_height+1; i++) 
         {
-            (&s->procY)->perceptual_relevance_x[i] = malloc(sizeof(float) * (total_blocks_width+1));
+            (&s->procY)->perceptual_relevance_x[i] = malloc(sizeof(float) * (s->total_blocks_width+1));
         }
         
-        (&s->procY)->perceptual_relevance_y = malloc(sizeof(float*) * (total_blocks_height+1)); 
+        (&s->procY)->perceptual_relevance_y = malloc(sizeof(float*) * (s->total_blocks_height+1)); 
         
-        for (int i=0; i<total_blocks_height+1; i++) 
+        for (int i=0; i<s->total_blocks_height+1; i++) 
         {
-            (&s->procY)->perceptual_relevance_y[i] = malloc(sizeof(float) * (total_blocks_width+1));
+            (&s->procY)->perceptual_relevance_y[i] = malloc(sizeof(float) * (s->total_blocks_width+1));
         }   
 
-        (&s->procY)->advanced_block = malloc(sizeof(AdvancedLheBlock *) * total_blocks_height);
+        (&s->procY)->advanced_block = malloc(sizeof(AdvancedLheBlock *) * s->total_blocks_height);
         
-        for (int i=0; i < total_blocks_height; i++)
+        for (int i=0; i < s->total_blocks_height; i++)
         {
-            (&s->procY)->advanced_block[i] = malloc (sizeof(AdvancedLheBlock) * (total_blocks_width));
+            (&s->procY)->advanced_block[i] = malloc (sizeof(AdvancedLheBlock) * (s->total_blocks_width));
         }
         
-        (&s->procUV)->advanced_block = malloc(sizeof(AdvancedLheBlock *) * total_blocks_height);
+        (&s->procUV)->advanced_block = malloc(sizeof(AdvancedLheBlock *) * s->total_blocks_height);
         
-        for (int i=0; i < total_blocks_height; i++)
+        for (int i=0; i < s->total_blocks_height; i++)
         {
-            (&s->procUV)->advanced_block[i] = malloc (sizeof(AdvancedLheBlock) * (total_blocks_width));
+            (&s->procUV)->advanced_block[i] = malloc (sizeof(AdvancedLheBlock) * (s->total_blocks_width));
         }
         
-        (&s->procY)-> block_width = (&s->procY)->width / total_blocks_width;    
-        (&s->procY)-> block_height = (&s->procY)->height / total_blocks_height;   
+        (&s->procY)-> block_width = (&s->procY)->width / s->total_blocks_width;    
+        (&s->procY)-> block_height = (&s->procY)->height / s->total_blocks_height;   
         
-        (&s->procUV)-> block_width = (&s->procUV)->width / total_blocks_width;
-        (&s->procUV)-> block_height = (&s->procUV)->height / total_blocks_height; 
+        (&s->procUV)-> block_width = (&s->procUV)->width / s->total_blocks_width;
+        (&s->procUV)-> block_height = (&s->procUV)->height / s->total_blocks_height; 
         
         (&s->lheY)-> downsampled_image = malloc (sizeof(uint8_t) * image_size_Y);
         (&s->lheU)-> downsampled_image = malloc (sizeof(uint8_t) * image_size_UV);
@@ -1439,24 +1410,10 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
         ppp_max_theoric = (&s->procY)-> block_width/SIDE_MIN;
         compression_factor = (&s->prec)->compression_factor[ppp_max_theoric][quality_level];        
        
-        lhe_advanced_read_mesh(s, he_mesh,
-                               (&s->procY)->basic_block, (&s->procUV)->basic_block,
-                               (&s->procY)->advanced_block, (&s->procUV)->advanced_block,
-                               (&s->procY)->perceptual_relevance_x, (&s->procY)->perceptual_relevance_y,
-                               ppp_max_theoric, compression_factor,
-                               (&s->procY)->width, (&s->procY)->height, (&s->procUV)->width, (&s->procUV)->height,
-                               (&s->procY)->block_width, (&s->procY)->block_height, (&s->procUV)->block_width, (&s->procUV)->block_height,
-                               total_blocks_width, total_blocks_height) ; 
+        lhe_advanced_read_mesh(s, he_mesh, ppp_max_theoric, compression_factor) ; 
         
-
-        lhe_advanced_read_all_file_symbols (s, 
-                                            he_Y, he_UV,
-                                            (&s->procY)->basic_block, (&s->procUV)->basic_block,
-                                            (&s->procY)->advanced_block, (&s->procUV)->advanced_block,
-                                            (&s->lheY)->hops, (&s->lheU)->hops, (&s->lheV)->hops,
-                                            (&s->procY)->width, (&s->procY)->height, (&s->procUV)->width, (&s->procUV)->height, 
-                                            total_blocks_width, total_blocks_height);
-        
+        lhe_advanced_read_all_file_symbols (s, he_Y, he_UV);
+              
         lhe_advanced_decode_symbols (s, 
                                      he_Y, he_UV,
                                      (&s->procY)->basic_block, (&s->procUV)->basic_block,
@@ -1464,44 +1421,32 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
                                      (&s->lheY)->first_color_block, (&s->lheU)->first_color_block, (&s->lheV)->first_color_block,
                                      (&s->lheY)->hops, (&s->lheU)->hops, (&s->lheV)->hops,
                                      (&s->lheY)->downsampled_image, (&s->lheU)->downsampled_image, (&s->lheV)->downsampled_image,
-                                     component_Y, component_U, component_V,
+                                     (&s->lheY)->component_prediction, (&s->lheU)->component_prediction, (&s->lheV)->component_prediction,
                                      (&s->procY)->width, (&s->procY)->height, (&s->procUV)->width, (&s->procUV)->height,
                                      image_size_Y, image_size_UV,
                                      (&s->procY)->block_width, (&s->procY)->block_height, (&s->procUV)->block_width, (&s->procUV)->block_height,
-                                     total_blocks_width, total_blocks_height);
+                                     s->total_blocks_width, s->total_blocks_height);
         
         
     }
     else /*BASIC LHE*/       
     {
-        lhe_basic_read_file_symbols(s, he_Y, image_size_Y, (&s->lheY)->hops);
-        lhe_basic_read_file_symbols(s, he_UV, image_size_UV, (&s->lheU)->hops);
-        lhe_basic_read_file_symbols(s, he_UV, image_size_UV, (&s->lheV)->hops);
+
+        lhe_basic_read_file_symbols(s, he_Y, image_size_Y, (&s->lheY)->hops);     
+        lhe_basic_read_file_symbols(s, he_UV, image_size_UV, (&s->lheU)->hops);      
+        lhe_basic_read_file_symbols(s, he_UV, image_size_UV, (&s->lheV)->hops);      
  
         if (total_blocks > 1 && OPENMP_FLAGS == CONFIG_OPENMP) 
         {
-            (&s->procY)->block_width = (&s->procY)->width / total_blocks_width;
-            (&s->procY)->block_height = (&s->procY)->height / total_blocks_height;
-            (&s->procUV)->block_width = (&s->procUV)->width /total_blocks_width;
-            (&s->procUV)->block_height = (&s->procUV)->height /total_blocks_height;
+            (&s->procY)->block_width = (&s->procY)->width / s->total_blocks_width;
+            (&s->procY)->block_height = (&s->procY)->height / s->total_blocks_height;
+            (&s->procUV)->block_width = (&s->procUV)->width /s->total_blocks_width;
+            (&s->procUV)->block_height = (&s->procUV)->height /s->total_blocks_height;
 
-            lhe_basic_decode_frame_pararell (s, &s->prec,
-                                             (&s->procY)->basic_block, (&s->procUV)->basic_block,
-                                             component_Y, component_U, component_V, 
-                                             (&s->lheY)->hops, (&s->lheU)->hops, (&s->lheV)->hops,
-                                             (&s->procY)->width, (&s->procY)->height, (&s->procUV)->width, (&s->procUV)->height, 
-                                             s->frame->linesize[0], s->frame->linesize[1], s->frame->linesize[2],
-                                             (&s->lheY)->first_color_block, (&s->lheU)->first_color_block, (&s->lheV)->first_color_block,
-                                             total_blocks_width, total_blocks_height,
-                                             (&s->procY)->block_width, (&s->procY)->block_height, (&s->procUV)->block_width, (&s->procUV)->block_height);                            
+            lhe_basic_decode_frame_pararell (s);                            
         } else 
-        {      
-            lhe_basic_decode_frame_sequential (&s->prec, 
-                                               component_Y, component_U, component_V, 
-                                               (&s->lheY)->hops, (&s->lheU)->hops, (&s->lheV)->hops,
-                                               (&s->procY)->width, (&s->procY)->height, (&s->procUV)->width, (&s->procUV)->height, 
-                                               s->frame->linesize[0], s->frame->linesize[1], s->frame->linesize[2],
-                                               (&s->lheY)->first_color_block, (&s->lheU)->first_color_block, (&s->lheV)->first_color_block);    
+        {     
+            lhe_basic_decode_frame_sequential (s);    
         }
     }
    
@@ -1596,23 +1541,9 @@ static int mlhe_decode_video(AVCodecContext *avctx, void *data, int *got_frame, 
         ppp_max_theoric = (&s->procY)->block_width/SIDE_MIN;
         compression_factor = (&s->prec)->compression_factor[ppp_max_theoric][s->quality_level];        
        
-        lhe_advanced_read_mesh(s, he_mesh,
-                               (&s->procY)->basic_block, (&s->procUV)->basic_block,
-                               (&s->procY)->advanced_block, (&s->procUV)->advanced_block,
-                               (&s->procY)->perceptual_relevance_x, (&s->procY)->perceptual_relevance_y,
-                               ppp_max_theoric, compression_factor,
-                               (&s->procY)->width, (&s->procY)->height,(&s->procUV)->width,  (&s->procUV)->height, 
-                               (&s->procY)->block_width, (&s->procY)->block_height, (&s->procUV)->block_width, (&s->procUV)->block_height,
-                               s->total_blocks_width, s->total_blocks_height) ; 
+        lhe_advanced_read_mesh(s, he_mesh, ppp_max_theoric, compression_factor) ; 
         
-
-        lhe_advanced_read_all_file_symbols (s, 
-                                            he_Y, he_UV,
-                                            (&s->procY)->basic_block, (&s->procUV)->basic_block,
-                                            (&s->procY)->advanced_block, (&s->procUV)->advanced_block,
-                                            (&s->lheY)->hops, (&s->lheU)->hops, (&s->lheV)->hops,
-                                            (&s->procY)->width, (&s->procY)->height,(&s->procUV)->width, (&s->procUV)->height, 
-                                            s->total_blocks_width, s->total_blocks_height);
+        lhe_advanced_read_all_file_symbols (s, he_Y, he_UV);
         
         mlhe_decode_delta_frame (s, 
                                  he_Y, he_UV,
@@ -1770,23 +1701,10 @@ static int mlhe_decode_video(AVCodecContext *avctx, void *data, int *got_frame, 
         ppp_max_theoric = (&s->procY)-> block_width/SIDE_MIN;
         compression_factor = (&s->prec)->compression_factor[ppp_max_theoric][s->quality_level];        
        
-        lhe_advanced_read_mesh(s, he_mesh,
-                               (&s->procY)->basic_block, (&s->procUV)->basic_block,
-                               (&s->procY)->advanced_block, (&s->procUV)->advanced_block,
-                               (&s->procY)->perceptual_relevance_x, (&s->procY)->perceptual_relevance_y,
-                               ppp_max_theoric, compression_factor,
-                               (&s->procY)->width, (&s->procY)->height, (&s->procUV)->width, (&s->procUV)->height,
-                               (&s->procY)->block_width, (&s->procY)->block_height, (&s->procUV)->block_width, (&s->procUV)->block_height,
-                               s->total_blocks_width, s->total_blocks_height) ; 
+        lhe_advanced_read_mesh(s, he_mesh, ppp_max_theoric, compression_factor) ; 
         
 
-        lhe_advanced_read_all_file_symbols (s, 
-                                            he_Y, he_UV,
-                                            (&s->procY)->basic_block, (&s->procUV)->basic_block,
-                                            (&s->procY)->advanced_block, (&s->procUV)->advanced_block,
-                                            (&s->lheY)->hops, (&s->lheU)->hops, (&s->lheV)->hops,
-                                            (&s->procY)->width, (&s->procY)->height, (&s->procUV)->width, (&s->procUV)->height,
-                                            s->total_blocks_width, s->total_blocks_height);
+        lhe_advanced_read_all_file_symbols (s, he_Y, he_UV);
         
         lhe_advanced_decode_symbols (s, 
                                      he_Y, he_UV,
