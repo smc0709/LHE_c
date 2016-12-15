@@ -68,6 +68,8 @@ static av_cold int lhe_decode_init(AVCodecContext *avctx)
 /**
  * Reads Huffman table
  * 
+ * @param *s LHE State
+ * @param *he LHE Huffman Entry
  * @param max_huff_size Maximum number of symbols in Huffman tree
  * @param max_huff_node_bits Number of bits for each entry in the file
  * @param huff_no_occurrences Code for no occurrences
@@ -193,9 +195,10 @@ static uint8_t lhe_translate_huffman_into_interval (uint32_t huffman_symbol, Lhe
 /**
  * Reads file symbols of basic lhe file
  * 
- * @s Lhe parameters
- * @he Huffman entry, Huffman parameters
- * @image_size image size
+ * @param s Lhe parameters
+ * @param he LHE Huffman entry
+ * @param image_size image size
+ * @param *symbols Symbols read from file
  */
 static void lhe_basic_read_file_symbols (LheState *s, LheHuffEntry *he, uint32_t image_size, uint8_t *symbols) 
 {
@@ -230,13 +233,10 @@ static void lhe_basic_read_file_symbols (LheState *s, LheHuffEntry *he, uint32_t
 /**
  * Reads file symbols from advanced lhe file
  * 
- * @param s Lhe parameters
- * @param he Huffman entry, Huffman parameters
- * @param **basic_block Basic block parameters 
- * @param **advanced_block Advanced block parameters
+ * @param *s Lhe parameters
+ * @param *he Huffman entry, Huffman parameters
+ * @param *proc LHE processing parameters
  * @param symbols symbols array (hops)
- * @param width image width
- * @param height image height
  * @param block_x block x index
  * @param block_y block y index
  */
@@ -286,19 +286,6 @@ static void lhe_advanced_read_file_symbols (LheState *s, LheHuffEntry *he, LhePr
  * @param *s Lhe parameters
  * @param *he_Y Luminance Huffman entry, Huffman parameters
  * @param *he_UV Chrominance Huffman entry, Huffman parameters
- * @param **basic_block_Y Basic block parameters for luminance signal
- * @param **basic_block_UV Basic block parameters for chrominance signals
- * @param **advanced_block_Y Advanced block parameters for luminance signal
- * @param **advanced_block_UV Advanced block parameters for chrominance signals
- * @param symbols_Y luminance symbols array (hops)
- * @param symbols_U chrominance u symbols array (hops)
- * @param symbols_V chrominance v symbols array (hops)
- * @param width_Y luminance image width
- * @param height_Y luminance image height
- * @param width_UV chrominance image width
- * @param height_UV chrominance image height
- * @param total_blocks_width number of blocks widthwise
- * @param total_blocks_height number of blocks heightwise
  */
 static void lhe_advanced_read_all_file_symbols (LheState *s, LheHuffEntry *he_Y, LheHuffEntry *he_UV) 
 {
@@ -369,8 +356,6 @@ static float lhe_advance_translate_pr_interval_to_pr_quant (uint8_t perceptual_r
  * @param *s Lhe params
  * @param *he_mesh Huffman params for LHE mesh
  * @param **perceptual_relevance Perceptual Relevance values
- * @param total_blocks_width number of blocks widthwise
- * @param total_blocks_height number of blocks heightwise
  */
 static void lhe_advanced_read_perceptual_relevance_interval (LheState *s, LheHuffEntry *he_mesh, float ** perceptual_relevance) 
 {
@@ -409,26 +394,8 @@ static void lhe_advanced_read_perceptual_relevance_interval (LheState *s, LheHuf
  * 
  * @param *s Lhe params
  * @param *he_mesh Huffman params for LHE mesh
- * @param **basic_block_Y Basic block parameters for luminance signal
- * @param **basic_block_UV Basic block parameters for chrominance signals
- * @param **advanced_block_Y Advanced block parameters for luminance signal
- * @param **advanced_block_UV Advanced block parameters for chrominance signals
- * @param **perceptual_relevance_x Perceptual relevance array for x coordinate
- * @param **perceptual_relevance_y Perceptual relevance array for y coordinate
- * @param ***ppp_x Pixels per pixel array for x coordinate
- * @param ***ppp_y Pixels per pixel array for y coordinate
  * @param ppp_max_theoric Maximum number of pixels per pixel
  * @param compression_factor Compression factor number
- * @param width_Y luminance width
- * @param height_Y luminance height
- * @param width_UV chrominance width
- * @param height_UV chrominance height
- * @param block_width_Y luminance block width
- * @param block_height_Y luminance block height
- * @param block_width_UV chrominance block width
- * @param block_height_UV chrominance block height
- * @param total_blocks_width Number of blocks widthwise
- * @param total_blocks_height Number of blocks heightwise
  */
 static void lhe_advanced_read_mesh (LheState *s, LheHuffEntry *he_mesh, float ppp_max_theoric, float compression_factor) 
 {
@@ -468,22 +435,15 @@ static void lhe_advanced_read_mesh (LheState *s, LheHuffEntry *he_mesh, float pp
  * Decodes one hop per pixel in a block
  * 
  * @param *prec Pointer to Lhe precalculated data
- * @param **basic_block Basic block parameters
- * @param *hops array of hops 
- * @param *image image result
- * @param width image width
- * @param height image height
+ * @param *proc LHE processing parameters
+ * @param *lhe LHE image arrays
  * @param linesize rectangle images create a square image in ffmpeg memory. Linesize is width used by ffmpeg in memory
- * @param *first_color_block first component value for each block
  * @param total_blocks_width number of blocks widthwise
  * @param block_x block x index
  * @param block_y block y index
- * @param block_width block width
- * @param block_height block height
  */
 static void lhe_basic_decode_one_hop_per_pixel_block (LheBasicPrec *prec, LheProcessing *proc, LheImage *lhe, int linesize,
-                                                      uint32_t total_blocks_width, uint32_t total_blocks_height,
-                                                      int block_x, int block_y) 
+                                                      uint32_t total_blocks_width, int block_x, int block_y) 
 {
        
     //Hops computation.
@@ -564,11 +524,8 @@ static void lhe_basic_decode_one_hop_per_pixel_block (LheBasicPrec *prec, LhePro
  * Decodes one hop per pixel
  * 
  * @param *prec precalculated lhe data
- * @param *hops hops array
- * @param *image final result
- * @param first_color First pixel component
- * @param width image width
- * @param height image height
+ * @param *proc LHE processing parameters
+ * @param *lhe LHE image arrays final result
  * @param linesize rectangle images create a square image in ffmpeg memory. Linesize is width used by ffmpeg in memory
  */
 static void lhe_basic_decode_one_hop_per_pixel (LheBasicPrec *prec, LheProcessing *proc, LheImage *lhe, int linesize) {
@@ -689,16 +646,11 @@ static void lhe_basic_decode_frame_pararell (LheState *s)
                                              block_x, block_y);
             
             //Luminance
-            lhe_basic_decode_one_hop_per_pixel_block(prec, procY,lheY, frame->linesize[0], s->total_blocks_width, s->total_blocks_height, 
-                                                     block_x, block_y);
-
+            lhe_basic_decode_one_hop_per_pixel_block(prec, procY,lheY, frame->linesize[0], s->total_blocks_width, block_x, block_y);
             //Chrominance U
-            lhe_basic_decode_one_hop_per_pixel_block(prec, procUV, lheU, frame->linesize[1], s->total_blocks_width, s->total_blocks_height, 
-                                                     block_x, block_y);
-        
+            lhe_basic_decode_one_hop_per_pixel_block(prec, procUV, lheU, frame->linesize[1], s->total_blocks_width, block_x, block_y);
             //Chrominance V
-            lhe_basic_decode_one_hop_per_pixel_block(prec, procUV, lheV, frame->linesize[0], s->total_blocks_width, s->total_blocks_height, 
-                                                     block_x, block_y);
+            lhe_basic_decode_one_hop_per_pixel_block(prec, procUV, lheV, frame->linesize[0], s->total_blocks_width, block_x, block_y);
         }
     }
 }
@@ -709,19 +661,12 @@ static void lhe_basic_decode_frame_pararell (LheState *s)
 /**
  * Decodes one hop per pixel in a block
  * 
- * @param *prec Pointer to precalculated lhe data
- * @param **basic_block Basic block parameters
- * @param **advanced_block Advanced block parameters
- * @param *hops array of hops
- * @param *image final image
- * @param width image width
- * @param height image height
- * @param *first_color_block first component value for each block
+ * @param *prec precalculated lhe data
+ * @param *proc LHE processing parameters
+ * @param *lhe LHE image arrays final result
  * @param total_blocks_width number of blocks widthwise
  * @param block_x block x index
  * @param block_y block y index
- * @param block_width block width
- * @param block_height block height
  */
 static void lhe_advanced_decode_one_hop_per_pixel_block (LheBasicPrec *prec, LheProcessing *proc, LheImage *lhe,
                                                          uint32_t total_blocks_width, uint32_t block_x, uint32_t block_y) 
@@ -798,6 +743,12 @@ static void lhe_advanced_decode_one_hop_per_pixel_block (LheBasicPrec *prec, Lhe
 
 /**
  * Vertical Nearest neighbour interpolation 
+ * 
+ * @param *proc LHE processing parameters
+ * @param *lhe LHE image arrays
+ * @param *intermediate_interpolated_image intermediate interpolated image 
+ * @param block_x block x index
+ * @param block_y block y index
  */
 static void lhe_advanced_vertical_nearest_neighbour_interpolation (LheProcessing *proc, LheImage *lhe,
                                                                    uint8_t *intermediate_interpolated_image, 
@@ -861,6 +812,13 @@ static void lhe_advanced_vertical_nearest_neighbour_interpolation (LheProcessing
 
 /**
  * Horizontal Nearest neighbour interpolation 
+ * 
+ * @param *proc LHE processing parameters
+ * @param *lhe LHE image arrays
+ * @param *intermediate_interpolated_image intermediate interpolated image in y coordinate
+ * @param linesize rectangle images create a square image in ffmpeg memory. Linesize is width used by ffmpeg in memory
+ * @param block_x block x index
+ * @param block_y block y index
  */
 static void lhe_advanced_horizontal_nearest_neighbour_interpolation (LheProcessing *proc, LheImage *lhe,
                                                                      uint8_t *intermediate_interpolated_image, 
@@ -917,6 +875,15 @@ static void lhe_advanced_horizontal_nearest_neighbour_interpolation (LheProcessi
     }//y 
 }
 
+/**
+ * Decodes symbols in advanced LHE file
+ * 
+ * @param *s LHE State
+ * @param *he_Y LHE Huffman Entry for luminance
+ * @param *he_UV LHE Huffman Entry for chrominances
+ * @param image_size_Y luminance image size
+ * @param image_size_UV chrominance image size
+ */
 static void lhe_advanced_decode_symbols (LheState *s, LheHuffEntry *he_Y, LheHuffEntry *he_UV,
                                          uint32_t image_size_Y, uint32_t image_size_UV) 
 {
@@ -973,17 +940,15 @@ static void lhe_advanced_decode_symbols (LheState *s, LheHuffEntry *he_Y, LheHuf
  * Adds differential info (delta) to last frame
  * 
  * @param *s LHE State
- * @param **basic_block Basic block parameters
- * @param **advanced_block Advanced block parameters
+ * @param *proc LHE processing parameters
+ * @param *lhe LHE image arrays
+ * @param adapted_downsampled_image last downsampled image adapted to the resolution of current frame
  * @param *delta_frame array containing differential info(delta)
- * @param *downsampled_image final downsampled image
- * @param *last_downsampled_image array containing last downsampled data
- * @param width image width
  * @param block_x block x index
  * @param block_y block y index
  */
 static void mlhe_add_delta_to_last_frame (LheState *s, LheProcessing *proc, LheImage *lhe, 
-                                          uint8_t *adapted_downsampled_image_Y, uint8_t *delta_frame, 
+                                          uint8_t *adapted_downsampled_image, uint8_t *delta_frame, 
                                           uint32_t block_x, uint32_t block_y) 
 {
     uint32_t xini, xfin, yini, yfin, pix;
@@ -1002,7 +967,7 @@ static void mlhe_add_delta_to_last_frame (LheState *s, LheProcessing *proc, LheI
         {
             pix = y*proc->width + x;
             delta = (delta_frame[pix] - 128.0) * 2.0;
-            image = adapted_downsampled_image_Y[pix] + delta;
+            image = adapted_downsampled_image[pix] + delta;
             
             if (image > 255) image = 255;
             if (image < 0) image = 1;
@@ -1016,18 +981,12 @@ static void mlhe_add_delta_to_last_frame (LheState *s, LheProcessing *proc, LheI
  * Decodes one hop per pixel in a block
  * 
  * @param *prec Pointer to precalculated lhe data
- * @param **basic_block Basic block parameters
- * @param **advanced_block Advanced block parameters
- * @param *hops array of hops
- * @param *image final image
- * @param width image width
- * @param height image height
- * @param *first_color_block first component value for each block
+ * @param *proc LHE processing parameters
+ * @param *lhe LHE image arrays
+ * @param *delta_prediction Quantized differential information
  * @param total_blocks_width number of blocks widthwise
  * @param block_x block x index
  * @param block_y block y index
- * @param block_width block width
- * @param block_height block height
  */
 static void mlhe_decode_delta (LheBasicPrec *prec, LheProcessing *proc, LheImage *lhe,
                                uint8_t *delta_prediction,
@@ -1109,33 +1068,8 @@ static void mlhe_decode_delta (LheBasicPrec *prec, LheProcessing *proc, LheImage
  * @param *s LHE Context
  * @param *he_Y luminance Huffman data
  * @param *he_UV chrominance Huffman data
- * @param *basic_block_Y luminance basic block 
- * @param *basic_block_UV chrominance basic block 
- * @param *advanced_block_Y luminance advanced block for current frame
- * @param *advanced_block_UV chrominance advanced block for current frame
- * @param *last_advanced_block_Y luminance advanced block for last frame
- * @param *last_advanced_block_UV chrominance advanced block for last frame
- * @param *first_color_block_Y luminance first color block 
- * @param *first_color_block_U chrominance U first color block
- * @param *first_color_block_V chrominance V first color block
- * @param *symbols_Y luminance hops array
- * @param *symbols_U chrominance U hops array
- * @param *symbols_V chrominance V hops array
- * @param component_Y luminance original data
- * @param *component_U chrominance u original data
- * @param *component_V chrominance v original data
- * @param width_Y luminance width
- * @param height_Y luminance height
- * @param width_UV chrominance width
- * @param heigth_UV chorminance height
  * @param image_size_Y luminance image size
  * @param image_size_UV chrominance image size
- * @param block_width_Y luminance block width
- * @param block_height_Y luminance block height
- * @param block_width_UV chrominance block width
- * @param block_height_UV chrominance block height
- * @param total_blocks_width number of blocks widthwise
- * @param total_blocks_height number of blocks heightwise
  */
 static void mlhe_decode_delta_frame (LheState *s, LheHuffEntry *he_Y, LheHuffEntry *he_UV, uint32_t image_size_Y, uint32_t image_size_UV) 
 {
@@ -1242,6 +1176,14 @@ static void lhe_init_pixel_format (AVCodecContext *avctx, LheState *s, uint8_t p
     }
 }
 
+/**
+ * Read and decodes LHE image
+ *
+ * @param *avctx Codec context
+ * @param *data data from file
+ * @param *got_frame indicates frame is ready
+ * @param *avpkt AV packet
+ */ 
 static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, AVPacket *avpkt)
 {    
     uint32_t total_blocks, pixels_block, image_size_Y, image_size_UV;
@@ -1437,6 +1379,14 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
 //==================================================================
 // DECODE VIDEO FRAME
 //==================================================================
+/**
+ * Read and decodes MLHE video
+ *
+ * @param *avctx Codec context
+ * @param *data data from file
+ * @param *got_frame indicates frame is ready
+ * @param *avpkt AV packet
+ */ 
 static int mlhe_decode_video(AVCodecContext *avctx, void *data, int *got_frame, AVPacket *avpkt)
 {    
     uint8_t *component_Y, *component_U, *component_V;
