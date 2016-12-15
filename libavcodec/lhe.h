@@ -158,6 +158,8 @@ typedef struct LheHuffEntry {
 } LheHuffEntry;
 
 typedef struct BasicLheBlock {
+    uint32_t block_width;
+    uint32_t block_height;
     uint32_t x_ini;
     uint32_t x_fin;
     uint32_t y_ini;
@@ -173,6 +175,27 @@ typedef struct AdvancedLheBlock {
     float ppp_y[CORNERS];
 } AdvancedLheBlock;
 
+typedef struct LheProcessing {
+    BasicLheBlock **basic_block;
+    AdvancedLheBlock **advanced_block;
+    AdvancedLheBlock **last_advanced_block;
+    float **perceptual_relevance_x;
+    float **perceptual_relevance_y;  
+    uint32_t width;
+    uint32_t height;
+    uint32_t theoretical_block_width;
+    uint32_t theoretical_block_height;
+} LheProcessing;
+
+typedef struct LheImage {
+    uint8_t *first_color_block;
+    uint8_t *component_prediction;
+    uint8_t *downsampled_image;
+    uint8_t *last_downsampled_image; 
+    uint8_t *downsampled_error_image;
+    uint8_t *hops;
+} LheImage;
+
 int lhe_generate_huffman_codes(LheHuffEntry *he,  int max_huff_size);
 double time_diff(struct timeval x , struct timeval y);
 int count_bits (int num);
@@ -186,31 +209,20 @@ void lhe_init_cache (LheBasicPrec *prec);
  * ADVANCED_LHE
  * Common functions encoder and decoder
  */
-void lhe_calculate_block_coordinates (BasicLheBlock **block_array_Y, BasicLheBlock **block_array_UV,
-                                      uint32_t block_width_Y, uint32_t block_height_Y,                             
-                                      uint32_t block_width_UV, uint32_t block_height_UV, 
-                                      uint32_t width_image_Y, uint32_t height_image_Y,
-                                      uint32_t width_image_UV, uint32_t height_image_UV,
+void lhe_calculate_block_coordinates (LheProcessing *procY, LheProcessing *procUV,
                                       uint32_t total_blocks_width, uint32_t total_blocks_height,
                                       int block_x, int block_y);
 
-float lhe_advanced_perceptual_relevance_to_ppp (AdvancedLheBlock **array_block_Y, AdvancedLheBlock **array_block_UV,
-                                                float ** perceptual_relevance_x, float ** perceptual_relevance_y,
-                                                float compression_factor,
-                                                uint32_t ppp_max_theoric,
+float lhe_advanced_perceptual_relevance_to_ppp (LheProcessing *procY, LheProcessing *procUV,
+                                                float compression_factor, uint32_t ppp_max_theoric,
                                                 int block_x, int block_y);
 
-void lhe_advanced_ppp_side_to_rectangle_shape (BasicLheBlock **basic_block, AdvancedLheBlock **advanced_block,
-                                               uint32_t image_width, uint32_t image_height, 
-                                               float ppp_max, 
-                                               int block_x, int block_y);
+void lhe_advanced_ppp_side_to_rectangle_shape (LheProcessing *proc, float ppp_max, int block_x, int block_y);
 
 /**
  * VIDEO LHE
  * Common functions encoder and decoder
  */
-void mlhe_adapt_downsampled_data_resolution (BasicLheBlock **basic_block, 
-                                             AdvancedLheBlock **advanced_block, AdvancedLheBlock **last_advanced_block,
-                                             uint8_t *downsampled_data, uint8_t *intermediate_adapted_downsampled_data, uint8_t *downsampled_data_adapted,
-                                             uint32_t width,
+void mlhe_adapt_downsampled_data_resolution (LheProcessing *proc, LheImage *lhe,
+                                             uint8_t *intermediate_adapted_downsampled_data, uint8_t *downsampled_data_adapted,
                                              int block_x, int block_y);

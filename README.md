@@ -65,7 +65,7 @@ You will need yasm
   ```
   sudo apt-get install yasm
   ```
-  
+
 It is recommendable to install OpenMP
 
 Check gcc version:
@@ -85,7 +85,6 @@ Check gcc version:
   ```
   sudo apt-get install libgomp1
   ```
-  
 More instructions can be found here: https://trac.ffmpeg.org/wiki/CompilationGuide/Ubuntu
 
 ###Compile and Install
@@ -159,3 +158,4 @@ For example: big_buck with format YUV420.
   ```
   ffplay big_buck.mlhe 
   ```
+
