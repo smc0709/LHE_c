@@ -182,8 +182,6 @@ void lhe_calculate_block_coordinates (LheProcessing *procY, LheProcessing *procU
     uint32_t xini_Y, xfin_Y, yini_Y, yfin_Y;
     uint32_t xini_UV, xfin_UV, yini_UV, yfin_UV;
     
-    uint32_t widthY;
-
     //LUMINANCE
     xini_Y = block_x * procY->block_width;
     xfin_Y = xini_Y + procY->block_width;

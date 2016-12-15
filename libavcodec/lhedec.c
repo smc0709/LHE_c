@@ -399,9 +399,7 @@ static void lhe_advanced_read_perceptual_relevance_interval (LheState *s, LheHuf
  */
 static void lhe_advanced_read_mesh (LheState *s, LheHuffEntry *he_mesh, float ppp_max_theoric, float compression_factor) 
 {
-    LheProcessing *procY, *procUV;
-    LheImage *lheY, *lheU, *lheV;
-    
+    LheProcessing *procY, *procUV;    
     procY = &s->procY;
     procUV = &s->procUV;
     
@@ -1187,7 +1185,6 @@ static void lhe_init_pixel_format (AVCodecContext *avctx, LheState *s, uint8_t p
 static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, AVPacket *avpkt)
 {    
     uint32_t total_blocks, pixels_block, image_size_Y, image_size_UV;
-    uint8_t *component_Y, *component_U, *component_V;
     int ret;
     
     float compression_factor;
@@ -1389,7 +1386,6 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
  */ 
 static int mlhe_decode_video(AVCodecContext *avctx, void *data, int *got_frame, AVPacket *avpkt)
 {    
-    uint8_t *component_Y, *component_U, *component_V;
     uint32_t total_blocks, pixels_block, image_size_Y, image_size_UV;
     int ret;
     

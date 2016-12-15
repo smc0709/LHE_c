@@ -305,7 +305,6 @@ static int lhe_basic_write_file(AVCodecContext *avctx, AVPacket *pkt,
         
     LheContext *s;
     LheProcessing *procY;
-    LheProcessing *procUV;
     LheImage *lheY;
     LheImage *lheU;
     LheImage *lheV;
@@ -317,7 +316,6 @@ static int lhe_basic_write_file(AVCodecContext *avctx, AVPacket *pkt,
     
     s = avctx->priv_data;
     procY = &s->procY;
-    procUV = &s->procUV;
     lheY = &s->lheY;
     lheU = &s->lheU;
     lheV = &s->lheV;
@@ -969,7 +967,7 @@ static void lhe_basic_encode_one_hop_per_pixel_block (LheBasicPrec *prec, LhePro
     int xini, xfin, yini, yfin;
     bool small_hop, last_small_hop;
     uint8_t predicted_component, hop_1, hop_number, original_color, r_max;
-    int pix, pix_original_data, dif_line, dif_pix_sps, dif_pix ,num_block;
+    int pix, pix_original_data, dif_line, dif_pix ,num_block;
     
     num_block = block_y * total_blocks_width + block_x;
     
@@ -993,7 +991,7 @@ static void lhe_basic_encode_one_hop_per_pixel_block (LheBasicPrec *prec, LhePro
     pix_original_data = yini*linesize + xini;
     
     dif_pix = proc->width - xfin + xini; //amount of pixels we have to jump in sps image
-    dif_pix_sps = linesize - xfin + xini; //amount of pixels we have to jump in original image
+    dif_line = linesize - xfin + xini; //amount of pixels we have to jump in original image
     
     for (int y=yini; y < yfin; y++)  {
         for (int x=xini; x < xfin; x++)  {
@@ -1042,7 +1040,7 @@ static void lhe_basic_encode_one_hop_per_pixel_block (LheBasicPrec *prec, LhePro
             pix_original_data++; //we jumped number of samples needed
         }//for x
         pix+=dif_pix; 
-        pix_original_data+=dif_pix_sps;
+        pix_original_data+=dif_line;
     }//for y     
 }
 
@@ -1122,7 +1120,7 @@ static float lhe_advanced_compute_prx (LheBasicPrec *prec,
     //Hops computation.
     bool small_hop, last_small_hop;
     uint8_t predicted_component, hop_1, hop_number, original_color, r_max;
-    int pix, pix_original_data, dif_line, dif_pix_original_data ,num_block, diff_y;
+    int pix, pix_original_data, dif_pix_original_data;
     
     int hx, count_hx, weight;
     uint8_t last_prediction, last_hop_number;
@@ -1144,7 +1142,6 @@ static float lhe_advanced_compute_prx (LheBasicPrec *prec,
     
     pix = 0;
     pix_original_data = yini*linesize + xini;
-    
     dif_pix_original_data = sps_ratio_height * linesize - xfin + xini; //amount of pixels we have to jump in original image
     
     for (int y=yini; y < yfin; y+=sps_ratio_height)  {
@@ -1241,7 +1238,7 @@ static float lhe_advanced_compute_pry (LheBasicPrec *prec, LheProcessing *proc,
     //Hops computation.
     bool small_hop, last_small_hop;
     uint8_t predicted_component, hop_1, hop_number, original_color, r_max;
-    int pix, pix_original_data, dif_line, dif_pix_sps, dif_pix ,num_block, diff_x;
+    int pix, pix_original_data;
     
     int hy, count_hy, weight;
     uint8_t last_prediction, top_hop_number;
@@ -1263,9 +1260,7 @@ static float lhe_advanced_compute_pry (LheBasicPrec *prec, LheProcessing *proc,
 
     pix = 0;
     pix_original_data = yini*linesize + xini;
-    
-    dif_pix = proc->height - yfin + yini; //amount of pixels we have to jump in sps image
-    
+        
     for (int x=xini; x < xfin; x+=sps_ratio_width)  {
         
         pix_original_data = yini * linesize + x;
@@ -1288,8 +1283,6 @@ static float lhe_advanced_compute_pry (LheBasicPrec *prec, LheProcessing *proc,
             
 
             hop_number = prec->best_hop[r_max][hop_1][original_color][predicted_component]; 
-            //hops[pix]= hop_number;       
-            //component_prediction[pix]=prec -> prec_luminance[predicted_component][r_max][hop_1][hop_number];
             last_prediction = prec -> prec_luminance[predicted_component][r_max][hop_1][hop_number];
 
             //tunning hop1 for the next hop ( "h1 adaptation")
@@ -1402,7 +1395,6 @@ static void lhe_advanced_compute_perceptual_relevance (LheContext *s, uint8_t *c
 {
     
     int xini, xfin, yini, yfin, xini_pr_block, xfin_pr_block, yini_pr_block, yfin_pr_block;
-    uint32_t block_width_pr, block_height_pr, block_width_pr_sps, block_height_pr_sps;
     float prx, pry;
     
     LheProcessing *proc;
@@ -1451,11 +1443,6 @@ static void lhe_advanced_compute_perceptual_relevance (LheContext *s, uint8_t *c
             {
                 yfin_pr_block = proc->height;
             }
-            
-            block_width_pr = (xfin_pr_block - xini_pr_block);
-            block_height_pr = (yfin_pr_block - yini_pr_block);
-            block_width_pr_sps = (block_width_pr - 1) / SPS_FACTOR + 1;
-            block_height_pr_sps = (block_height_pr - 1) / SPS_FACTOR + 1;
             
             prx = lhe_advanced_compute_prx (prec,
                                             component_original_data_Y, 
@@ -1990,7 +1977,7 @@ static void mlhe_calculate_delta_block (LheProcessing *proc, LheImage *lhe,
                                         uint8_t *delta_frame, uint8_t *adapted_last_downsampled_image, 
                                         uint32_t block_x, uint32_t block_y)
 {
-    int pix, pix_linesize, delta;
+    int pix, delta;
     uint32_t xini, xfin, yini, yfin;
     
     xini = proc->basic_block[block_y][block_x].x_ini;
@@ -2029,7 +2016,7 @@ static void mlhe_calculate_error (LheProcessing *proc, LheImage *lhe,
                                   uint8_t *delta_prediction, uint8_t *last_downsampled_data, 
                                   uint32_t linesize, uint32_t block_x, uint32_t block_y)
 {
-    int pix, pix_linesize, error_delta;
+    int pix, error_delta;
     uint32_t xini, xfin, yini, yfin;
     
     xini = proc->basic_block[block_y][block_x].x_ini;
@@ -2275,7 +2262,7 @@ static void mlhe_delta_frame_encode (LheContext *s, const AVFrame *frame,
                         
             
             mlhe_adapt_downsampled_data_resolution (&s->procUV, &s->lheV,
-                                                    intermediate_adapted_downsampled_data_U, 
+                                                    intermediate_adapted_downsampled_data_V, 
                                                     adapted_downsampled_data_V,
                                                     block_x, block_y);
 
@@ -2327,9 +2314,7 @@ static int mlhe_advanced_write_delta_frame(AVCodecContext *avctx, AVPacket *pkt,
     LheHuffEntry he_mesh[LHE_MAX_HUFF_SIZE_MESH]; //Struct for mesh Huffman data
     LheHuffEntry he_Y[LHE_MAX_HUFF_SIZE_SYMBOLS]; //Struct for luminance Huffman data
     LheHuffEntry he_UV[LHE_MAX_HUFF_SIZE_SYMBOLS]; //Struct for chrominance Huffman data
-    
-    struct timeval before , after;
-    
+        
     s = avctx->priv_data;
     procY = &s->procY;
     procUV = &s->procUV;
@@ -2669,9 +2654,7 @@ static int mlhe_encode_video(AVCodecContext *avctx, AVPacket *pkt,
     uint8_t *component_original_data_Y, *component_original_data_U, *component_original_data_V;
     uint32_t total_blocks_width, total_blocks_height, total_blocks, pixels_block;
     uint32_t image_size_Y, image_size_UV;
-    
-    float compression_factor;
-        
+            
     LheContext *s = avctx->priv_data;
     
     (&s->procY)->width = frame->width;
@@ -2774,9 +2757,8 @@ static int mlhe_encode_video(AVCodecContext *avctx, AVPacket *pkt,
         (&s->lheU)->downsampled_image = malloc (sizeof(uint8_t) * image_size_UV);
         (&s->lheV)->downsampled_image = malloc (sizeof(uint8_t) * image_size_UV);
         
-        compression_factor =  lhe_advanced_encode (s, frame, 
-                                                   component_original_data_Y, component_original_data_U, component_original_data_V,
-                                                   total_blocks_width, total_blocks_height);     
+        lhe_advanced_encode (s, frame, component_original_data_Y, component_original_data_U, component_original_data_V,
+                             total_blocks_width, total_blocks_height);     
 
         lhe_advanced_write_file(avctx, pkt, 
                                 image_size_Y, image_size_UV, 
