@@ -183,19 +183,19 @@ void lhe_calculate_block_coordinates (LheProcessing *procY, LheProcessing *procU
     uint32_t xini_UV, xfin_UV, yini_UV, yfin_UV;
     
     //LUMINANCE
-    xini_Y = block_x * procY->block_width;
-    xfin_Y = xini_Y + procY->block_width;
+    xini_Y = block_x * procY->theoretical_block_width;
+    xfin_Y = xini_Y + procY->theoretical_block_width;
       
-    yini_Y = block_y * procY->block_height;
-    yfin_Y = yini_Y + procY->block_height ;
+    yini_Y = block_y * procY->theoretical_block_height;
+    yfin_Y = yini_Y + procY->theoretical_block_height ;
 
     
     //CHROMINANCE UV
-    xini_UV = block_x * procUV->block_width;
-    xfin_UV = xini_UV + procUV->block_width;
+    xini_UV = block_x * procUV->theoretical_block_width;
+    xfin_UV = xini_UV + procUV->theoretical_block_width;
     
-    yini_UV = block_y * procUV->block_height;
-    yfin_UV = yini_UV + procUV->block_height ;
+    yini_UV = block_y * procUV->theoretical_block_height;
+    yfin_UV = yini_UV + procUV->theoretical_block_height ;
         
     //LIMITS
     //If width cant be divided by 32, all pixel excess is in the last block
@@ -215,11 +215,20 @@ void lhe_calculate_block_coordinates (LheProcessing *procY, LheProcessing *procU
     procY->basic_block[block_y][block_x].x_fin = xfin_Y;
     procY->basic_block[block_y][block_x].y_ini = yini_Y;
     procY->basic_block[block_y][block_x].y_fin = yfin_Y;
-    
+
     procUV->basic_block[block_y][block_x].x_ini = xini_UV;
     procUV->basic_block[block_y][block_x].x_fin = xfin_UV;
     procUV->basic_block[block_y][block_x].y_ini = yini_UV;
     procUV->basic_block[block_y][block_x].y_fin = yfin_UV;
+    
+    //Block length is calculated as fin-ini. I calculated block length because it is possible there are 
+    //different block sizes. For example, any image whose width cant be divided by 32(number of blocks 
+    //widthwise) will have at least one block that is smaller than the others.
+    procY->basic_block[block_y][block_x].block_width = xfin_Y - xini_Y;
+    procY->basic_block[block_y][block_x].block_height = yfin_Y - yini_Y;
+    procUV->basic_block[block_y][block_x].block_width = xfin_UV - xini_UV;
+    procUV->basic_block[block_y][block_x].block_height = yfin_UV - yini_UV;
+
 }
 
 /**
@@ -396,10 +405,7 @@ void lhe_advanced_ppp_side_to_rectangle_shape (LheProcessing *proc, float ppp_ma
         side_average=side_max;
     }
     
-    //Block width is calculated as xfin-xini. I calculated block width because it is possible there are 
-    //different block sizes. For example, any image whose width cant be divided by 32(number of blocks 
-    //widthwise) will have at least one block that is smaller than the others.
-    block_width = proc->basic_block[block_y][block_x].x_fin - proc->basic_block[block_y][block_x].x_ini;     
+    block_width = proc->basic_block[block_y][block_x].block_width;     
     downsampled_block = 2.0*block_width/ side_average + 0.5;
     
     if (downsampled_block<SIDE_MIN) 
@@ -538,7 +544,7 @@ void lhe_advanced_ppp_side_to_rectangle_shape (LheProcessing *proc, float ppp_ma
     
     //Block height is calculated as yfin-yini. I calculated block height because it is possible there are 
     //different block sizes. 
-    block_height = proc->basic_block[block_y][block_x].y_fin - proc->basic_block[block_y][block_x].y_ini;
+    block_height = proc->basic_block[block_y][block_x].block_height;
     downsampled_block = 2.0*block_height/ side_average + 0.5;    
     
     if (downsampled_block<SIDE_MIN) 

@@ -1395,6 +1395,7 @@ static void lhe_advanced_compute_perceptual_relevance (LheContext *s, uint8_t *c
 {
     
     int xini, xfin, yini, yfin, xini_pr_block, xfin_pr_block, yini_pr_block, yfin_pr_block;
+    uint32_t block_width, block_height;
     float prx, pry;
     
     LheProcessing *proc;
@@ -1403,47 +1404,50 @@ static void lhe_advanced_compute_perceptual_relevance (LheContext *s, uint8_t *c
     proc = &s->procY;
     prec = &s->prec;
     
-    #pragma omp parallel for
+    block_width = proc->theoretical_block_width;
+    block_height = proc->theoretical_block_height;
+    
+    //#pragma omp parallel for
     for (int block_y=0; block_y<total_blocks_height+1; block_y++)      
     {  
         for (int block_x=0; block_x<total_blocks_width+1; block_x++) 
-        {     
+        {      
             //First LHE Block coordinates
-            xini = block_x * proc->block_width;
-            xfin = xini +  proc->block_width;
+            xini = block_x * block_width;
+            xfin = xini +  block_width;
 
-            yini = block_y * proc->block_height;
-            yfin = yini + proc->block_height;
+            yini = block_y * block_height;
+            yfin = yini + block_height;
             
             //PR Blocks coordinates 
-            xini_pr_block = xini - (proc->block_width >>1); 
+            xini_pr_block = xini - (block_width >>1); 
             
             if (xini_pr_block < 0) 
             {
                 xini_pr_block = 0;
             }
             
-            xfin_pr_block = xfin - (proc->block_width>>1);
+            xfin_pr_block = xfin - (block_width>>1);
             
-            if (xfin_pr_block>proc->width) 
+            if (block_x == total_blocks_width) 
             {
                 xfin_pr_block = proc->width;
             }    
             
-            yini_pr_block = yini - (proc->block_height>>1);
+            yini_pr_block = yini - (block_height>>1);
             
             if (yini_pr_block < 0) 
             {
                 yini_pr_block = 0;
             }
             
-            yfin_pr_block = yfin - (proc->block_height>>1);
+            yfin_pr_block = yfin - (block_height>>1);
             
-            if (yfin_pr_block>proc->height)
+            if (block_y == total_blocks_height)
             {
                 yfin_pr_block = proc->height;
             }
-            
+
             prx = lhe_advanced_compute_prx (prec,
                                             component_original_data_Y, 
                                             xini_pr_block, xfin_pr_block, yini_pr_block, yfin_pr_block, 
@@ -1476,12 +1480,13 @@ static void lhe_advanced_compute_perceptual_relevance (LheContext *s, uint8_t *c
 static void lhe_advanced_horizontal_downsample_average (LheProcessing *proc, uint8_t *component_original_data, uint8_t *intermediate_downsample_image,
                                                         int linesize, int block_x, int block_y) 
 {
-    uint32_t downsampled_x_side, xini, xdown_prev, xdown_fin, xfin_downsampled, yini, yfin;
+    uint32_t block_height, downsampled_x_side, xini, xdown_prev, xdown_fin, xfin_downsampled, yini, yfin;
     float xdown_prev_float, xdown_fin_float;
     float gradient, gradient_0, gradient_1, ppp_x, ppp_0, ppp_1, ppp_2, ppp_3;
     float component_float, percent;
     uint8_t component;
     
+    block_height = proc->basic_block[block_y][block_x].block_height;
     downsampled_x_side = proc->advanced_block[block_y][block_x].downsampled_x_side;
 
     xini = proc->basic_block[block_y][block_x].x_ini;
@@ -1496,9 +1501,9 @@ static void lhe_advanced_horizontal_downsample_average (LheProcessing *proc, uin
     ppp_3=proc->advanced_block[block_y][block_x].ppp_x[BOT_RIGHT_CORNER];
     
     //gradient PPPx side a
-    gradient_0=(ppp_2-ppp_0)/(proc->block_height-1.0);   
+    gradient_0=(ppp_2-ppp_0)/(block_height-1.0);   
     //gradient PPPx side b
-    gradient_1=(ppp_3-ppp_1)/(proc->block_height-1.0);
+    gradient_1=(ppp_3-ppp_1)/(block_height-1.0);
     
     for (int y=yini; y<yfin; y++)
     {            
@@ -1567,14 +1572,14 @@ static void lhe_advanced_vertical_downsample_average (LheProcessing *proc, LheIm
 {
     
     float ppp_y, ppp_0, ppp_1, ppp_2, ppp_3, gradient, gradient_0, gradient_1;
-    uint32_t downsampled_y_side, xini, xfin_downsampled, yini, ydown_prev, ydown_fin, yfin_downsampled;
+    uint32_t block_width, downsampled_y_side, xini, xfin_downsampled, yini, ydown_prev, ydown_fin, yfin_downsampled;
     float ydown_prev_float, ydown_fin_float;
     float component_float, percent;
     uint8_t component;
-    
-    
+  
     downsampled_y_side = proc->advanced_block[block_y][block_x].downsampled_y_side;
-    
+    block_width = proc->basic_block[block_y][block_x].block_width;
+            
     xini = proc->basic_block[block_y][block_x].x_ini;
     xfin_downsampled = proc->advanced_block[block_y][block_x].x_fin_downsampled; //Vertical downsampling is performed after horizontal down. x coord has been already down.  
  
@@ -1587,9 +1592,9 @@ static void lhe_advanced_vertical_downsample_average (LheProcessing *proc, LheIm
     ppp_3=proc->advanced_block[block_y][block_x].ppp_y[BOT_RIGHT_CORNER];
 
     //gradient PPPy side c
-    gradient_0=(ppp_1-ppp_0)/(proc->block_width-1.0);    
+    gradient_0=(ppp_1-ppp_0)/(block_width-1.0);    
     //gradient PPPy side d
-    gradient_1=(ppp_3-ppp_2)/(proc->block_width-1.0);
+    gradient_1=(ppp_3-ppp_2)/(block_width-1.0);
       
     for (int x=xini; x < xfin_downsampled;x++)
     {
@@ -1654,10 +1659,11 @@ static void lhe_advanced_vertical_downsample_average (LheProcessing *proc, LheIm
 static void lhe_advanced_horizontal_downsample_sps (LheProcessing *proc, uint8_t *component_original_data, uint8_t *intermediate_downsample_image,
                                                     int linesize, int block_x, int block_y) 
 {
-    uint32_t downsampled_x_side, xini, xdown, xfin_downsampled, yini, yfin;
+    uint32_t block_height, downsampled_x_side, xini, xdown, xfin_downsampled, yini, yfin;
     float xdown_float;
     float gradient, gradient_0, gradient_1, ppp_x, ppp_0, ppp_1, ppp_2, ppp_3;
     
+    block_height = proc->basic_block[block_y][block_x].block_height;
     downsampled_x_side = proc->advanced_block[block_y][block_x].downsampled_x_side;
 
     xini = proc->basic_block[block_y][block_x].x_ini;
@@ -1672,9 +1678,9 @@ static void lhe_advanced_horizontal_downsample_sps (LheProcessing *proc, uint8_t
     ppp_3=proc->advanced_block[block_y][block_x].ppp_x[BOT_RIGHT_CORNER];
     
     //gradient PPPx side a
-    gradient_0=(ppp_2-ppp_0)/(proc->block_height-1.0);   
+    gradient_0=(ppp_2-ppp_0)/(block_height-1.0);   
     //gradient PPPx side b
-    gradient_1=(ppp_3-ppp_1)/(proc->block_height-1.0);
+    gradient_1=(ppp_3-ppp_1)/(block_height-1.0);
 
     for (int y=yini; y<yfin; y++)
     {        
@@ -1714,9 +1720,10 @@ static void lhe_advanced_vertical_downsample_sps (LheProcessing *proc, LheImage 
 {
     
     float ppp_y, ppp_0, ppp_1, ppp_2, ppp_3, gradient, gradient_0, gradient_1;
-    uint32_t downsampled_y_side, xini, xfin_downsampled, yini, ydown, yfin_downsampled;
+    uint32_t block_width, downsampled_y_side, xini, xfin_downsampled, yini, ydown, yfin_downsampled;
     float ydown_float;
     
+    block_width = proc->basic_block[block_y][block_x].block_width;
     downsampled_y_side = proc->advanced_block[block_y][block_x].downsampled_y_side;
     
     xini = proc->basic_block[block_y][block_x].x_ini;
@@ -1731,10 +1738,10 @@ static void lhe_advanced_vertical_downsample_sps (LheProcessing *proc, LheImage 
     ppp_3=proc->advanced_block[block_y][block_x].ppp_y[BOT_RIGHT_CORNER];
 
     //gradient PPPy side c
-    gradient_0=(ppp_1-ppp_0)/(proc->block_width-1.0);    
+    gradient_0=(ppp_1-ppp_0)/(block_width-1.0);    
     //gradient PPPy side d
-    gradient_1=(ppp_3-ppp_2)/(proc->block_width-1.0);
-  
+    gradient_1=(ppp_3-ppp_2)/(block_width-1.0);
+      
     for (int x=xini; x < xfin_downsampled;x++)
     {
         gradient=(ppp_2-ppp_0)/(downsampled_y_side-1.0);
@@ -1745,7 +1752,6 @@ static void lhe_advanced_vertical_downsample_sps (LheProcessing *proc, LheImage 
         for (int y=yini; y < yfin_downsampled; y++)
         {
             ydown = ydown_float - 0.5;
-
             lhe->downsampled_image[y*proc->width+x]=intermediate_downsample_image[ydown*proc->width+x];
       
             ppp_y+=gradient;
@@ -1833,8 +1839,8 @@ static void lhe_advanced_encode_block (LheBasicPrec *prec, LheProcessing *proc, 
             }
              
             hop_number = prec->best_hop[r_max][hop_1][original_color][predicted_luminance]; 
-            lhe->hops[pix]= hop_number;
-            lhe->component_prediction[pix]=prec -> prec_luminance[predicted_luminance][r_max][hop_1][hop_number];
+            lhe->hops[pix]= hop_number;        
+            lhe->component_prediction[pix]=prec -> prec_luminance[predicted_luminance][r_max][hop_1][hop_number];         
             
             //tunning hop1 for the next hop ( "h1 adaptation")
             //------------------------------------------------
@@ -1866,7 +1872,7 @@ static float lhe_advanced_encode (LheContext *s, const AVFrame *frame,
     image_size_Y = (&s->procY)->width * (&s->procY)->height;
     image_size_UV = (&s->procUV)->width * (&s->procUV)->height;
     
-    ppp_max_theoric = (&s->procY)->block_width/SIDE_MIN;
+    ppp_max_theoric = (&s->procY)->theoretical_block_width/SIDE_MIN;
     compression_factor = (&s->prec)->compression_factor[ppp_max_theoric][s->ql];
 
     intermediate_downsample_Y = malloc (sizeof(uint8_t) * image_size_Y);
@@ -1885,13 +1891,12 @@ static float lhe_advanced_encode (LheContext *s, const AVFrame *frame,
     }
  
     lhe_advanced_compute_perceptual_relevance (s, component_original_data_Y, frame->linesize[0], total_blocks_width,  total_blocks_height);
-    
-        
+
     #pragma omp parallel for
     for (int block_y=0; block_y<total_blocks_height; block_y++) 
     {
         for (int block_x=0; block_x<total_blocks_width; block_x++) 
-        {                                         
+        {              
             lhe_advanced_perceptual_relevance_to_ppp(&s->procY, &s->procUV, compression_factor, ppp_max_theoric, block_x, block_y);
             
             lhe_advanced_ppp_side_to_rectangle_shape (&s->procY, ppp_max_theoric, block_x, block_y);        
@@ -1933,7 +1938,6 @@ static float lhe_advanced_encode (LheContext *s, const AVFrame *frame,
                 lhe_advanced_horizontal_downsample_sps (&s->procUV,component_original_data_U, intermediate_downsample_U,
                                                         frame->linesize[1], block_x, block_y);
                                                         
-
                 lhe_advanced_vertical_downsample_sps (&s->procUV, &s->lheU, intermediate_downsample_U, block_x, block_y);
                 
                 //CHROMINANCE_V
@@ -1946,14 +1950,13 @@ static float lhe_advanced_encode (LheContext *s, const AVFrame *frame,
 
             //LUMINANCE                                     
             //Encode downsampled blocks                          
-            lhe_advanced_encode_block (&s->prec, &s->procY, &s->lheY, total_blocks_width, block_x,  block_y);
+            lhe_advanced_encode_block (&s->prec, &s->procY, &s->lheY, total_blocks_width, block_x,  block_y);          
                                        
             //CHROMINANCE U                                    
             lhe_advanced_encode_block (&s->prec, &s->procUV, &s->lheU, total_blocks_width, block_x,  block_y);
-                   
+                              
             //CHROMINANCE V                                                                                      
-            lhe_advanced_encode_block (&s->prec, &s->procUV, &s->lheV, total_blocks_width, block_x,  block_y);
-           
+            lhe_advanced_encode_block (&s->prec, &s->procUV, &s->lheV, total_blocks_width, block_x,  block_y);         
         }
     } 
    
@@ -2158,7 +2161,7 @@ static void mlhe_delta_frame_encode (LheContext *s, const AVFrame *frame,
     image_size_Y = (&s->procY)->width * (&s->procY)->height;
     image_size_UV = (&s->procUV)->width * (&s->procUV)->height;
     
-    ppp_max_theoric = (&s->procY)->block_width/SIDE_MIN;
+    ppp_max_theoric = (&s->procY)->theoretical_block_width/SIDE_MIN;
     compression_factor = (&s->prec)->compression_factor[ppp_max_theoric][s->ql];
 
     intermediate_downsample_Y = malloc (sizeof(uint8_t) * image_size_Y);
@@ -2499,11 +2502,11 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     
     total_blocks = total_blocks_height * total_blocks_width;
 
-    (&s->procY)->block_width = (&s->procY)->width / total_blocks_width;
-    (&s->procY)->block_height = (&s->procY)->height / total_blocks_height;       
+    (&s->procY)->theoretical_block_width = (&s->procY)->width / total_blocks_width;
+    (&s->procY)->theoretical_block_height = (&s->procY)->height / total_blocks_height;       
 
-    (&s->procUV)->block_width = (&s->procUV)->width / total_blocks_width;
-    (&s->procUV)->block_height = (&s->procUV)->height / total_blocks_height;
+    (&s->procUV)->theoretical_block_width = (&s->procUV)->width / total_blocks_width;
+    (&s->procUV)->theoretical_block_height = (&s->procUV)->height / total_blocks_height;
     
     
     //Pointers to different color components
@@ -2671,11 +2674,11 @@ static int mlhe_encode_video(AVCodecContext *avctx, AVPacket *pkt,
     
     total_blocks = total_blocks_height * total_blocks_width;
 
-    (&s->procY)->block_width = (&s->procY)->width / total_blocks_width;
-    (&s->procY)->block_height = (&s->procY)->height / total_blocks_height;       
+    (&s->procY)->theoretical_block_width = (&s->procY)->width / total_blocks_width;
+    (&s->procY)->theoretical_block_height = (&s->procY)->height / total_blocks_height;       
 
-    (&s->procUV)->block_width = (&s->procUV)->width / total_blocks_width;
-    (&s->procUV)->block_height = (&s->procUV)->height / total_blocks_height;
+    (&s->procUV)->theoretical_block_width = (&s->procUV)->width / total_blocks_width;
+    (&s->procUV)->theoretical_block_height = (&s->procUV)->height / total_blocks_height;
     
     
     //Pointers to different color components
@@ -2773,6 +2776,7 @@ static int mlhe_encode_video(AVCodecContext *avctx, AVPacket *pkt,
     {
         print_csv_pr_metrics(&s->procY, total_blocks_width, total_blocks_height);  
     }
+    
     
     if (!(&s->procY)->last_advanced_block) 
     {

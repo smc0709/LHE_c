@@ -752,11 +752,12 @@ static void lhe_advanced_vertical_nearest_neighbour_interpolation (LheProcessing
                                                                    uint8_t *intermediate_interpolated_image, 
                                                                    int block_x, int block_y) 
 {
-    uint32_t downsampled_y_side;
+    uint32_t block_width, downsampled_y_side;
     float gradient, gradient_0, gradient_1, ppp_y, ppp_0, ppp_1, ppp_2, ppp_3;
     uint32_t xini, xfin_downsampled, yini, yprev_interpolated, yfin_interpolated, yfin_downsampled;
     float yfin_interpolated_float;
     
+    block_width = proc->basic_block[block_y][block_x].block_width;
     downsampled_y_side = proc->advanced_block[block_y][block_x].downsampled_y_side;
     xini = proc->basic_block[block_y][block_x].x_ini;
     xfin_downsampled = proc->advanced_block[block_y][block_x].x_fin_downsampled;
@@ -769,9 +770,9 @@ static void lhe_advanced_vertical_nearest_neighbour_interpolation (LheProcessing
     ppp_3=proc->advanced_block[block_y][block_x].ppp_y[BOT_RIGHT_CORNER];
     
     //gradient PPPy side c
-    gradient_0=(ppp_1-ppp_0)/(proc->block_width-1.0);    
+    gradient_0=(ppp_1-ppp_0)/(block_width-1.0);    
     //gradient PPPy side d
-    gradient_1=(ppp_3-ppp_2)/(proc->block_width-1.0);
+    gradient_1=(ppp_3-ppp_2)/(block_width-1.0);
     
     // pppx initialized to ppp_0
     ppp_y=ppp_0;    
@@ -822,11 +823,12 @@ static void lhe_advanced_horizontal_nearest_neighbour_interpolation (LheProcessi
                                                                      uint8_t *intermediate_interpolated_image, 
                                                                      int linesize, int block_x, int block_y) 
 {
-    uint32_t downsampled_x_side;
+    uint32_t block_height, downsampled_x_side;
     float gradient, gradient_0, gradient_1, ppp_x, ppp_0, ppp_1, ppp_2, ppp_3;
     uint32_t xini, xfin_downsampled, xprev_interpolated, xfin_interpolated, yini, yfin;
     float xfin_interpolated_float;
     
+    block_height = proc->basic_block[block_y][block_x].block_height;
     downsampled_x_side = proc->advanced_block[block_y][block_x].downsampled_x_side;
     xini = proc->basic_block[block_y][block_x].x_ini;
     xfin_downsampled = proc->advanced_block[block_y][block_x].x_fin_downsampled;
@@ -839,9 +841,9 @@ static void lhe_advanced_horizontal_nearest_neighbour_interpolation (LheProcessi
     ppp_3=proc->advanced_block[block_y][block_x].ppp_x[BOT_RIGHT_CORNER];
         
     //gradient PPPx side a
-    gradient_0=(ppp_2-ppp_0)/(proc->block_height-1.0);   
+    gradient_0=(ppp_2-ppp_0)/(block_height-1.0);   
     //gradient PPPx side b
-    gradient_1=(ppp_3-ppp_1)/(proc->block_height-1.0);
+    gradient_1=(ppp_3-ppp_1)/(block_height-1.0);
     
     for (int y=yini; y<yfin; y++)
     {        
@@ -1317,11 +1319,11 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
             (&s->procUV)->advanced_block[i] = malloc (sizeof(AdvancedLheBlock) * (s->total_blocks_width));
         }
         
-        (&s->procY)-> block_width = (&s->procY)->width / s->total_blocks_width;    
-        (&s->procY)-> block_height = (&s->procY)->height / s->total_blocks_height;   
+        (&s->procY)-> theoretical_block_width = (&s->procY)->width / s->total_blocks_width;    
+        (&s->procY)-> theoretical_block_height = (&s->procY)->height / s->total_blocks_height;   
         
-        (&s->procUV)-> block_width = (&s->procUV)->width / s->total_blocks_width;
-        (&s->procUV)-> block_height = (&s->procUV)->height / s->total_blocks_height; 
+        (&s->procUV)-> theoretical_block_width = (&s->procUV)->width / s->total_blocks_width;
+        (&s->procUV)-> theoretical_block_height = (&s->procUV)->height / s->total_blocks_height; 
         
         (&s->lheY)-> downsampled_image = malloc (sizeof(uint8_t) * image_size_Y);
         (&s->lheU)-> downsampled_image = malloc (sizeof(uint8_t) * image_size_UV);
@@ -1332,7 +1334,7 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
         
         //Read quality level and calculate compression factor
         s->quality_level = get_bits(&s->gb, QL_SIZE_BITS); 
-        ppp_max_theoric = (&s->procY)-> block_width/SIDE_MIN;
+        ppp_max_theoric = (&s->procY)-> theoretical_block_width/SIDE_MIN;
         compression_factor = (&s->prec)->compression_factor[ppp_max_theoric][s->quality_level];        
        
         lhe_advanced_read_mesh(s, he_mesh, ppp_max_theoric, compression_factor) ; 
@@ -1351,10 +1353,10 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
  
         if (total_blocks > 1 && OPENMP_FLAGS == CONFIG_OPENMP) 
         {
-            (&s->procY)->block_width = (&s->procY)->width / s->total_blocks_width;
-            (&s->procY)->block_height = (&s->procY)->height / s->total_blocks_height;
-            (&s->procUV)->block_width = (&s->procUV)->width /s->total_blocks_width;
-            (&s->procUV)->block_height = (&s->procUV)->height /s->total_blocks_height;
+            (&s->procY)->theoretical_block_width = (&s->procY)->width / s->total_blocks_width;
+            (&s->procY)->theoretical_block_height = (&s->procY)->height / s->total_blocks_height;
+            (&s->procUV)->theoretical_block_width = (&s->procUV)->width /s->total_blocks_width;
+            (&s->procUV)->theoretical_block_height = (&s->procUV)->height /s->total_blocks_height;
 
             lhe_basic_decode_frame_pararell (s);                            
         } else 
@@ -1458,7 +1460,7 @@ static int mlhe_decode_video(AVCodecContext *avctx, void *data, int *got_frame, 
         lhe_read_huffman_table(s, he_mesh, LHE_MAX_HUFF_SIZE_MESH, LHE_HUFFMAN_NODE_BITS_MESH, LHE_HUFFMAN_NO_OCCURRENCES_MESH);     
         
         //Calculate compression factor
-        ppp_max_theoric = (&s->procY)->block_width/SIDE_MIN;
+        ppp_max_theoric = (&s->procY)->theoretical_block_width/SIDE_MIN;
         compression_factor = (&s->prec)->compression_factor[ppp_max_theoric][s->quality_level];        
        
         lhe_advanced_read_mesh(s, he_mesh, ppp_max_theoric, compression_factor) ; 
@@ -1585,11 +1587,11 @@ static int mlhe_decode_video(AVCodecContext *avctx, void *data, int *got_frame, 
             (&s->procUV)->advanced_block[i] = malloc (sizeof(AdvancedLheBlock) * (s->total_blocks_width));
         }
         
-        (&s->procY)-> block_width = (&s->procY)->width / s->total_blocks_width;    
-        (&s->procY)-> block_height = (&s->procY)->height / s->total_blocks_height;   
+        (&s->procY)-> theoretical_block_width = (&s->procY)->width / s->total_blocks_width;    
+        (&s->procY)-> theoretical_block_height = (&s->procY)->height / s->total_blocks_height;   
         
-        (&s->procUV)-> block_width = (&s->procUV)->width / s->total_blocks_width;
-        (&s->procUV)-> block_height = (&s->procUV)->height / s->total_blocks_height; 
+        (&s->procUV)-> theoretical_block_width = (&s->procUV)->width / s->total_blocks_width;
+        (&s->procUV)-> theoretical_block_height = (&s->procUV)->height / s->total_blocks_height; 
         
         (&s->lheY)-> downsampled_image = malloc (sizeof(uint8_t) * image_size_Y);
         (&s->lheU)-> downsampled_image = malloc (sizeof(uint8_t) * image_size_UV);
@@ -1600,7 +1602,7 @@ static int mlhe_decode_video(AVCodecContext *avctx, void *data, int *got_frame, 
         
         //Read quality level and calculate compression factor
         s->quality_level = get_bits(&s->gb, QL_SIZE_BITS); 
-        ppp_max_theoric = (&s->procY)-> block_width/SIDE_MIN;
+        ppp_max_theoric = (&s->procY)-> theoretical_block_width/SIDE_MIN;
         compression_factor = (&s->prec)->compression_factor[ppp_max_theoric][s->quality_level];        
         
         lhe_advanced_read_mesh(s, he_mesh, ppp_max_theoric, compression_factor) ; 
@@ -1609,8 +1611,7 @@ static int mlhe_decode_video(AVCodecContext *avctx, void *data, int *got_frame, 
                 
         lhe_advanced_decode_symbols (s, he_Y, he_UV, image_size_Y, image_size_UV);
     }   
-
-
+ 
     if (!(&s->procY)->last_advanced_block) 
     {
          (&s->procY)->last_advanced_block = malloc(sizeof(AdvancedLheBlock *) * s->total_blocks_height);
@@ -1658,6 +1659,7 @@ static int mlhe_decode_video(AVCodecContext *avctx, void *data, int *got_frame, 
     memset((&s->lheY)->downsampled_image, 0, image_size_Y);
     memset((&s->lheU)->downsampled_image, 0, image_size_UV);
     memset((&s->lheV)->downsampled_image, 0, image_size_UV);  
+    
        
     if ((ret = av_frame_ref(data, s->frame)) < 0)
         return ret;

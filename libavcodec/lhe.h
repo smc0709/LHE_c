@@ -158,6 +158,8 @@ typedef struct LheHuffEntry {
 } LheHuffEntry;
 
 typedef struct BasicLheBlock {
+    uint32_t block_width;
+    uint32_t block_height;
     uint32_t x_ini;
     uint32_t x_fin;
     uint32_t y_ini;
@@ -181,8 +183,8 @@ typedef struct LheProcessing {
     float **perceptual_relevance_y;  
     uint32_t width;
     uint32_t height;
-    uint32_t block_width;
-    uint32_t block_height;
+    uint32_t theoretical_block_width;
+    uint32_t theoretical_block_height;
 } LheProcessing;
 
 typedef struct LheImage {
