@@ -648,7 +648,7 @@ static void lhe_basic_decode_frame_pararell (LheState *s)
             //Chrominance U
             lhe_basic_decode_one_hop_per_pixel_block(prec, procUV, lheU, frame->linesize[1], s->total_blocks_width, block_x, block_y);
             //Chrominance V
-            lhe_basic_decode_one_hop_per_pixel_block(prec, procUV, lheV, frame->linesize[0], s->total_blocks_width, block_x, block_y);
+            lhe_basic_decode_one_hop_per_pixel_block(prec, procUV, lheV, frame->linesize[2], s->total_blocks_width, block_x, block_y);
         }
     }
 }

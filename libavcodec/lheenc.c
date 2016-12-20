@@ -2624,6 +2624,10 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
                    
         lhe_advanced_write_file(avctx, pkt, image_size_Y, image_size_UV, total_blocks_width, total_blocks_height);   
     }
+    
+    if(avctx->flags&AV_CODEC_FLAG_PSNR){
+        lhe_compute_error_for_psnr (avctx, frame, component_original_data_Y, component_original_data_U, component_original_data_V); 
+    }
 
     if (s->pr_metrics)
     {
