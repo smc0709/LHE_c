@@ -1646,6 +1646,99 @@ static void lhe_advanced_vertical_downsample_average (LheProcessing *proc, LheIm
     
 }
 
+static void lhe_advanced_downsample_sps (LheProcessing *proc, LheImage *lhe, uint8_t *component_original_data, int linesize, int block_x, int block_y) 
+{
+    float pppx_0, pppx_1, pppx_2, pppx_3, pppy_0, pppy_1, pppy_2, pppy_3, pppx, pppx_a, pppx_b, pppy_a, pppy_b;
+    float gradx_a, grady_a, gradx_b, grady_b, gradx, grady;
+
+    uint32_t downsampled_x_side, downsampled_y_side, xini, xfin, xfin_downsampled, yini, yfin, y_sc;
+    float ya_ini, yb_ini, x_float, y_float, xa;
+    uint32_t width, height;
+    int x, y;
+    
+    width = proc->width;
+    height = proc->height;
+    xini = proc->basic_block[block_y][block_x].x_ini;
+    xfin = proc->basic_block[block_y][block_x].x_fin;
+    xfin_downsampled = proc->advanced_block[block_y][block_x].x_fin_downsampled;
+
+    yini = proc->basic_block[block_y][block_x].y_ini;
+    yfin = proc->basic_block[block_y][block_x].y_fin;  
+
+    pppx_0=proc->advanced_block[block_y][block_x].ppp_x[TOP_LEFT_CORNER];
+    pppx_1=proc->advanced_block[block_y][block_x].ppp_x[TOP_RIGHT_CORNER];
+    pppx_2=proc->advanced_block[block_y][block_x].ppp_x[BOT_LEFT_CORNER];
+    pppx_3=proc->advanced_block[block_y][block_x].ppp_x[BOT_RIGHT_CORNER];
+
+    pppy_0=proc->advanced_block[block_y][block_x].ppp_y[TOP_LEFT_CORNER];
+    pppy_1=proc->advanced_block[block_y][block_x].ppp_y[TOP_RIGHT_CORNER];
+    pppy_2=proc->advanced_block[block_y][block_x].ppp_y[BOT_LEFT_CORNER];
+    pppy_3=proc->advanced_block[block_y][block_x].ppp_y[BOT_RIGHT_CORNER];
+    
+    downsampled_x_side = proc->advanced_block[block_y][block_x].downsampled_x_side;
+    downsampled_y_side = proc->advanced_block[block_y][block_x].downsampled_y_side;
+    
+    //gradient side a
+    gradx_a=(pppx_2 - pppx_0)/(downsampled_y_side-1.0);
+    grady_a=(pppy_2 - pppy_0)/(downsampled_y_side-1.0);
+
+    //gradient side b
+    gradx_b=(pppx_3 - pppx_1)/(downsampled_y_side-1.0);
+    grady_b=(pppy_3 - pppy_1)/(downsampled_y_side-1.0);
+
+    //initialization of ppp at side a and ppp at side b
+    pppx_a=pppx_0;
+    pppx_b=pppx_1;
+    pppy_a=pppy_0;
+    pppy_b=pppy_1;
+            
+    y_sc=yini;
+    ya_ini=(uint32_t)(yini+pppy_a/2.0);
+    yb_ini=(uint32_t)(yini+pppy_b/2.0);
+    
+    
+    for (float ya=ya_ini,yb=yb_ini;ya<yfin;ya+=pppy_a,yb+=pppy_b)
+    {
+        gradx=(pppx_b-pppx_a)/(downsampled_x_side-1.0); 
+        
+        grady=(yb-ya)/(downsampled_x_side-1.0); 
+    
+        //initialization of pppx at start of scanline
+        pppx=pppx_a;
+        
+        xa=xini+pppx/2.0;
+        
+        //dominio original
+        y_float=ya;
+        x_float=xa;
+                        
+        for (int x_sc=xini;x_sc<xfin_downsampled;x_sc++)
+        {
+            x = x_float;
+            y= y_float;
+            
+            if (x>width-1) x=width-1;
+            if (y>height-1) y=height-1;
+            if (x<0) x=0;
+            if (y<0) y=0;
+
+            lhe->downsampled_image[y_sc*width+x_sc] = component_original_data[y*linesize+x];
+
+            x_float+=pppx;
+            y_float+=grady;
+ 
+            pppx+=gradx;
+        }//x
+        pppx_a+=gradx_a;
+        pppx_b+=gradx_b;
+        pppy_a+=grady_a;
+        pppy_b+=grady_b;
+        y_sc++; 
+        if (y_sc>=height) break;
+
+    }//y
+}
+
 /**
  * Downsamples image in x coordinate with different resolution along the block. 
  * Samples are taken using sps with different cadence depending on ppp (pixels per pixel)
@@ -1662,6 +1755,7 @@ static void lhe_advanced_horizontal_downsample_sps (LheProcessing *proc, uint8_t
     uint32_t block_height, downsampled_x_side, xini, xdown, xfin_downsampled, yini, yfin;
     float xdown_float;
     float gradient, gradient_0, gradient_1, ppp_x, ppp_0, ppp_1, ppp_2, ppp_3;
+
     
     block_height = proc->basic_block[block_y][block_x].block_height;
     downsampled_x_side = proc->advanced_block[block_y][block_x].downsampled_x_side;
@@ -1931,7 +2025,6 @@ static float lhe_advanced_encode (LheContext *s, const AVFrame *frame,
                 lhe_advanced_horizontal_downsample_sps (&s->procY, component_original_data_Y, intermediate_downsample_Y,
                                                         frame->linesize[0], block_x, block_y);
                                                         
-
                 lhe_advanced_vertical_downsample_sps (&s->procY, &s->lheY, intermediate_downsample_Y, block_x, block_y);
                 
                 //CHROMINANCE U
@@ -1944,8 +2037,7 @@ static float lhe_advanced_encode (LheContext *s, const AVFrame *frame,
                 lhe_advanced_horizontal_downsample_sps (&s->procUV, component_original_data_V, intermediate_downsample_V,
                                                         frame->linesize[2], block_x, block_y);
                 
-                lhe_advanced_vertical_downsample_sps (&s->procUV, &s->lheV, intermediate_downsample_V, block_x, block_y);
-
+                lhe_advanced_vertical_downsample_sps (&s->procUV, &s->lheV, intermediate_downsample_V, block_x, block_y);               
             }
 
             //LUMINANCE                                     
