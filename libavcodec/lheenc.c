@@ -2054,6 +2054,69 @@ static void mlhe_calculate_error (LheProcessing *proc, LheImage *lhe,
  * @param block_x block x index
  * @param block_y block y index
  */
+static void mlhe_encode_block_frame (LheBasicPrec *prec, LheProcessing *proc, LheImage *lhe,
+                                     uint8_t *prediction_frame,
+                                     int total_blocks_width, int block_x, int block_y)
+{      
+    
+    //Hops computation.
+    int xini, xfin_downsampled, yini, yfin_downsampled;
+    bool small_hop, last_small_hop;
+    uint8_t predicted_luminance, hop_1, hop_number, original_color, r_max;
+    int pix, dif_pix, num_block;
+            
+    num_block = block_y * total_blocks_width + block_x;
+    
+    //DOWNSAMPLED IMAGE
+    xini = proc->basic_block[block_y][block_x].x_ini;
+    xfin_downsampled = proc->advanced_block[block_y][block_x].x_fin_downsampled; 
+ 
+    yini = proc->basic_block[block_y][block_x].y_ini;
+    yfin_downsampled = proc->advanced_block[block_y][block_x].y_fin_downsampled;
+    
+    small_hop = false;
+    last_small_hop=false;          // indicates if last hop is small
+    predicted_luminance=0;         // predicted signal
+    hop_1= START_HOP_1;
+    hop_number=4;                  // pre-selected hop // 4 is NULL HOP
+    pix=0;                         // pixel possition, from 0 to image size        
+    original_color=0;              // original color
+    
+    r_max = PARAM_R;
+    
+    pix = yini*proc->width + xini;       
+    dif_pix = proc->width - xfin_downsampled + xini;    
+
+    for (int y=yini; y < yfin_downsampled; y++)  {
+        for (int x=xini; x < xfin_downsampled; x++)  {
+              
+            original_color = lhe->downsampled_image[pix]; //This can't be pix because ffmpeg adds empty memory slots. 
+            predicted_luminance = prediction_frame [pix];
+                       
+            hop_number = prec->best_hop[r_max][hop_1][original_color][predicted_luminance]; 
+            lhe->hops[pix]= hop_number;
+            lhe->downsampled_error_image[pix]=prec -> prec_luminance[predicted_luminance][r_max][hop_1][hop_number];
+
+            //lets go for the next pixel
+            //--------------------------
+            pix++;
+        }//for x
+        pix+=dif_pix;
+    }//for y    
+}
+
+/**
+ * Encodes block in Advanced LHE (downsampled image)
+ * 
+ * @param *prec Pointer to LHE precalculated data
+ * @param *proc LHE processing parameters
+ * @param *lhe LHE image arrays
+ * @param *delta original differential frame
+ * @param *delta_prediction quantized differential frame
+ * @param total_blocks_width number of blocks widthwise
+ * @param block_x block x index
+ * @param block_y block y index
+ */
 static void mlhe_encode_delta (LheBasicPrec *prec, LheProcessing *proc, LheImage *lhe,
                                uint8_t *delta, uint8_t *delta_prediction,
                                int total_blocks_width, int block_x, int block_y)
@@ -2219,6 +2282,8 @@ static void mlhe_delta_frame_encode (LheContext *s, const AVFrame *frame,
                                                     adapted_downsampled_data_Y,
                                                     block_x, block_y);
              
+            mlhe_encode_block_frame (&s->prec, &s->procY, &s->lheY, adapted_downsampled_data_Y, total_blocks_width, block_x,  block_y);
+            /*
             mlhe_calculate_delta_block (&s->procY, &s->lheY, delta_frame_Y, adapted_downsampled_data_Y, 
                                         block_x, block_y);
          
@@ -2228,6 +2293,7 @@ static void mlhe_delta_frame_encode (LheContext *s, const AVFrame *frame,
             mlhe_calculate_error (&s->procY, &s->lheY,
                                   delta_prediction_Y, adapted_downsampled_data_Y,  
                                   frame->linesize[0], block_x, block_y);
+                                  */
             
             //CHROMINANCE U
             lhe_advanced_horizontal_downsample_sps (&s->procUV,component_original_data_U, 
@@ -2244,6 +2310,10 @@ static void mlhe_delta_frame_encode (LheContext *s, const AVFrame *frame,
                                                     adapted_downsampled_data_U,
                                                     block_x, block_y);
             
+            mlhe_encode_block_frame (&s->prec, &s->procUV, &s->lheU, adapted_downsampled_data_U, total_blocks_width, block_x,  block_y);
+
+            
+            /*
             mlhe_calculate_delta_block (&s->procUV, &s->lheU, delta_frame_U, adapted_downsampled_data_U, 
                                         block_x, block_y);
             
@@ -2254,6 +2324,7 @@ static void mlhe_delta_frame_encode (LheContext *s, const AVFrame *frame,
             mlhe_calculate_error (&s->procUV, &s->lheU,
                                   delta_prediction_U, adapted_downsampled_data_U,  
                                   frame->linesize[1], block_x, block_y);
+                                  */
             
             //CHROMINANCE_V
             lhe_advanced_horizontal_downsample_sps (&s->procUV, component_original_data_V, 
@@ -2268,8 +2339,11 @@ static void mlhe_delta_frame_encode (LheContext *s, const AVFrame *frame,
                                                     intermediate_adapted_downsampled_data_V, 
                                                     adapted_downsampled_data_V,
                                                     block_x, block_y);
-
             
+            mlhe_encode_block_frame (&s->prec, &s->procUV, &s->lheV, adapted_downsampled_data_V, total_blocks_width, block_x,  block_y);
+
+
+            /*
             mlhe_calculate_delta_block (&s->procUV, &s->lheV, delta_frame_V, adapted_downsampled_data_V, 
                                         block_x, block_y);
                                                                                      
@@ -2280,6 +2354,7 @@ static void mlhe_delta_frame_encode (LheContext *s, const AVFrame *frame,
              mlhe_calculate_error (&s->procUV, &s->lheV,
                                    delta_prediction_V, adapted_downsampled_data_V,  
                                    frame->linesize[2], block_x, block_y);
+                                   */
                                        
         }
     }   
@@ -2340,8 +2415,7 @@ static int mlhe_advanced_write_delta_frame(AVCodecContext *avctx, AVPacket *pkt,
     n_bytes_components = (n_bits_hops/8) + 1;           
     
     //File size
-    n_bytes = total_blocks * (sizeof(*lheY->first_color_block) + sizeof(*lheU->first_color_block) + sizeof(*lheV->first_color_block)) 
-              + LHE_HUFFMAN_TABLE_BYTES_MESH
+    n_bytes = LHE_HUFFMAN_TABLE_BYTES_MESH
               + LHE_HUFFMAN_TABLE_BYTES_SYMBOLS + //huffman table
               + n_bytes_mesh 
               + n_bytes_components
@@ -2352,24 +2426,7 @@ static int mlhe_advanced_write_delta_frame(AVCodecContext *avctx, AVPacket *pkt,
         return ret;
 
     buf = pkt->data; //Pointer to write buffer   
-
-    //Save first delta for each block
-    for (i=0; i<total_blocks; i++) 
-    {
-        bytestream_put_byte(&buf, lheY->first_color_block[i]);
-    }
-    
-    for (i=0; i<total_blocks; i++) 
-    {
-        bytestream_put_byte(&buf, lheU->first_color_block[i]);
-
-    }
-    
-    for (i=0; i<total_blocks; i++) 
-    {
-        bytestream_put_byte(&buf, lheV->first_color_block[i]);       
-    }
-         
+       
     init_put_bits(&s->pb, buf, LHE_HUFFMAN_TABLE_BYTES_MESH + LHE_HUFFMAN_TABLE_BYTES_SYMBOLS + n_bytes_mesh + n_bytes_components + FILE_OFFSET_BYTES);
 
     //Write Huffman tables 

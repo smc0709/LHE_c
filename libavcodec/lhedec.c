@@ -1063,6 +1063,65 @@ static void mlhe_decode_delta (LheBasicPrec *prec, LheProcessing *proc, LheImage
 }
 
 /**
+ * Decodes one hop per pixel in a block
+ * 
+ * @param *prec Pointer to precalculated lhe data
+ * @param *proc LHE processing parameters
+ * @param *lhe LHE image arrays
+ * @param *delta_prediction Quantized differential information
+ * @param total_blocks_width number of blocks widthwise
+ * @param block_x block x index
+ * @param block_y block y index
+ */
+static void mlhe_decode_frame_block (LheBasicPrec *prec, LheProcessing *proc, LheImage *lhe,
+                                     uint8_t *predictive_frame,
+                                     uint32_t total_blocks_width, uint32_t block_x, uint32_t block_y) 
+{
+       
+    //Hops computation.
+    uint32_t xini, xfin_downsampled, yini, yfin_downsampled;
+    bool small_hop, last_small_hop;
+    uint8_t hop, predicted_luminance, hop_1, r_max; 
+    uint32_t pix, dif_pix, num_block;
+    
+    num_block = block_y * total_blocks_width + block_x;
+    
+    xini = proc->basic_block[block_y][block_x].x_ini;
+    xfin_downsampled = proc->advanced_block[block_y][block_x].x_fin_downsampled; 
+ 
+    yini = proc->basic_block[block_y][block_x].y_ini;
+    yfin_downsampled = proc->advanced_block[block_y][block_x].y_fin_downsampled;
+    
+    small_hop           = false;
+    last_small_hop      = false;        // indicates if last hop is small
+    predicted_luminance = 0;            // predicted signal
+    hop_1               = START_HOP_1;
+    pix                 = 0;            // pixel possition, from 0 to image size        
+    r_max               = PARAM_R;        
+    
+ 
+    pix = yini*proc->width + xini; 
+    dif_pix = proc->width - xfin_downsampled + xini;
+    
+    for (int y=yini; y < yfin_downsampled; y++)  {
+        for (int x=xini; x < xfin_downsampled; x++)     {
+            
+            hop = lhe->hops[pix];  
+            predicted_luminance = predictive_frame[pix];
+      
+            //assignment of component_prediction
+            //This is the uncompressed image
+            lhe->downsampled_image[pix]= prec -> prec_luminance[predicted_luminance][r_max][hop_1][hop];
+
+            //lets go for the next pixel
+            //--------------------------
+            pix++;
+        }// for x
+        pix+=dif_pix;
+    }// for y
+}
+
+/**
  * Decodes differential frame
  * 
  * @param *s LHE Context
@@ -1100,14 +1159,19 @@ static void mlhe_decode_delta_frame (LheState *s, LheHuffEntry *he_Y, LheHuffEnt
         for (int block_x=0; block_x<s->total_blocks_width; block_x++)
         {                             
             //Luminance
+            /*
              mlhe_decode_delta (&s->prec, &s->procY, &s->lheY, delta_prediction_Y, s->total_blocks_width, block_x, block_y);
-        
+            */
+            
              mlhe_adapt_downsampled_data_resolution (&s->procY, &s->lheY,
                                                      intermediate_adapted_downsampled_data_Y, adapted_downsampled_image_Y,
                                                      block_x, block_y);
-            
+             
+             mlhe_decode_frame_block (&s->prec, &s->procY, &s->lheY, adapted_downsampled_image_Y, s->total_blocks_width, block_x, block_y);
+             /*
              mlhe_add_delta_to_last_frame (s, &s->procY, &s->lheY, adapted_downsampled_image_Y, delta_prediction_Y, 
                                            block_x, block_y);
+             */
             
             lhe_advanced_vertical_nearest_neighbour_interpolation (&s->procY, &s->lheY, intermediate_interpolated_Y, 
                                                                    block_x, block_y);
@@ -1116,15 +1180,20 @@ static void mlhe_decode_delta_frame (LheState *s, LheHuffEntry *he_Y, LheHuffEnt
             lhe_advanced_horizontal_nearest_neighbour_interpolation (&s->procY, &s->lheY, intermediate_interpolated_Y, 
                                                                      s->frame->linesize[0], block_x, block_y);
 
-            //Chrominance U          
+            //Chrominance U       
+            /*
             mlhe_decode_delta (&s->prec, &s->procUV, &s->lheU, delta_prediction_U, s->total_blocks_width, block_x, block_y);
-          
+          */
             mlhe_adapt_downsampled_data_resolution (&s->procUV, &s->lheU,
                                                     intermediate_adapted_downsampled_data_U, adapted_downsampled_image_U,
                                                     block_x, block_y);
             
+            mlhe_decode_frame_block (&s->prec, &s->procUV, &s->lheU, adapted_downsampled_image_U, s->total_blocks_width, block_x, block_y);
+            
+            /*
             mlhe_add_delta_to_last_frame (s, &s->procUV, &s->lheU, adapted_downsampled_image_U, delta_prediction_U, 
                                           block_x, block_y);
+                                          */
             
             lhe_advanced_vertical_nearest_neighbour_interpolation (&s->procUV, &s->lheU, intermediate_interpolated_U, 
                                                                    block_x, block_y);
@@ -1134,14 +1203,20 @@ static void mlhe_decode_delta_frame (LheState *s, LheHuffEntry *he_Y, LheHuffEnt
                                                                      s->frame->linesize[1], block_x, block_y);
 
             //Chrominance V
+            /*
             mlhe_decode_delta (&s->prec, &s->procUV, &s->lheV, delta_prediction_V, s->total_blocks_width, block_x, block_y);
-              
+            */
+            
             mlhe_adapt_downsampled_data_resolution (&s->procUV, &s->lheV, 
                                                     intermediate_adapted_downsampled_data_V, adapted_downsampled_image_V,
                                                     block_x, block_y);
+            
+            mlhe_decode_frame_block (&s->prec, &s->procUV, &s->lheV, adapted_downsampled_image_V, s->total_blocks_width, block_x, block_y);
 
+            /*
             mlhe_add_delta_to_last_frame (s, &s->procUV, &s->lheV, adapted_downsampled_image_V, delta_prediction_V, 
                                           block_x, block_y);
+                                          */
              
             lhe_advanced_vertical_nearest_neighbour_interpolation (&s->procUV, &s->lheV, intermediate_interpolated_V, 
                                                                    block_x, block_y);
@@ -1432,24 +1507,6 @@ static int mlhe_decode_video(AVCodecContext *avctx, void *data, int *got_frame, 
         }
         
         total_blocks = s->total_blocks_height * s->total_blocks_width;
-        
-        //First pixel array
-        for (int i=0; i<total_blocks; i++) 
-        {
-            (&s->lheY)->first_color_block[i] = bytestream_get_byte(&lhe_data); 
-        }
-
-        
-        for (int i=0; i<total_blocks; i++) 
-        {
-            (&s->lheU)->first_color_block[i] = bytestream_get_byte(&lhe_data); 
-        }
-        
-            
-        for (int i=0; i<total_blocks; i++) 
-        {
-            (&s->lheV)->first_color_block[i] = bytestream_get_byte(&lhe_data); 
-        }
         
         init_get_bits(&s->gb, lhe_data, avpkt->size * 8);
 

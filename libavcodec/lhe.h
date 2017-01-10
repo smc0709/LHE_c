@@ -194,6 +194,7 @@ typedef struct LheImage {
     uint8_t *last_downsampled_image; 
     uint8_t *downsampled_error_image;
     uint8_t *hops;
+    uint8_t *hop1_mlhe;
 } LheImage;
 
 int lhe_generate_huffman_codes(LheHuffEntry *he,  int max_huff_size);
