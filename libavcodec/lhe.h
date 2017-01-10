@@ -68,6 +68,8 @@ static const uint8_t mlhe_sig[4] = "MLHE";
 //LHE params
 #define MAX_HOP_1 10
 #define MIN_HOP_1 4
+#define MAX_HOP_1_MLHE 19
+#define MIN_HOP_1_MLHE 5
 #define START_HOP_1 (MAX_HOP_1 + MIN_HOP_1) / 2
 #define PARAM_R 25
 

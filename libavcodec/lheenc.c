@@ -37,6 +37,26 @@
         hop_1=MAX_HOP_1;                                \
     }                                                   \
     last_small_hop=small_hop;
+    
+#define H1_ADAPTATION_MLHE                              \
+if (hop_number<=HOP_POS_1 && hop_number>=HOP_NEG_1)     \
+    {                                                   \
+        small_hop=true;                                 \
+    } else                                              \
+    {                                                   \
+        small_hop=false;                                \
+    }                                                   \
+                                                        \
+    if( (small_hop) && (last_small_hop))  {             \
+        hop_1=hop_1-1;                                  \
+        if (hop_1<MIN_HOP_1) {                          \
+            hop_1=MIN_HOP_1_MLHE;                       \
+        }                                               \
+                                                        \
+    } else {                                            \
+        hop_1=MAX_HOP_1_MLHE;                           \
+    }                                                   \
+    last_small_hop=small_hop;
 
 /**
  * Lhe Context
@@ -2077,7 +2097,6 @@ static void mlhe_encode_block_frame (LheBasicPrec *prec, LheProcessing *proc, Lh
     small_hop = false;
     last_small_hop=false;          // indicates if last hop is small
     predicted_luminance=0;         // predicted signal
-    hop_1= START_HOP_1;
     hop_number=4;                  // pre-selected hop // 4 is NULL HOP
     pix=0;                         // pixel possition, from 0 to image size        
     original_color=0;              // original color
@@ -2089,14 +2108,20 @@ static void mlhe_encode_block_frame (LheBasicPrec *prec, LheProcessing *proc, Lh
 
     for (int y=yini; y < yfin_downsampled; y++)  {
         for (int x=xini; x < xfin_downsampled; x++)  {
-              
+            hop_1= lhe->hop1_mlhe[pix];
+            
             original_color = lhe->downsampled_image[pix]; //This can't be pix because ffmpeg adds empty memory slots. 
             predicted_luminance = prediction_frame [pix];
                        
             hop_number = prec->best_hop[r_max][hop_1][original_color][predicted_luminance]; 
             lhe->hops[pix]= hop_number;
             lhe->downsampled_error_image[pix]=prec -> prec_luminance[predicted_luminance][r_max][hop_1][hop_number];
-
+            
+            //tunning hop1 for the next hop ( "h1 adaptation")
+            //------------------------------------------------
+            H1_ADAPTATION_MLHE;
+            lhe->hop1_mlhe[pix] = hop_1;
+            
             //lets go for the next pixel
             //--------------------------
             pix++;
@@ -2681,6 +2706,11 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
                    
         lhe_advanced_write_file(avctx, pkt, image_size_Y, image_size_UV, total_blocks_width, total_blocks_height);   
     }
+    
+    if(avctx->flags&AV_CODEC_FLAG_PSNR)
+    {
+         lhe_compute_error_for_psnr (avctx, frame, component_original_data_Y, component_original_data_U, component_original_data_V); 
+    }
 
     if (s->pr_metrics)
     {
@@ -2883,6 +2913,24 @@ static int mlhe_encode_video(AVCodecContext *avctx, AVPacket *pkt,
     if(!(&s->lheV)->downsampled_error_image) 
     {
         (&s->lheV)->downsampled_error_image = malloc(sizeof(uint8_t) * image_size_UV);  
+    }
+    
+    if (!(&s->lheY)->hop1_mlhe)
+    {
+        (&s->lheY)->hop1_mlhe = malloc(sizeof(uint8_t) * image_size_Y);  
+        memset((&s->lheY)->hop1_mlhe, START_HOP_1, image_size_Y);
+    }
+    
+    if(!(&s->lheU)->hop1_mlhe) 
+    {
+        (&s->lheU)->hop1_mlhe = malloc(sizeof(uint8_t) * image_size_UV); 
+        memset((&s->lheU)->hop1_mlhe, START_HOP_1, image_size_UV);
+    }
+        
+    if(!(&s->lheV)->hop1_mlhe) 
+    {
+        (&s->lheV)->hop1_mlhe = malloc(sizeof(uint8_t) * image_size_UV);  
+        memset((&s->lheV)->hop1_mlhe, START_HOP_1, image_size_UV);
     }
     
     for (int i=0; i < total_blocks_height; i++)

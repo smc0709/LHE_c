@@ -27,6 +27,26 @@ if (hop<=HOP_POS_1 && hop>=HOP_NEG_1)                   \
     }                                                   \
     last_small_hop=small_hop;
     
+#define H1_ADAPTATION_MLHE                              \
+if (hop<=HOP_POS_1 && hop>=HOP_NEG_1)                   \
+    {                                                   \
+        small_hop=true;                                 \
+    } else                                              \
+    {                                                   \
+        small_hop=false;                                \
+    }                                                   \
+                                                        \
+    if( (small_hop) && (last_small_hop))  {             \
+        hop_1=hop_1-1;                                  \
+        if (hop_1<MIN_HOP_1) {                          \
+            hop_1=MIN_HOP_1_MLHE;                       \
+        }                                               \
+                                                        \
+    } else {                                            \
+        hop_1=MAX_HOP_1_MLHE;                           \
+    }                                                   \
+    last_small_hop=small_hop;
+    
     
 typedef struct LheState {
     AVClass *class;  
@@ -648,7 +668,7 @@ static void lhe_basic_decode_frame_pararell (LheState *s)
             //Chrominance U
             lhe_basic_decode_one_hop_per_pixel_block(prec, procUV, lheU, frame->linesize[1], s->total_blocks_width, block_x, block_y);
             //Chrominance V
-            lhe_basic_decode_one_hop_per_pixel_block(prec, procUV, lheV, frame->linesize[0], s->total_blocks_width, block_x, block_y);
+            lhe_basic_decode_one_hop_per_pixel_block(prec, procUV, lheV, frame->linesize[2], s->total_blocks_width, block_x, block_y);
         }
     }
 }
@@ -1095,7 +1115,6 @@ static void mlhe_decode_frame_block (LheBasicPrec *prec, LheProcessing *proc, Lh
     small_hop           = false;
     last_small_hop      = false;        // indicates if last hop is small
     predicted_luminance = 0;            // predicted signal
-    hop_1               = START_HOP_1;
     pix                 = 0;            // pixel possition, from 0 to image size        
     r_max               = PARAM_R;        
     
@@ -1106,12 +1125,18 @@ static void mlhe_decode_frame_block (LheBasicPrec *prec, LheProcessing *proc, Lh
     for (int y=yini; y < yfin_downsampled; y++)  {
         for (int x=xini; x < xfin_downsampled; x++)     {
             
+            hop_1 = lhe->hop1_mlhe[pix];
             hop = lhe->hops[pix];  
             predicted_luminance = predictive_frame[pix];
       
             //assignment of component_prediction
             //This is the uncompressed image
             lhe->downsampled_image[pix]= prec -> prec_luminance[predicted_luminance][r_max][hop_1][hop];
+            
+            //tunning hop1 for the next hop ( "h1 adaptation")
+            //------------------------------------------------
+            H1_ADAPTATION_MLHE;
+            lhe->hop1_mlhe[pix] = hop_1;
 
             //lets go for the next pixel
             //--------------------------
@@ -1703,7 +1728,25 @@ static int mlhe_decode_video(AVCodecContext *avctx, void *data, int *got_frame, 
         (&s->lheV)->last_downsampled_image = malloc(sizeof(uint8_t) * image_size_UV);  
     }
     
-     for (int i=0; i < s->total_blocks_height; i++)
+    if (!(&s->lheY)->hop1_mlhe)
+    {
+        (&s->lheY)->hop1_mlhe = malloc(sizeof(uint8_t) * image_size_Y);  
+        memset((&s->lheY)->hop1_mlhe, START_HOP_1, image_size_Y);
+    }
+    
+    if(!(&s->lheU)->hop1_mlhe) 
+    {
+        (&s->lheU)->hop1_mlhe = malloc(sizeof(uint8_t) * image_size_UV); 
+        memset((&s->lheU)->hop1_mlhe, START_HOP_1, image_size_UV);
+    }
+        
+    if(!(&s->lheV)->hop1_mlhe) 
+    {
+        (&s->lheV)->hop1_mlhe = malloc(sizeof(uint8_t) * image_size_UV);  
+        memset((&s->lheV)->hop1_mlhe, START_HOP_1, image_size_UV);
+    }
+    
+    for (int i=0; i < s->total_blocks_height; i++)
     {
         memcpy((&s->procY)->last_advanced_block[i], (&s->procY)->advanced_block[i], sizeof(AdvancedLheBlock) * (s->total_blocks_width));
         memcpy((&s->procUV)->last_advanced_block[i], (&s->procUV)->advanced_block[i], sizeof(AdvancedLheBlock) * (s->total_blocks_width));
