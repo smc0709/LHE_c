@@ -2059,44 +2059,6 @@ static float lhe_advanced_encode (LheContext *s, const AVFrame *frame,
 // LHE VIDEO FUNCTIONS
 //==================================================================
 /**
- * Calculates delta frame
- * 
- * @param *proc LHE processing parameters
- * @param *lhe LHE image arrays
- * @param *delta_frame differential frame
- * @param *adapted_last_downsampled_image last downsampled frame adapted to the resolution of the current frame
- * @param block_x block x index
- * @param block_y block y index
- */
-static void mlhe_calculate_delta_block (LheProcessing *proc, LheImage *lhe, 
-                                        uint8_t *delta_frame, uint8_t *adapted_last_downsampled_image, 
-                                        uint32_t block_x, uint32_t block_y)
-{
-    int pix, delta;
-    uint32_t xini, xfin, yini, yfin;
-    
-    xini = proc->basic_block[block_y][block_x].x_ini;
-    xfin = proc->advanced_block[block_y][block_x].x_fin_downsampled; 
- 
-    yini = proc->basic_block[block_y][block_x].y_ini;
-    yfin = proc->advanced_block[block_y][block_x].y_fin_downsampled;
-    
-    #pragma omp parallel for
-    for (int y=yini; y<yfin; y++) {
-        for (int x=xini; x<xfin; x++) {
-            pix = y*proc->width + x;
-            
-            delta = (lhe->downsampled_image[pix] - adapted_last_downsampled_image[pix]) / 2 + 128;
-            
-            if (delta > 255) delta = 255;
-            if (delta < 0) delta = 0;
-            
-            delta_frame[pix] =  delta;
-        }
-    }
-}
-
-/**
  * Calculates last frame data taking into account the error commited when quantizing delta
  * 
  * @param *proc LHE processing parameters
@@ -2147,15 +2109,15 @@ static void mlhe_calculate_error (LheProcessing *proc, LheImage *lhe,
  * @param block_y block y index
  */
 static void mlhe_encode_delta (LheBasicPrec *prec, LheProcessing *proc, LheImage *lhe,
-                               uint8_t *delta, uint8_t *delta_prediction,
+                               uint8_t *delta_prediction, uint8_t *adapted_last_downsampled_image, 
                                int total_blocks_width, int block_x, int block_y)
 {      
     
     //Hops computation.
     int xini, xfin_downsampled, yini, yfin_downsampled;
     bool small_hop, last_small_hop;
-    uint8_t predicted_luminance, hop_1, hop_number, original_color, r_max;
-    int pix, dif_pix, num_block;
+    uint8_t predicted_luminance, hop_1, hop_number, r_max;
+    int pix, dif_pix, num_block, original_color;
             
     num_block = block_y * total_blocks_width + block_x;
     
@@ -2182,7 +2144,17 @@ static void mlhe_encode_delta (LheBasicPrec *prec, LheProcessing *proc, LheImage
     for (int y=yini; y < yfin_downsampled; y++)  {
         for (int x=xini; x < xfin_downsampled; x++)  {
               
-            original_color = delta[pix]; //This can't be pix because ffmpeg adds empty memory slots. 
+            original_color = (lhe->downsampled_image[pix] - adapted_last_downsampled_image[pix]) / 2 + 128;
+            
+            if (original_color > 255) 
+            {
+                original_color = 255;
+            } 
+            else if (original_color < 0) 
+            {
+                original_color = 1;
+            }
+                        
 
             //prediction of signal (predicted_luminance) , based on pixel's coordinates 
             //----------------------------------------------------------
@@ -2245,7 +2217,6 @@ static void mlhe_delta_frame_encode (LheContext *s, const AVFrame *frame,
     float compression_factor;
     uint8_t *intermediate_downsample_Y, *intermediate_downsample_U, *intermediate_downsample_V;
     uint32_t image_size_Y, image_size_UV, ppp_max_theoric;
-    uint8_t *delta_frame_Y, *delta_frame_U, *delta_frame_V;
     uint8_t *intermediate_adapted_downsampled_data_Y, *intermediate_adapted_downsampled_data_U, *intermediate_adapted_downsampled_data_V;
     uint8_t *adapted_downsampled_data_Y, *adapted_downsampled_data_U, *adapted_downsampled_data_V;
     uint8_t *delta_prediction_Y, *delta_prediction_U, *delta_prediction_V;
@@ -2259,10 +2230,6 @@ static void mlhe_delta_frame_encode (LheContext *s, const AVFrame *frame,
     intermediate_downsample_Y = malloc (sizeof(uint8_t) * image_size_Y);
     intermediate_downsample_U = malloc (sizeof(uint8_t) * image_size_UV);
     intermediate_downsample_V = malloc (sizeof(uint8_t) * image_size_UV);
-    
-    delta_frame_Y = malloc(sizeof(uint8_t) * image_size_Y);  
-    delta_frame_U = malloc(sizeof(uint8_t) * image_size_UV); 
-    delta_frame_V = malloc(sizeof(uint8_t) * image_size_UV); 
 
     intermediate_adapted_downsampled_data_Y = malloc(sizeof(uint8_t) * image_size_Y);  
     intermediate_adapted_downsampled_data_U = malloc(sizeof(uint8_t) * image_size_UV); 
@@ -2310,12 +2277,9 @@ static void mlhe_delta_frame_encode (LheContext *s, const AVFrame *frame,
                                                     intermediate_adapted_downsampled_data_Y, 
                                                     adapted_downsampled_data_Y,
                                                     block_x, block_y);
-             
-            mlhe_calculate_delta_block (&s->procY, &s->lheY, delta_frame_Y, adapted_downsampled_data_Y, 
-                                        block_x, block_y);
          
-            mlhe_encode_delta (&s->prec, &s->procY, &s->lheY, delta_frame_Y, delta_prediction_Y, 
-                               total_blocks_width, block_x,  block_y);
+            mlhe_encode_delta (&s->prec, &s->procY, &s->lheY, delta_prediction_Y,
+                               adapted_downsampled_data_Y, total_blocks_width, block_x,  block_y);
             
             mlhe_calculate_error (&s->procY, &s->lheY,
                                   delta_prediction_Y, adapted_downsampled_data_Y,  
@@ -2336,11 +2300,8 @@ static void mlhe_delta_frame_encode (LheContext *s, const AVFrame *frame,
                                                     adapted_downsampled_data_U,
                                                     block_x, block_y);
             
-            mlhe_calculate_delta_block (&s->procUV, &s->lheU, delta_frame_U, adapted_downsampled_data_U, 
-                                        block_x, block_y);
-            
-            mlhe_encode_delta (&s->prec, &s->procUV, &s->lheU, delta_frame_U, delta_prediction_U, 
-                               total_blocks_width, block_x,  block_y);
+            mlhe_encode_delta (&s->prec, &s->procUV, &s->lheU, delta_prediction_U, 
+                               adapted_downsampled_data_U, total_blocks_width, block_x,  block_y);
                    
             
             mlhe_calculate_error (&s->procUV, &s->lheU,
@@ -2360,14 +2321,9 @@ static void mlhe_delta_frame_encode (LheContext *s, const AVFrame *frame,
                                                     intermediate_adapted_downsampled_data_V, 
                                                     adapted_downsampled_data_V,
                                                     block_x, block_y);
-
-            
-            mlhe_calculate_delta_block (&s->procUV, &s->lheV, delta_frame_V, adapted_downsampled_data_V, 
-                                        block_x, block_y);
                                                                                      
-            mlhe_encode_delta (&s->prec, &s->procUV, &s->lheV, delta_frame_V, delta_prediction_V, 
-                               total_blocks_width, block_x,  block_y);
-
+             mlhe_encode_delta (&s->prec, &s->procUV, &s->lheV, delta_prediction_V, 
+                                adapted_downsampled_data_V, total_blocks_width, block_x,  block_y);
             
              mlhe_calculate_error (&s->procUV, &s->lheV,
                                    delta_prediction_V, adapted_downsampled_data_V,  
