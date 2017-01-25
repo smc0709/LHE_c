@@ -936,47 +936,6 @@ static void lhe_advanced_decode_symbols (LheState *s, LheHuffEntry *he_Y, LheHuf
 // VIDEO LHE DECODING
 //==================================================================
 /**
- * Adds differential info (delta) to last frame
- * 
- * @param *s LHE State
- * @param *proc LHE processing parameters
- * @param *lhe LHE image arrays
- * @param adapted_downsampled_image last downsampled image adapted to the resolution of current frame
- * @param *delta_frame array containing differential info(delta)
- * @param block_x block x index
- * @param block_y block y index
- */
-static void mlhe_add_delta_to_last_frame (LheState *s, LheProcessing *proc, LheImage *lhe, 
-                                          uint8_t *adapted_downsampled_image, uint8_t *delta_frame, 
-                                          uint32_t block_x, uint32_t block_y) 
-{
-    uint32_t xini, xfin, yini, yfin, pix;
-    int delta, image;
-    
-    xini = proc->basic_block[block_y][block_x].x_ini;
-    xfin = proc->advanced_block[block_y][block_x].x_fin_downsampled; 
- 
-    yini = proc->basic_block[block_y][block_x].y_ini;
-    yfin = proc->advanced_block[block_y][block_x].y_fin_downsampled;
-    
-    #pragma omp parallel for
-    for (int y=yini; y<yfin; y++) 
-    {
-        for (int x=xini; x<xfin; x++) 
-        {
-            pix = y*proc->width + x;
-            delta = (delta_frame[pix] - 128.0) * 2.0;
-            image = adapted_downsampled_image[pix] + delta;
-            
-            if (image > 255) image = 255;
-            if (image < 0) image = 1;
-            
-            lhe->downsampled_image[pix] = image;
-        }
-    }
-}
-
-/**
  * Decodes one hop per pixel in a block
  * 
  * @param *prec Pointer to precalculated lhe data
@@ -988,7 +947,7 @@ static void mlhe_add_delta_to_last_frame (LheState *s, LheProcessing *proc, LheI
  * @param block_y block y index
  */
 static void mlhe_decode_delta (LheBasicPrec *prec, LheProcessing *proc, LheImage *lhe,
-                               uint8_t *delta_prediction,
+                               uint8_t *delta_prediction, uint8_t *adapted_downsampled_image,
                                uint32_t total_blocks_width, uint32_t block_x, uint32_t block_y) 
 {
        
@@ -997,6 +956,7 @@ static void mlhe_decode_delta (LheBasicPrec *prec, LheProcessing *proc, LheImage
     bool small_hop, last_small_hop;
     uint8_t hop, predicted_luminance, hop_1, r_max; 
     uint32_t pix, dif_pix, num_block;
+    int delta, image;
     
     num_block = block_y * total_blocks_width + block_x;
     
@@ -1047,7 +1007,22 @@ static void mlhe_decode_delta (LheBasicPrec *prec, LheProcessing *proc, LheImage
           
             //assignment of component_prediction
             //This is the uncompressed image
-            delta_prediction[pix]= prec -> prec_luminance[predicted_luminance][r_max][hop_1][hop];
+            delta = prec -> prec_luminance[predicted_luminance][r_max][hop_1][hop];
+            delta_prediction[pix] = delta;
+            
+            delta = (delta - 128.0) * 2.0;
+            image = adapted_downsampled_image[pix] + delta;
+            
+            if (image > 255) 
+            {
+                image = 255;
+            }
+            else if (image < 0) 
+            {
+                image = 1;
+            }
+            
+            lhe->downsampled_image[pix] = image;
             
             //tunning hop1 for the next hop ( "h1 adaptation")
             //------------------------------------------------
@@ -1099,48 +1074,41 @@ static void mlhe_decode_delta_frame (LheState *s, LheHuffEntry *he_Y, LheHuffEnt
         for (int block_x=0; block_x<s->total_blocks_width; block_x++)
         {                             
             //Luminance
-             mlhe_decode_delta (&s->prec, &s->procY, &s->lheY, delta_prediction_Y, s->total_blocks_width, block_x, block_y);
-        
-             mlhe_adapt_downsampled_data_resolution (&s->procY, &s->lheY,
-                                                     intermediate_adapted_downsampled_data_Y, adapted_downsampled_image_Y,
-                                                     block_x, block_y);
+            mlhe_adapt_downsampled_data_resolution (&s->procY, &s->lheY,
+                                                    intermediate_adapted_downsampled_data_Y, adapted_downsampled_image_Y,
+                                                    block_x, block_y);
             
-             mlhe_add_delta_to_last_frame (s, &s->procY, &s->lheY, adapted_downsampled_image_Y, delta_prediction_Y, 
-                                           block_x, block_y);
+            mlhe_decode_delta (&s->prec, &s->procY, &s->lheY, delta_prediction_Y, 
+                               adapted_downsampled_image_Y, s->total_blocks_width, block_x, block_y);
+
             
             lhe_advanced_vertical_nearest_neighbour_interpolation (&s->procY, &s->lheY, intermediate_interpolated_Y, 
                                                                    block_x, block_y);
-            
-            
+                      
             lhe_advanced_horizontal_nearest_neighbour_interpolation (&s->procY, &s->lheY, intermediate_interpolated_Y, 
                                                                      s->frame->linesize[0], block_x, block_y);
 
-            //Chrominance U          
-            mlhe_decode_delta (&s->prec, &s->procUV, &s->lheU, delta_prediction_U, s->total_blocks_width, block_x, block_y);
-          
+            //Chrominance U                    
             mlhe_adapt_downsampled_data_resolution (&s->procUV, &s->lheU,
                                                     intermediate_adapted_downsampled_data_U, adapted_downsampled_image_U,
                                                     block_x, block_y);
             
-            mlhe_add_delta_to_last_frame (s, &s->procUV, &s->lheU, adapted_downsampled_image_U, delta_prediction_U, 
-                                          block_x, block_y);
+            mlhe_decode_delta (&s->prec, &s->procUV, &s->lheU, delta_prediction_U, 
+                               adapted_downsampled_image_U, s->total_blocks_width, block_x, block_y);
             
             lhe_advanced_vertical_nearest_neighbour_interpolation (&s->procUV, &s->lheU, intermediate_interpolated_U, 
-                                                                   block_x, block_y);
-            
+                                                                   block_x, block_y);         
             
             lhe_advanced_horizontal_nearest_neighbour_interpolation (&s->procUV, &s->lheU, intermediate_interpolated_U, 
                                                                      s->frame->linesize[1], block_x, block_y);
 
-            //Chrominance V
-            mlhe_decode_delta (&s->prec, &s->procUV, &s->lheV, delta_prediction_V, s->total_blocks_width, block_x, block_y);
-              
+            //Chrominance V            
             mlhe_adapt_downsampled_data_resolution (&s->procUV, &s->lheV, 
                                                     intermediate_adapted_downsampled_data_V, adapted_downsampled_image_V,
                                                     block_x, block_y);
-
-            mlhe_add_delta_to_last_frame (s, &s->procUV, &s->lheV, adapted_downsampled_image_V, delta_prediction_V, 
-                                          block_x, block_y);
+            
+            mlhe_decode_delta (&s->prec, &s->procUV, &s->lheV, delta_prediction_V, 
+                               adapted_downsampled_image_V, s->total_blocks_width, block_x, block_y);
              
             lhe_advanced_vertical_nearest_neighbour_interpolation (&s->procUV, &s->lheV, intermediate_interpolated_V, 
                                                                    block_x, block_y);
