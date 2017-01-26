@@ -191,6 +191,7 @@ typedef struct LheImage {
     uint8_t *first_color_block;
     uint8_t *component_prediction;
     uint8_t *downsampled_image;
+    uint8_t *last_image;
     uint8_t *last_downsampled_image; 
     uint8_t *downsampled_error_image;
     uint8_t *hops;
