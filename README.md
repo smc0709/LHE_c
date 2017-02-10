@@ -155,6 +155,14 @@ For example: big_buck with format YUV420.
   ```
 
 ####Play
+To use ffplay it is necessary to install sdl library and activate it
+  ```
+  sudo apt-get install libsdl1.2-dev
+  ./configure --extra-cflags=-fopenmp --extra-ldflags=-fopenmp --enable-ffplay 
+  ```
+
+After that, you can play videos using ffplay command:
+
   ```
   ffplay big_buck.mlhe 
   ```
