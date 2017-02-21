@@ -13,7 +13,6 @@
 #include <stdint.h>
 #include <math.h>
 #include <stdio.h>
-#include <sys/time.h>
 #include "huffman.h"
 
 //Configuration OpenMP
@@ -36,7 +35,7 @@ static const uint8_t mlhe_sig[4] = "MLHE";
 #define MLHE_EXTENSION_INTRODUCER    0x21
 #define MLHE_IMAGE_SEPARATOR         0x2c
 
-//Configuration 
+//Configuration
 #define SEQUENTIAL_BASIC_LHE 0
 #define PARAREL_BASIC_LHE 1
 #define ADVANCED_LHE 2
@@ -56,7 +55,7 @@ static const uint8_t mlhe_sig[4] = "MLHE";
 #define RATIO R_MAX
 #define NUMBER_OF_HOPS 9
 #define SIGN 2
-    
+
 //Param definitions
 #define POSITIVE 0
 #define NEGATIVE 1
@@ -96,19 +95,19 @@ static const uint8_t mlhe_sig[4] = "MLHE";
 #define BOT_RIGHT_CORNER 3
 
 //Hops
-#define HOP_NEG_4 0 // h-4 
-#define HOP_NEG_3 1 // h-3 
-#define HOP_NEG_2 2 // h-2 
-#define HOP_NEG_1 3 // h-1 
-#define HOP_0 4     // h0 
-#define HOP_POS_1 5 // h1 
-#define HOP_POS_2 6 // h2 
-#define HOP_POS_3 7 // h3 
-#define HOP_POS_4 8 // h4 
+#define HOP_NEG_4 0 // h-4
+#define HOP_NEG_3 1 // h-3
+#define HOP_NEG_2 2 // h-2
+#define HOP_NEG_1 3 // h-1
+#define HOP_0 4     // h0
+#define HOP_POS_1 5 // h1
+#define HOP_POS_2 6 // h2
+#define HOP_POS_3 7 // h3
+#define HOP_POS_4 8 // h4
 
 
 #define NO_SYMBOL 20
-#define NO_INTERVAL 20 
+#define NO_INTERVAL 20
 
 //Huffman mesh
 #define LHE_MAX_HUFF_SIZE_MESH 5
@@ -131,7 +130,7 @@ static const uint8_t mlhe_sig[4] = "MLHE";
 #define PR_INTERVAL_2 2
 #define PR_INTERVAL_3 3
 #define PR_INTERVAL_4 4
-#define PR_INTERVAL_BITS 3 
+#define PR_INTERVAL_BITS 3
 #define PR_MESH_BITS 2*PR_INTERVAL_BITS
 
 //Compression
@@ -148,7 +147,7 @@ typedef struct LheBasicPrec {
     uint8_t best_hop [RATIO][H1_RANGE][Y_MAX_COMPONENT][Y_MAX_COMPONENT]; //ratio - h1 - original color - prediction
     uint8_t h1_adaptation [H1_RANGE][NUMBER_OF_HOPS][NUMBER_OF_HOPS]; //h1 adaptation cache
     float compression_factor [PPP_MAX_IMAGES][MAX_QL]; //compression factor values
-} LheBasicPrec; 
+} LheBasicPrec;
 
 typedef struct LheHuffEntry {
     uint8_t  sym;
@@ -180,7 +179,7 @@ typedef struct LheProcessing {
     AdvancedLheBlock **advanced_block;
     AdvancedLheBlock **last_advanced_block;
     float **perceptual_relevance_x;
-    float **perceptual_relevance_y;  
+    float **perceptual_relevance_y;
     uint32_t width;
     uint32_t height;
     uint32_t theoretical_block_width;
@@ -191,13 +190,12 @@ typedef struct LheImage {
     uint8_t *first_color_block;
     uint8_t *component_prediction;
     uint8_t *downsampled_image;
-    uint8_t *last_downsampled_image; 
+    uint8_t *last_downsampled_image;
     uint8_t *downsampled_error_image;
     uint8_t *hops;
 } LheImage;
 
 int lhe_generate_huffman_codes(LheHuffEntry *he,  int max_huff_size);
-double time_diff(struct timeval x , struct timeval y);
 int count_bits (int num);
 
 /**
