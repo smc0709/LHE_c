@@ -37,7 +37,6 @@ typedef struct MlheDemuxContext {
     int delay;
 } MlheDemuxContext;
 
-
 static int mlhe_probe(AVProbeData *p)
 {
     /* check magick */
@@ -68,14 +67,16 @@ static int mlhe_read_header(AVFormatContext *s)
 {
     AVIOContext     *pb  = s->pb;
     AVStream        *st;
-    int width, height, ret;
+    int width, height, time_base_den, codec_time_base_den, ret;
 
     if ((ret = resync(pb)) < 0)
         return ret;
 
     width  = avio_rl16(pb);
     height = avio_rl16(pb);
-
+    time_base_den = avio_rl16 (pb);
+    codec_time_base_den = avio_rl16(pb);
+    
     if (width == 0 || height == 0)
         return AVERROR_INVALIDDATA;
 
@@ -83,8 +84,8 @@ static int mlhe_read_header(AVFormatContext *s)
     if (!st)
         return AVERROR(ENOMEM);
 
-    /* Timebase is 1/100 */
-    avpriv_set_pts_info(st, 64, 1, 100);
+    st->time_base.den = time_base_den;
+    st->codec->time_base.den = codec_time_base_den;
     st->codecpar->codec_type = AVMEDIA_TYPE_VIDEO;
     st->codecpar->codec_id   = AV_CODEC_ID_MLHE;
     st->codecpar->width      = width;
@@ -133,6 +134,7 @@ static int mlhe_read_packet(AVFormatContext *s, AVPacket *pkt)
         if (block_label == MLHE_EXTENSION_INTRODUCER) {  
             
             mlhe->delay = avio_rl16(pb);
+    
             pkt_size = avio_rl32(pb);
                         
             frame_start = avio_tell(pb);
