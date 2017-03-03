@@ -71,11 +71,6 @@ static int flush_packet(AVFormatContext *s, AVPacket *new)
 
     if (!pkt) 
         return 0;
-    
-    if (new && new->pts != AV_NOPTS_VALUE) 
-        mlhe->duration = av_clip_uint16(new->pts - mlhe->prev_pkt->pts);    
-    else if (!new && mlhe->last_delay >= 0) 
-        mlhe->duration = mlhe->last_delay;
 
     /* Control byte */
     avio_w8(pb, MLHE_EXTENSION_INTRODUCER);
@@ -84,7 +79,6 @@ static int flush_packet(AVFormatContext *s, AVPacket *new)
     if (new) 
         av_copy_packet(mlhe->prev_pkt, new);
     
-    avio_wl16(pb, mlhe->duration);
     avio_wl32(pb, pkt->size);
     avio_write(pb, pkt->data, pkt->size);
 
