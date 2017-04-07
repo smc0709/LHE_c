@@ -41,6 +41,8 @@ static int mlhe_image_write_header(AVIOContext *pb, AVStream *st)
     avio_write(pb, "MLHE", 4);
     avio_wl16(pb, st->codecpar->width);
     avio_wl16(pb, st->codecpar->height);
+    avio_wl16(pb, st->time_base.den);
+    avio_wl16(pb, st->codec->time_base.den);
 
     avio_flush(pb);
     return 0;
@@ -55,8 +57,6 @@ static int mlhe_write_header(AVFormatContext *s)
                "MLHE muxer supports only a single video MLHE stream.\n");
         return AVERROR(EINVAL);
     }
-
-    avpriv_set_pts_info(s->streams[0], 64, 1, 100);
 
     mlhe_image_write_header(s->pb, s->streams[0]); 
 

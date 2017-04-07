@@ -17,7 +17,7 @@
 #include "huffman.h"
 
 //Configuration OpenMP
-#define OPENMP_FLAGS strcmp(FFMPEG_CONFIGURATION, "--extra-cflags=-fopenmp --extra-ldflags=-fopenmp")
+#define OPENMP_FLAGS 0// use always block functions //strcmp(FFMPEG_CONFIGURATION, "--extra-cflags=-fopenmp --extra-ldflags=-fopenmp")
 #define CONFIG_OPENMP 0
 
 #if (CONFIG_OPENMP)
