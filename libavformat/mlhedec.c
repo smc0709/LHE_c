@@ -132,9 +132,7 @@ static int mlhe_read_packet(AVFormatContext *s, AVPacket *pkt)
     while (MLHE_TRAILER != block_label && !avio_feof(pb)) {
         
         if (block_label == MLHE_EXTENSION_INTRODUCER) {  
-            
-            mlhe->delay = avio_rl16(pb);
-    
+                
             pkt_size = avio_rl32(pb);
                         
             frame_start = avio_tell(pb);
@@ -155,7 +153,7 @@ static int mlhe_read_packet(AVFormatContext *s, AVPacket *pkt)
                 pkt->flags |= AV_PKT_FLAG_KEY;
 
             pkt->stream_index = 0;
-            pkt->duration = mlhe->delay;
+            pkt->duration = 1;
             
             mlhe->nb_frames ++;
             mlhe->last_duration = pkt->duration;
