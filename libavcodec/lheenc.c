@@ -148,8 +148,7 @@ static void lhe_compute_error_for_psnr (AVCodecContext *avctx, const AVFrame *fr
     }
 }
 
-static void print_json_pr_metrics (float** perceptual_relevance_x, float** perceptual_relevance_y,
-                                   int total_blocks_width, int total_blocks_height) 
+static void print_json_pr_metrics (LheProcessing *procY, int total_blocks_width, int total_blocks_height) 
 {
     int i,j;
     
@@ -161,11 +160,11 @@ static void print_json_pr_metrics (float** perceptual_relevance_x, float** perce
         {  
             if (i==total_blocks_width && j==total_blocks_height) 
             {
-                av_log (NULL, AV_LOG_PANIC, "{\"prx\":%.4f, \"pry\":%.4f}", perceptual_relevance_x[j][i], perceptual_relevance_y[j][i]);
+                av_log (NULL, AV_LOG_PANIC, "{\"prx\":%.4f, \"pry\":%.4f}", procY->perceptual_relevance_x[j][i], procY->perceptual_relevance_y[j][i]);
             }
             else 
             {
-                av_log (NULL, AV_LOG_PANIC, "{\"prx\":%.4f, \"pry\":%.4f},", perceptual_relevance_x[j][i], perceptual_relevance_y[j][i]);
+                av_log (NULL, AV_LOG_PANIC, "{\"prx\":%.4f, \"pry\":%.4f},", procY->perceptual_relevance_x[j][i], procY->perceptual_relevance_y[j][i]);
             }
         }
         
@@ -529,7 +528,7 @@ static uint64_t lhe_advanced_gen_huffman (LheHuffEntry *he_Y, LheHuffEntry *he_U
     bpp = 1.0*n_bits/(procY->width*procY->height);
     
     av_log (NULL, AV_LOG_INFO, "Y bpp: %f ",bpp );
-    av_log (NULL, AV_LOG_PANIC, "%f; ",bpp );
+    av_log (NULL, AV_LOG_INFO, "%f; ",bpp );
     
     //CHROMINANCES
     //Generate Huffman length chrominance (same Huffman table for both chrominances)
@@ -2679,10 +2678,10 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
 
     if (s->pr_metrics)
     {
-        print_csv_pr_metrics(&s->procY, total_blocks_width, total_blocks_height);  
+        print_json_pr_metrics(&s->procY, total_blocks_width, total_blocks_height);  
     }
 
-    av_log (NULL, AV_LOG_PANIC, " %.0lf; ",time_diff(before , after));
+    av_log (NULL, AV_LOG_INFO, " %.0lf; ",time_diff(before , after));
     av_log(NULL, AV_LOG_INFO, "CodingTime %.0lf \n", time_diff(before , after));
 
     pkt->flags |= AV_PKT_FLAG_KEY;
