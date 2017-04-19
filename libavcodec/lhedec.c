@@ -1332,7 +1332,7 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
         }
     }
    
-    av_log(NULL, AV_LOG_INFO, "DECODING...Width %d Height %d \n", (&s->procY)->width, (&s->procY)->height);
+    //av_log(NULL, AV_LOG_INFO, "DECODING...Width %d Height %d \n", (&s->procY)->width, (&s->procY)->height);
 
     if ((ret = av_frame_ref(data, s->frame)) < 0)
         return ret;
@@ -1355,6 +1355,8 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
  */ 
 static int mlhe_decode_video(AVCodecContext *avctx, void *data, int *got_frame, AVPacket *avpkt)
 {    
+    av_log(NULL, AV_LOG_INFO, "ffmpeg: DECODING VIDEO \n");
+
     uint32_t total_blocks, pixels_block, image_size_Y, image_size_UV;
     int ret;
     

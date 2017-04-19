@@ -246,7 +246,7 @@ static uint64_t lhe_basic_gen_huffman (LheHuffEntry *he_Y, LheHuffEntry *he_UV,
     n_bits = lhe_generate_huffman_codes(he_Y, LHE_MAX_HUFF_SIZE_SYMBOLS);
     bpp = 1.0*n_bits/image_size_Y;
     
-    av_log (NULL, AV_LOG_INFO, "Y bpp: %f ", bpp );
+    //av_log (NULL, AV_LOG_INFO, "Y bpp: %f ", bpp );
     
     //CHROMINANCES (same Huffman table for both chrominances)
     
@@ -276,7 +276,7 @@ static uint64_t lhe_basic_gen_huffman (LheHuffEntry *he_Y, LheHuffEntry *he_UV,
     n_bits += lhe_generate_huffman_codes(he_UV, LHE_MAX_HUFF_SIZE_SYMBOLS);
     bpp = 1.0*n_bits/image_size_Y;
     
-    av_log (NULL, AV_LOG_INFO, "YUV bpp: %f ", bpp );
+    //av_log (NULL, AV_LOG_INFO, "YUV bpp: %f ", bpp );
     
     return n_bits;
     
@@ -340,7 +340,7 @@ static int lhe_basic_write_file(AVCodecContext *avctx, AVPacket *pkt,
               + n_bytes_components
               + FILE_OFFSET_BYTES; //components
               
-    av_log (NULL, AV_LOG_INFO, "YUV+Header bpp: %f \n ", (n_bytes*8.0)/image_size_Y);
+    //av_log (NULL, AV_LOG_INFO, "YUV+Header bpp: %f \n ", (n_bytes*8.0)/image_size_Y);
               
     //ff_alloc_packet2 reserves n_bytes of memory
     if ((ret = ff_alloc_packet2(avctx, pkt, n_bytes, 0)) < 0)
@@ -431,7 +431,7 @@ static int lhe_basic_write_file(AVCodecContext *avctx, AVPacket *pkt,
     
     gettimeofday(&after , NULL);
 
-    av_log(NULL, AV_LOG_INFO, "LHE WriteTime %.0lf ", time_diff(before , after));
+    //av_log(NULL, AV_LOG_INFO, "LHE WriteTime %.0lf ", time_diff(before , after));
     
     return n_bytes;
 }
@@ -527,8 +527,8 @@ static uint64_t lhe_advanced_gen_huffman (LheHuffEntry *he_Y, LheHuffEntry *he_U
     n_bits = lhe_generate_huffman_codes(he_Y, LHE_MAX_HUFF_SIZE_SYMBOLS);
     bpp = 1.0*n_bits/(procY->width*procY->height);
     
-    av_log (NULL, AV_LOG_INFO, "Y bpp: %f ",bpp );
-    av_log (NULL, AV_LOG_INFO, "%f; ",bpp );
+    //av_log (NULL, AV_LOG_INFO, "Y bpp: %f ",bpp );
+    //av_log (NULL, AV_LOG_INFO, "%f; ",bpp );
     
     //CHROMINANCES
     //Generate Huffman length chrominance (same Huffman table for both chrominances)
@@ -548,7 +548,7 @@ static uint64_t lhe_advanced_gen_huffman (LheHuffEntry *he_Y, LheHuffEntry *he_U
     n_bits += lhe_generate_huffman_codes(he_UV, LHE_MAX_HUFF_SIZE_SYMBOLS);
     bpp = 1.0*n_bits/(procY->width*procY->height);
 
-    av_log (NULL, AV_LOG_INFO, "YUV bpp: %f ", bpp);
+    //av_log (NULL, AV_LOG_INFO, "YUV bpp: %f ", bpp);
     
     //Returns total bits
     return n_bits; 
@@ -714,7 +714,7 @@ static int lhe_advanced_write_file(AVCodecContext *avctx, AVPacket *pkt,
               + n_bytes_components
               + FILE_OFFSET_BYTES; //components
               
-    av_log (NULL, AV_LOG_INFO, "YUV+Header bpp: %f \n", (n_bytes*8.0)/image_size_Y);
+    //av_log (NULL, AV_LOG_INFO, "YUV+Header bpp: %f \n", (n_bytes*8.0)/image_size_Y);
               
     //ff_alloc_packet2 reserves n_bytes of memory
     if ((ret = ff_alloc_packet2(avctx, pkt, n_bytes, 0)) < 0)
@@ -859,7 +859,7 @@ static int lhe_advanced_write_file(AVCodecContext *avctx, AVPacket *pkt,
     
     gettimeofday(&after , NULL);
 
-    av_log(NULL, AV_LOG_INFO, "LHE WriteTime %.0lf \n", time_diff(before , after));
+    //av_log(NULL, AV_LOG_INFO, "LHE WriteTime %.0lf \n", time_diff(before , after));
     
     return n_bytes;
 }
@@ -2665,7 +2665,7 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
                                                    
         gettimeofday(&after , NULL);
 
-        av_log (NULL, AV_LOG_INFO, "Advanced LHE with ql = %d and cf = %f \n",s->ql, compression_factor); 
+        //av_log (NULL, AV_LOG_INFO, "Advanced LHE with ql = %d and cf = %f \n",s->ql, compression_factor); 
                    
         lhe_advanced_write_file(avctx, pkt, image_size_Y, image_size_UV, total_blocks_width, total_blocks_height);   
     }
@@ -2679,8 +2679,8 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
         print_json_pr_metrics(&s->procY, total_blocks_width, total_blocks_height);  
     }
 
-    av_log (NULL, AV_LOG_INFO, " %.0lf; ",time_diff(before , after));
-    av_log(NULL, AV_LOG_INFO, "CodingTime %.0lf \n", time_diff(before , after));
+    //av_log (NULL, AV_LOG_INFO, " %.0lf; ",time_diff(before , after));
+    //av_log(NULL, AV_LOG_INFO, "CodingTime %.0lf \n", time_diff(before , after));
 
     pkt->flags |= AV_PKT_FLAG_KEY;
     *got_packet = 1;
@@ -2703,6 +2703,7 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
 static int mlhe_encode_video(AVCodecContext *avctx, AVPacket *pkt,
                              const AVFrame *frame, int *got_packet)
 {
+    av_log(NULL, AV_LOG_INFO, "ffmpeg: ENCODING VIDEO \n");
     uint8_t *component_original_data_Y, *component_original_data_U, *component_original_data_V;
     uint32_t total_blocks_width, total_blocks_height, total_blocks, pixels_block;
     uint32_t image_size_Y, image_size_UV;
@@ -2961,7 +2962,7 @@ AVCodec ff_lhe_encoder = {
 
 AVCodec ff_mlhe_encoder = {
     .name           = "mlhe",
-    .long_name      = NULL_IF_CONFIG_SMALL("M-LHE"),
+    .long_name      = NULL_IF_CONFIG_SMALL("MLHE"),
     .type           = AVMEDIA_TYPE_VIDEO,
     .id             = AV_CODEC_ID_MLHE,
     .priv_data_size = sizeof(LheContext),
