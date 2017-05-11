@@ -1580,6 +1580,8 @@ static int mlhe_decode_video(AVCodecContext *avctx, void *data, int *got_frame, 
                 
         lhe_advanced_decode_symbols (s, he_Y, he_UV, image_size_Y, image_size_UV);
     }   
+    
+    /*
  
     if (!(&s->procY)->last_advanced_block) 
     {
@@ -1628,7 +1630,7 @@ static int mlhe_decode_video(AVCodecContext *avctx, void *data, int *got_frame, 
     memset((&s->lheY)->downsampled_image, 0, image_size_Y);
     memset((&s->lheU)->downsampled_image, 0, image_size_UV);
     memset((&s->lheV)->downsampled_image, 0, image_size_UV);  
-    
+    */
        
     if ((ret = av_frame_ref(data, s->frame)) < 0)
         return ret;
