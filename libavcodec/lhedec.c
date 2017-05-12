@@ -46,6 +46,7 @@ typedef struct LheState {
     uint32_t total_blocks_width;
     uint32_t total_blocks_height;
     int dif_frames_count;
+    int count;
 } LheState;
 
 
@@ -58,6 +59,9 @@ static av_cold int lhe_decode_init(AVCodecContext *avctx)
         return AVERROR(ENOMEM);
     
     lhe_init_cache(&s->prec);
+    
+    s->count = 0;
+
     
     return 0;
 }
@@ -305,8 +309,8 @@ static void lhe_advanced_read_all_file_symbols (LheState *s, LheHuffEntry *he_Y,
         {          
 
             lhe_advanced_read_file_symbols (s, he_Y, procY, lheY->hops, block_x, block_y);   
-            lhe_advanced_read_file_symbols (s, he_UV, procUV, lheU->hops, block_x, block_y);            
-            lhe_advanced_read_file_symbols (s, he_UV, procUV, lheV->hops, block_x, block_y);
+            //lhe_advanced_read_file_symbols (s, he_UV, procUV, lheU->hops, block_x, block_y);            
+            //lhe_advanced_read_file_symbols (s, he_UV, procUV, lheV->hops, block_x, block_y);
 
         }
     }
@@ -379,6 +383,11 @@ static void lhe_advanced_read_perceptual_relevance_interval (LheState *s, LheHuf
             if (perceptual_relevance_interval != NO_INTERVAL) 
             {
                 perceptual_relevance[block_y][block_x] = lhe_advance_translate_pr_interval_to_pr_quant(perceptual_relevance_interval);;
+                
+                if (s->count >=0 && s->count<7) {
+                    av_log(NULL, AV_LOG_INFO, "COUNT %d len %d code %d \n", s->count, count_bits, perceptual_relevance_interval);
+                }
+                
                 block_x++;
                 huffman_symbol = 0;
                 count_bits = 0;
@@ -907,6 +916,8 @@ static void lhe_advanced_decode_symbols (LheState *s, LheHuffEntry *he_Y, LheHuf
                        
             lhe_advanced_horizontal_nearest_neighbour_interpolation (&s->procY, &s->lheY, intermediate_interpolated_Y, 
                                                                      s->frame->linesize[0], block_x, block_y);
+            
+            /*
 
             //Chrominance U
             lhe_advanced_decode_one_hop_per_pixel_block(&s->prec, &s->procUV, &s->lheU, s->total_blocks_width, block_x, block_y); 
@@ -928,6 +939,8 @@ static void lhe_advanced_decode_symbols (LheState *s, LheHuffEntry *he_Y, LheHuf
             
             lhe_advanced_horizontal_nearest_neighbour_interpolation (&s->procUV, &s->lheV, intermediate_interpolated_V, 
                                                                      s->frame->linesize[2], block_x, block_y);    
+                                                                     
+                                                                     */
         }
     }
 }
@@ -1355,11 +1368,9 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
  */ 
 static int mlhe_decode_video(AVCodecContext *avctx, void *data, int *got_frame, AVPacket *avpkt)
 {    
-    av_log(NULL, AV_LOG_INFO, "ffmpeg: DECODING VIDEO \n");
-
     uint32_t total_blocks, pixels_block, image_size_Y, image_size_UV;
     int ret;
-    
+        
     float compression_factor;
     uint32_t ppp_max_theoric;
     
@@ -1574,11 +1585,43 @@ static int mlhe_decode_video(AVCodecContext *avctx, void *data, int *got_frame, 
         ppp_max_theoric = (&s->procY)-> theoretical_block_width/SIDE_MIN;
         compression_factor = (&s->prec)->compression_factor[ppp_max_theoric][s->quality_level];        
         
+        s->count++;
+
         lhe_advanced_read_mesh(s, he_mesh, ppp_max_theoric, compression_factor) ; 
         
         lhe_advanced_read_all_file_symbols (s, he_Y, he_UV);
                 
         lhe_advanced_decode_symbols (s, he_Y, he_UV, image_size_Y, image_size_UV);
+                
+        /*
+        if (s->count>=0 && s->count<8) 
+        {
+            int yini = 0;
+            int yfin = 15;//(&s->procY)->height;
+            
+            int xini = 0;
+            int xfin = 15;//(&s->procY)->width;
+            
+            
+            av_log (NULL, AV_LOG_PANIC, "HOPS %d \n" , s->count);
+            
+            for (int j=yini; j<yfin; j++) 
+            {
+
+                for (int i=xini; i<xfin; i++) 
+                {  
+
+                    av_log (NULL, AV_LOG_PANIC, "%d;", (&s->lheY)->hops[j*(&s->procY)->width + i]);
+
+                }
+                
+                av_log (NULL, AV_LOG_PANIC, "\n");  
+            }
+        }
+       
+        
+        s->count++;
+        */
     }   
     
     /*

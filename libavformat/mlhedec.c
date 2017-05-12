@@ -55,8 +55,10 @@ static int resync(AVIOContext *pb)
     int i;
     for (i = 0; i < 4; i++) {
         int b = avio_r8(pb);
+
         if (b != mlhe_sig[i])
             i = -(b != 'M');
+
         if (avio_feof(pb))
             return AVERROR_EOF;
     }
@@ -90,7 +92,7 @@ static int mlhe_read_header(AVFormatContext *s)
     st->codecpar->codec_id   = AV_CODEC_ID_MLHE;
     st->codecpar->width      = width;
     st->codecpar->height     = height;
-        
+            
     return 0;
 }
 
@@ -106,6 +108,8 @@ static int mlhe_read_packet(AVFormatContext *s, AVPacket *pkt)
     int read;
     
     frame_parsed = 0;
+    
+    av_log (NULL, AV_LOG_INFO, "READ PACKET \n");
         
     if ((ret = avio_read(pb, buf, 4)) == 4) {
         keyframe = memcmp(buf, mlhe_sig, 4) == 0;
@@ -117,7 +121,8 @@ static int mlhe_read_packet(AVFormatContext *s, AVPacket *pkt)
     }
     
 
-    if (keyframe) { 
+    if (keyframe) {
+parse_keyframe:
         /* skip 2 bytes of width and 2 of height */
         if ((ret = avio_skip(pb, 4)) < 0)
             return ret;        
@@ -127,7 +132,6 @@ static int mlhe_read_packet(AVFormatContext *s, AVPacket *pkt)
     }
 
     block_label = avio_r8(pb);
-    
     
     while (MLHE_TRAILER != block_label && !avio_feof(pb)) {
         
@@ -161,8 +165,12 @@ static int mlhe_read_packet(AVFormatContext *s, AVPacket *pkt)
             frame_parsed = 1;
 
             break;
+        } else {
+            av_log(s, AV_LOG_ERROR, "MLHE: invalid block label \n");
         }
     }
+    
+
 
     if ((ret >= 0 && !frame_parsed) || ret == AVERROR_EOF) {
         if (mlhe->nb_frames == 1) {

@@ -63,6 +63,7 @@ typedef struct LheContext {
     int ql;
     int subsampling_average;
     int dif_frames_count;
+    int count;
 } LheContext;
 
 /**
@@ -89,6 +90,9 @@ static av_cold int lhe_encode_init(AVCodecContext *avctx)
         s->chroma_factor_width = 1;
         s->chroma_factor_height = 1;
     }
+    
+    s->count = 0;
+
         
 
     return 0;
@@ -699,7 +703,7 @@ static int lhe_advanced_write_file(AVCodecContext *avctx, AVPacket *pkt,
     n_bits_hops = lhe_advanced_gen_huffman (he_Y, he_UV, 
                                             procY, procUV, lheY, lheU, lheV,
                                             total_blocks_width, total_blocks_height);
-     
+    
     n_bytes_components = (n_bits_hops/8) + 1;     
     
     
@@ -710,8 +714,8 @@ static int lhe_advanced_write_file(AVCodecContext *avctx, AVPacket *pkt,
               + sizeof (s->ql) + //quality level
               + LHE_HUFFMAN_TABLE_BYTES_MESH
               + LHE_HUFFMAN_TABLE_BYTES_SYMBOLS + //huffman table
-              + n_bytes_mesh 
               + n_bytes_components
+              + n_bytes_mesh 
               + FILE_OFFSET_BYTES; //components
               
     //av_log (NULL, AV_LOG_INFO, "YUV+Header bpp: %f \n", (n_bytes*8.0)/image_size_Y);
@@ -764,6 +768,7 @@ static int lhe_advanced_write_file(AVCodecContext *avctx, AVPacket *pkt,
     }
          
     init_put_bits(&s->pb, buf, LHE_HUFFMAN_TABLE_BYTES_MESH + LHE_HUFFMAN_TABLE_BYTES_SYMBOLS + sizeof(s->ql) + n_bytes_mesh + n_bytes_components + FILE_OFFSET_BYTES);
+    //init_put_bits(&s->pb, buf, LHE_HUFFMAN_TABLE_BYTES_MESH + LHE_HUFFMAN_TABLE_BYTES_SYMBOLS + sizeof(s->ql) + n_bytes_mesh + FILE_OFFSET_BYTES);
 
     //Write Huffman tables 
     for (i=0; i<LHE_MAX_HUFF_SIZE_SYMBOLS; i++)
@@ -785,20 +790,31 @@ static int lhe_advanced_write_file(AVCodecContext *avctx, AVPacket *pkt,
     }
     
     //Advanced LHE quality level
-    put_bits(&s->pb, QL_SIZE_BITS, s->ql);    
+    put_bits(&s->pb, QL_SIZE_BITS, s->ql); 
     
+       
+    s->count++;
+
     //Write mesh. First PRX, then PRY because it eases the decoding task
     //Perceptual Relevance x intervals
+    
     for (int block_y=0; block_y<total_blocks_height+1; block_y++) 
     {
         for (int block_x=0; block_x<total_blocks_width+1; block_x++) 
         { 
             pr_interval = lhe_advanced_translate_pr_into_mesh(procY->perceptual_relevance_x[block_y][block_x]);
+            
+            /*
+            if (s->count >=0 && s->count<7) {
+                av_log(NULL, AV_LOG_INFO, "len %d code %d \n", he_mesh[pr_interval].len, he_mesh[pr_interval].code);
+            }
+            */
+            
             put_bits(&s->pb, he_mesh[pr_interval].len, he_mesh[pr_interval].code);
         }
     }
-    
      //Perceptual relevance y intervals
+      
     for (int block_y=0; block_y<total_blocks_height+1; block_y++) 
     {
         for (int block_x=0; block_x<total_blocks_width+1; block_x++) 
@@ -808,6 +824,7 @@ static int lhe_advanced_write_file(AVCodecContext *avctx, AVPacket *pkt,
 
         }
     }
+  
     
     //Write hops
     for (int block_y=0; block_y<total_blocks_height; block_y++) 
@@ -826,6 +843,7 @@ static int lhe_advanced_write_file(AVCodecContext *avctx, AVPacket *pkt,
             xfin_downsampled_UV = procUV->advanced_block[block_y][block_x].x_fin_downsampled;
             yfin_downsampled_UV = procUV->advanced_block[block_y][block_x].y_fin_downsampled;
          
+            
             //LUMINANCE
             for (int y=yini_Y; y<yfin_downsampled_Y; y++) 
             {
@@ -834,6 +852,7 @@ static int lhe_advanced_write_file(AVCodecContext *avctx, AVPacket *pkt,
                     put_bits(&s->pb, he_Y[lheY->hops[pix]].len , he_Y[lheY->hops[pix]].code);
                 }
             }
+            
             
             //CHROMINANCE U
             for (int y=yini_UV; y<yfin_downsampled_UV; y++) 
@@ -852,6 +871,7 @@ static int lhe_advanced_write_file(AVCodecContext *avctx, AVPacket *pkt,
                     put_bits(&s->pb, he_UV[lheV->hops[pix]].len , he_UV[lheV->hops[pix]].code);
                 }
             }
+            
         }
     }
 
@@ -1933,9 +1953,9 @@ static void lhe_advanced_encode_block (LheBasicPrec *prec, LheProcessing *proc, 
              
             hop_number = prec->best_hop[r_max][hop_1][original_color][predicted_luminance]; 
             lhe->hops[pix]= hop_number;        
-            lhe->component_prediction[pix]=prec -> prec_luminance[predicted_luminance][r_max][hop_1][hop_number];         
+            lhe->component_prediction[pix]= prec -> prec_luminance[predicted_luminance][r_max][hop_1][hop_number];         
             
-            av_log(NULL, AV_LOG_INFO, "COMP %d \n", lhe->component_prediction[pix]); //Ricardo: Esta es la traza
+            //av_log(NULL, AV_LOG_INFO, "COMP %d \n", lhe->component_prediction[pix]); //Ricardo: Esta es la traza
 
             
             //tunning hop1 for the next hop ( "h1 adaptation")
@@ -2710,9 +2730,9 @@ static int mlhe_encode_video(AVCodecContext *avctx, AVPacket *pkt,
     uint8_t *component_original_data_Y, *component_original_data_U, *component_original_data_V;
     uint32_t total_blocks_width, total_blocks_height, total_blocks, pixels_block;
     uint32_t image_size_Y, image_size_UV;
-            
+                
     LheContext *s = avctx->priv_data;
-    
+        
     (&s->procY)->width = frame->width;
     (&s->procY)->height =  frame->height; 
     image_size_Y = (&s->procY)->width * (&s->procY)->height;
@@ -2817,8 +2837,62 @@ static int mlhe_encode_video(AVCodecContext *avctx, AVPacket *pkt,
                              total_blocks_width, total_blocks_height);     
 
         lhe_advanced_write_file(avctx, pkt, 
-                                image_size_Y, image_size_UV, 
-                                total_blocks_width, total_blocks_height);                                      
+                                image_size_Y, image_size_UV,           
+                                total_blocks_width, total_blocks_height);   
+        
+        /*
+        
+        if (s->count>=0 && s->count<8) 
+        {
+            int yini = 0;
+            int yfin = 15;//(&s->procY)->height;
+            
+            int xini = 0;
+            int xfin = 15;//(&s->procY)->width;
+            
+            
+            av_log (NULL, AV_LOG_INFO, "IMAGE %d \n" , s->dif_frames_count);
+
+            for (int i=xini; i<xfin; i++) 
+            {  
+                av_log (NULL, AV_LOG_INFO, "%d;", i);
+            }
+            
+            av_log (NULL, AV_LOG_INFO, "\n");
+
+            for (int j=yini; j<yfin; j++) 
+            {
+                av_log (NULL, AV_LOG_INFO, "%d;", j);
+
+                for (int i=xini; i<xfin; i++) 
+                {  
+
+                    av_log (NULL, AV_LOG_INFO, "%d;", (&s->lheY)->component_prediction[j*frame->linesize[0] + i]);
+
+                }
+                
+                av_log (NULL, AV_LOG_INFO, "\n");  
+            }
+            
+            
+            av_log (NULL, AV_LOG_PANIC, "HOPS %d \n" , s->count);
+         
+            for (int j=yini; j<yfin; j++) 
+            {
+                for (int i=xini; i<xfin; i++) 
+                {  
+
+                    av_log (NULL, AV_LOG_PANIC, "%d;", (&s->lheY)->hops[j*(&s->procY)->width + i]);
+
+                }
+                
+                av_log (NULL, AV_LOG_PANIC, "\n");  
+            }
+        }
+        
+       
+        s->count++;
+         */
     }
 
     if(avctx->flags&AV_CODEC_FLAG_PSNR){
