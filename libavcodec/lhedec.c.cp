@@ -200,59 +200,32 @@ static uint8_t lhe_translate_huffman_into_interval (uint32_t huffman_symbol, Lhe
  * @param image_size image size
  * @param *symbols Symbols read from file
  */
- static void lhe_basic_read_file_symbols (LheState *s, LheHuffEntry *he, uint32_t image_size, uint8_t *symbols)
- {
-     uint8_t symbol, count_bits;
-     uint32_t huffman_symbol, decoded_symbols;
+static void lhe_basic_read_file_symbols (LheState *s, LheHuffEntry *he, uint32_t image_size, uint8_t *symbols)
+{
+    uint8_t symbol, count_bits;
+    uint32_t huffman_symbol, decoded_symbols;
 
-     symbol = NO_SYMBOL;
-     decoded_symbols = 0;
-     huffman_symbol = 0;
-     count_bits = 0;
+    symbol = NO_SYMBOL;
+    decoded_symbols = 0;
+    huffman_symbol = 0;
+    count_bits = 0;
 
-     while (decoded_symbols<image_size) {
+    while (decoded_symbols<image_size) {
 
-         huffman_symbol = (huffman_symbol<<1) | get_bits(&s->gb, 1);
-         count_bits++;
+        huffman_symbol = (huffman_symbol<<1) | get_bits(&s->gb, 1);
+        count_bits++;
 
-         symbol = lhe_translate_huffman_into_symbol(huffman_symbol, he, count_bits);
+        symbol = lhe_translate_huffman_into_symbol(huffman_symbol, he, count_bits);
 
-         if (symbol != NO_SYMBOL)
-         {
-             symbols[decoded_symbols] = symbol;
-             decoded_symbols++;
-             huffman_symbol = 0;
-             count_bits = 0;
-         }
-     }
- }
-
- static void lhe_basic_read_file_symbols_lum (LheState *s, LheHuffEntry *he, uint32_t image_size, uint8_t *symbols)
- {
-     uint8_t symbol, count_bits;
-     uint32_t huffman_symbol, decoded_symbols;
-
-     symbol = NO_SYMBOL;
-     decoded_symbols = 0;
-     huffman_symbol = 0;
-     count_bits = 0;
-
-     while (decoded_symbols<image_size) {
-
-         huffman_symbol = (huffman_symbol<<1) | get_bits(&s->gb, 1);
-         count_bits++;
-
-         symbol = lhe_translate_huffman_into_symbol(huffman_symbol, he, count_bits);
-
-         if (symbol != NO_SYMBOL)
-         {
-             symbols[decoded_symbols] = symbol;
-             decoded_symbols++;
-             huffman_symbol = 0;
-             count_bits = 0;
-         }
-     }
- }
+        if (symbol != NO_SYMBOL)
+        {
+            symbols[decoded_symbols] = symbol;
+            decoded_symbols++;
+            huffman_symbol = 0;
+            count_bits = 0;
+        }
+    }
+}
 
 //==================================================================
 // ADVANCED LHE FILE
@@ -307,6 +280,60 @@ static void lhe_advanced_read_file_symbols (LheState *s, LheHuffEntry *he, LhePr
     }
 }
 
+
+/**
+ * Reads file symbols from advanced lhe file
+ *
+ * @param *s Lhe parameters
+ * @param *he Huffman entry, Huffman parameters
+ * @param *proc LHE processing parameters
+ * @param symbols symbols array (hops)
+ * @param block_x block x index
+ * @param block_y block y index
+ */
+ /// RRRR ESTA
+static void lhe_advanced_read_file_symbols_lum (LheState *s, LheHuffEntry *he, LheProcessing *proc, uint8_t *symbols,
+                                            int block_x, int block_y)
+{
+    uint8_t symbol, count_bits;
+    uint32_t huffman_symbol, pix;
+    uint32_t xini, xfin_downsampled, yini, yfin_downsampled;
+
+    xini = proc->basic_block[block_y][block_x].x_ini;
+    xfin_downsampled = proc->advanced_block[block_y][block_x].x_fin_downsampled;
+
+    yini = proc->basic_block[block_y][block_x].y_ini;
+    yfin_downsampled = proc->advanced_block[block_y][block_x].y_fin_downsampled;
+
+    symbol = NO_SYMBOL;
+    pix = 0;
+    huffman_symbol = 0;
+    count_bits = 0;
+
+    for (int y=yini; y<yfin_downsampled;y++)
+    {
+        for(int x=xini; x<xfin_downsampled;)
+        {
+            pix = y * proc->width + x;
+
+            /// RRRR el 1 del final es que va bit a bit
+            huffman_symbol = (huffman_symbol<<1) | get_bits(&s->gb, 1);
+            count_bits++;
+            // rrr ir leyendo el symbol y si son hop_0 pues a rlc
+            symbol = lhe_translate_huffman_into_symbol(huffman_symbol, he, count_bits);
+
+            if (symbol != NO_SYMBOL)
+            {
+                //// rrr tiene que ser igual a lhrY hops
+                symbols[pix] = symbol;
+                x++;
+                huffman_symbol = 0;
+                count_bits = 0;
+            }
+        }
+    }
+}
+
 /**
  * Reads file symbols from advanced lhe file
  *
@@ -331,7 +358,7 @@ static void lhe_advanced_read_all_file_symbols (LheState *s, LheHuffEntry *he_Y,
         for (int block_x=0; block_x<s->total_blocks_width; block_x++)
         {
 
-            lhe_advanced_read_file_symbols (s, he_Y, procY, lheY->hops, block_x, block_y);
+            lhe_advanced_read_file_symbols_lum (s, he_Y, procY, lheY->hops, block_x, block_y);
             lhe_advanced_read_file_symbols (s, he_UV, procUV, lheU->hops, block_x, block_y);
             lhe_advanced_read_file_symbols (s, he_UV, procUV, lheV->hops, block_x, block_y);
 
@@ -1341,7 +1368,7 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
     else /*BASIC LHE*/
     {
 
-        lhe_basic_read_file_symbols_lum(s, he_Y, image_size_Y, (&s->lheY)->hops);
+        lhe_basic_read_file_symbols(s, he_Y, image_size_Y, (&s->lheY)->hops);
         lhe_basic_read_file_symbols(s, he_UV, image_size_UV, (&s->lheU)->hops);
         lhe_basic_read_file_symbols(s, he_UV, image_size_UV, (&s->lheV)->hops);
 

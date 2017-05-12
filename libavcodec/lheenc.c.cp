@@ -411,32 +411,10 @@ static int lhe_basic_write_file(AVCodecContext *avctx, AVPacket *pkt,
         put_bits(&s->pb, LHE_HUFFMAN_NODE_BITS_SYMBOLS, he_UV[i].len);
     }
 
-
-
-    ///////////////////////////////////////////////////////////////////
     //Write signals of the image
     for (i=0; i<image_size_Y; i++)
     {
-
-        ///////////////////////////////////////////////////////////////////////
-
-        
-        av_log (NULL, AV_LOG_INFO, "HOPS \n");
-        for (int j=0; j<procY->height; j++)
-          {
-              for (int i=0; i<procY->width; i++)
-              {
-
-                 av_log (NULL, AV_LOG_INFO, "%d;", lheY->hops[j*procY->width + i]);
-
-             }
-
-             av_log (NULL, AV_LOG_INFO, "\n");
-         }
         put_bits(&s->pb, he_Y[lheY->hops[i]].len , he_Y[lheY->hops[i]].code);
-
-
-
     }
 
     for (i=0; i<image_size_UV; i++)
@@ -448,10 +426,6 @@ static int lhe_basic_write_file(AVCodecContext *avctx, AVPacket *pkt,
     {
         put_bits(&s->pb, he_UV[lheV->hops[i]].len , he_UV[lheV->hops[i]].code);
     }
-
-
-
-
 
     put_bits(&s->pb, FILE_OFFSET_BITS , 0);
 
@@ -857,6 +831,10 @@ static int lhe_advanced_write_file(AVCodecContext *avctx, AVPacket *pkt,
             {
                 for (int x=xini_Y; x<xfin_downsampled_Y; x++) {
                     pix = y*procY->width + x;
+                    //hop_number = lheY->hops[pix]
+                    //he_Y[hop_number].len longitud del codigo de bits para un hop
+                    //he_Y[hop_number].code codigo en bits de un hop
+
                     put_bits(&s->pb, he_Y[lheY->hops[pix]].len , he_Y[lheY->hops[pix]].code);
                 }
             }
