@@ -282,6 +282,12 @@ static uint64_t lhe_basic_gen_huffman (LheHuffEntry *he_Y, LheHuffEntry *he_UV,
 
 }
 
+
+// static int
+
+
+
+
 /**
  * Writes BASIC LHE file
  *
@@ -295,6 +301,19 @@ static uint64_t lhe_basic_gen_huffman (LheHuffEntry *he_Y, LheHuffEntry *he_UV,
 static int lhe_basic_write_file(AVCodecContext *avctx, AVPacket *pkt,
                                 int image_size_Y, int image_size_UV,
                                 uint8_t total_blocks_width, uint8_t total_blocks_height) {
+
+    /////
+    int orig_values[9]  = {HOP_NEG_4,HOP_NEG_3,HOP_NEG_2,HOP_NEG_1,HOP_0,HOP_POS_1,HOP_POS_2,HOP_POS_3,HOP_POS_4};
+    char new_values[9][10]   = {"100000000","1000000","10000","100","0","10","1000","100000","10000000"};
+    char new_values_trunc[9][10]   = {"00000000","000000","0000","00","-","0","000","00000","0000000"};
+    char bin_values[8][10]= {"000","001","010","011","100","101","110","111"};
+
+    int counter_hop_0 = 0;
+    int counter_bin   = 0;
+
+    int max_hops     = 4;
+    int max_bits     = 3;
+    /////
 
     uint8_t *buf;
     uint8_t lhe_mode, pixel_format;
@@ -412,7 +431,6 @@ static int lhe_basic_write_file(AVCodecContext *avctx, AVPacket *pkt,
     }
 
 
-
     ///////////////////////////////////////////////////////////////////
     //Write signals of the image
     for (i=0; i<image_size_Y; i++)
@@ -420,15 +438,67 @@ static int lhe_basic_write_file(AVCodecContext *avctx, AVPacket *pkt,
 
         ///////////////////////////////////////////////////////////////////////
 
-        
-        av_log (NULL, AV_LOG_INFO, "HOPS \n");
+        av_log (NULL, AV_LOG_INFO, "\n\n HOPS \n\n\n");
         for (int j=0; j<procY->height; j++)
           {
               for (int i=0; i<procY->width; i++)
               {
 
-                 av_log (NULL, AV_LOG_INFO, "%d;", lheY->hops[j*procY->width + i]);
+                 // Si es 4
+                 if ( ( lheY->hops[j*procY->width + i] ) == HOP_0 ){
+                   counter_hop_0 = counter_hop_0 + 1;
+                   // Si llevamos 4 hops o menos
+                   if ( counter_hop_0 <= max_hops) {
+                     // Esto hay que ponerlo con sizeOf!!!
+                       for (int kk=0; kk< 9; kk++) {
+                           if ( ( lheY->hops[j*procY->width + i] ) == orig_values[kk]){
+                             av_log (NULL, AV_LOG_INFO, "v:%d    c_h:%d    c_b:%d    n_v:%s;", lheY->hops[j*procY->width + i], counter_hop_0, counter_bin, new_values[kk]);
+                           }
+                       }
+                   }
+                   // Si llevamos mas de 4
+                   else{
+                        counter_bin = counter_bin + 1;
+                        // Si van 8 se manda 111
+                        // Esto hay que ponerlo con max_bits!!!
+                        if (counter_bin == 8){
+                          av_log (NULL, AV_LOG_INFO, "v:%d    c_h:%d    c_b:%d    n_v:%s;", lheY->hops[j*procY->width + i], counter_hop_0, counter_bin, "111");
+                          counter_bin = 0;
+                        }
+                        // Si no pues nada
+                        else{
+                          av_log (NULL, AV_LOG_INFO, "v:%d    c_h:%d    c_b:%d    n_v:%s;", lheY->hops[j*procY->width + i], counter_hop_0, counter_bin, "buffering");
+                        }
+                   }
+                 }
+                 // Si no es 4
+                 else{
 
+                      // Si llevabamos alguno pues mandamos cuatnos en binario y luego el valor truncado
+                      if (counter_bin != 0){
+
+                        av_log (NULL, AV_LOG_INFO, "v:%d    c_h:%d    c_b:%d    n_v:%s;", lheY->hops[j*procY->width + i], counter_hop_0, counter_bin, bin_values[counter_bin]); /// EN BINARIO
+                      }
+
+                      // Si no llevamos ninguno de mas
+                      else{
+                        // Si llevabamos cuatro hops mandamos 000 y el valor truncado
+                        if (counter_hop_0 == max_hops){
+                              av_log (NULL, AV_LOG_INFO, "v:%d    c_h:%d    c_b:%d    n_v:%s;", lheY->hops[j*procY->width + i], counter_hop_0, counter_bin, "000"); /// ESTO ES 000
+                        }
+
+                      }
+
+                      for (int kk=0; kk< 9; kk++) {
+                          if ( ( lheY->hops[j*procY->width + i] ) == orig_values[kk]){
+                            av_log (NULL, AV_LOG_INFO, "v:%d    c_h:%d    c_b:%d    n_v:%s;", lheY->hops[j*procY->width + i], counter_hop_0, counter_bin, new_values[kk]); /// ESTE OK
+                          }
+                      }
+
+                      counter_hop_0 = 0;
+                      counter_bin = 0;
+
+                 }
              }
 
              av_log (NULL, AV_LOG_INFO, "\n");
