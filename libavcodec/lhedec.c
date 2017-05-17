@@ -46,6 +46,7 @@ typedef struct LheState {
     uint32_t total_blocks_width;
     uint32_t total_blocks_height;
     int dif_frames_count;
+    int global_frames_count;
 } LheState;
 
 
@@ -58,6 +59,9 @@ static av_cold int lhe_decode_init(AVCodecContext *avctx)
         return AVERROR(ENOMEM);
     
     lhe_init_cache(&s->prec);
+    
+    s->dif_frames_count = 0;
+    s->global_frames_count = 0;
     
     return 0;
 }
@@ -1167,15 +1171,17 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
     
     const uint8_t *lhe_data = avpkt->data;
     
+    init_get_bits(&s->gb, lhe_data, avpkt->size * 8);
+    
     //LHE mode
-    s->lhe_mode = bytestream_get_byte(&lhe_data); 
+    s->lhe_mode = get_bits(&s->gb, LHE_MODE_SIZE_BITS);
     
     //Pixel format byte, init pixel format
-    s->pixel_format = bytestream_get_byte(&lhe_data); 
+    s->pixel_format = get_bits(&s->gb, PIXEL_FMT_SIZE_BITS); 
     lhe_init_pixel_format (avctx, s, s->pixel_format);
            
-    (&s->procY)->width  = bytestream_get_le32(&lhe_data);
-    (&s->procY)->height = bytestream_get_le32(&lhe_data);
+    (&s->procY)->width  = get_bits_long(&s->gb, WIDTH_SIZE_BITS);
+    (&s->procY)->height = get_bits_long(&s->gb, HEIGHT_SIZE_BITS);
     
     image_size_Y = (&s->procY)->width * (&s->procY)->height;
     
@@ -1212,19 +1218,19 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
     
     for (int i=0; i<total_blocks; i++) 
     {
-        (&s->lheY)->first_color_block[i] = bytestream_get_byte(&lhe_data); 
+        (&s->lheY)->first_color_block[i] = get_bits(&s->gb, FIRST_COLOR_SIZE_BITS);
     }
 
     
     for (int i=0; i<total_blocks; i++) 
     {
-        (&s->lheU)->first_color_block[i] = bytestream_get_byte(&lhe_data); 
+        (&s->lheU)->first_color_block[i] = get_bits(&s->gb, FIRST_COLOR_SIZE_BITS);
     }
     
         
     for (int i=0; i<total_blocks; i++) 
     {
-        (&s->lheV)->first_color_block[i] = bytestream_get_byte(&lhe_data); 
+        (&s->lheV)->first_color_block[i] = get_bits(&s->gb, FIRST_COLOR_SIZE_BITS);
     }
 
     //Pointers to different color components
@@ -1251,8 +1257,6 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
         (&s->procUV)->basic_block[i] = malloc (sizeof(BasicLheBlock) * (s->total_blocks_width));
     }
            
-    init_get_bits(&s->gb, lhe_data, avpkt->size * 8);
-
     lhe_read_huffman_table(s, he_Y, LHE_MAX_HUFF_SIZE_SYMBOLS, LHE_HUFFMAN_NODE_BITS_SYMBOLS, LHE_HUFFMAN_NO_OCCURRENCES_SYMBOLS);
     lhe_read_huffman_table(s, he_UV, LHE_MAX_HUFF_SIZE_SYMBOLS, LHE_HUFFMAN_NODE_BITS_SYMBOLS, LHE_HUFFMAN_NO_OCCURRENCES_SYMBOLS);
     
@@ -1355,8 +1359,6 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
  */ 
 static int mlhe_decode_video(AVCodecContext *avctx, void *data, int *got_frame, AVPacket *avpkt)
 {    
-    av_log(NULL, AV_LOG_INFO, "ffmpeg: DECODING VIDEO \n");
-
     uint32_t total_blocks, pixels_block, image_size_Y, image_size_UV;
     int ret;
     
@@ -1375,11 +1377,14 @@ static int mlhe_decode_video(AVCodecContext *avctx, void *data, int *got_frame, 
     (&s->lheY)->component_prediction = s->frame->data[0];
     (&s->lheU)->component_prediction = s->frame->data[1];
     (&s->lheV)->component_prediction = s->frame->data[2];
-
     
-    if ((&s->lheY)->last_downsampled_image) { /*DELTA VIDEO FRAME*/
+    init_get_bits(&s->gb, lhe_data, avpkt->size * 8);
+    
+    s->lhe_mode = get_bits(&s->gb, LHE_MODE_SIZE_BITS);  
+     
+    if (s->lhe_mode == DELTA_MLHE) { /*DELTA VIDEO FRAME*/
         s->dif_frames_count++;
-        
+                
         image_size_Y = (&s->procY)->width * (&s->procY)->height;
         image_size_UV = (&s->procUV)->width * (&s->procUV)->height; 
         
@@ -1388,40 +1393,30 @@ static int mlhe_decode_video(AVCodecContext *avctx, void *data, int *got_frame, 
         if ((ret = ff_get_buffer(avctx, s->frame, 0)) < 0)
             return ret;
     
-        if (s->lhe_mode == SEQUENTIAL_BASIC_LHE) 
-        {
-            s->total_blocks_width = 1;
-            s->total_blocks_height = 1;
-        } 
-        else 
-        {
-            s->total_blocks_width = HORIZONTAL_BLOCKS;
-            pixels_block = (&s->procY)->width / HORIZONTAL_BLOCKS;
-            s->total_blocks_height = (&s->procY)->height / pixels_block;
-        }
-        
+        s->total_blocks_width = HORIZONTAL_BLOCKS;
+        pixels_block = (&s->procY)->width / HORIZONTAL_BLOCKS;
+        s->total_blocks_height = (&s->procY)->height / pixels_block;
+      
         total_blocks = s->total_blocks_height * s->total_blocks_width;
         
         //First pixel array
         for (int i=0; i<total_blocks; i++) 
         {
-            (&s->lheY)->first_color_block[i] = bytestream_get_byte(&lhe_data); 
+            (&s->lheY)->first_color_block[i] = get_bits(&s->gb, FIRST_COLOR_SIZE_BITS);
         }
 
         
         for (int i=0; i<total_blocks; i++) 
         {
-            (&s->lheU)->first_color_block[i] = bytestream_get_byte(&lhe_data); 
+            (&s->lheU)->first_color_block[i] = get_bits(&s->gb, FIRST_COLOR_SIZE_BITS);
         }
         
             
         for (int i=0; i<total_blocks; i++) 
         {
-            (&s->lheV)->first_color_block[i] = bytestream_get_byte(&lhe_data); 
+            (&s->lheV)->first_color_block[i] = get_bits(&s->gb, FIRST_COLOR_SIZE_BITS); 
         }
         
-        init_get_bits(&s->gb, lhe_data, avpkt->size * 8);
-
         lhe_read_huffman_table(s, he_Y, LHE_MAX_HUFF_SIZE_SYMBOLS, LHE_HUFFMAN_NODE_BITS_SYMBOLS, LHE_HUFFMAN_NO_OCCURRENCES_SYMBOLS);
         lhe_read_huffman_table(s, he_UV, LHE_MAX_HUFF_SIZE_SYMBOLS, LHE_HUFFMAN_NODE_BITS_SYMBOLS, LHE_HUFFMAN_NO_OCCURRENCES_SYMBOLS);
         
@@ -1438,16 +1433,17 @@ static int mlhe_decode_video(AVCodecContext *avctx, void *data, int *got_frame, 
         
         mlhe_decode_delta_frame (s, he_Y, he_UV, image_size_Y, image_size_UV);
     } 
-    else 
-    {
-        s->lhe_mode = bytestream_get_byte(&lhe_data); 
-    
+    else if (s->lhe_mode == ADVANCED_LHE)
+    {    
+        s->dif_frames_count=0;
+        s->global_frames_count++;
+        
         //Pixel format byte, init pixel format
-        s->pixel_format = bytestream_get_byte(&lhe_data); 
+        s->pixel_format = get_bits(&s->gb, PIXEL_FMT_SIZE_BITS);
         lhe_init_pixel_format (avctx, s, s->pixel_format);
             
-        (&s->procY)->width  = bytestream_get_le32(&lhe_data);
-        (&s->procY)->height = bytestream_get_le32(&lhe_data);
+        (&s->procY)->width  = get_bits_long(&s->gb, WIDTH_SIZE_BITS);
+        (&s->procY)->height = get_bits_long(&s->gb, HEIGHT_SIZE_BITS);
         
         image_size_Y = (&s->procY)->width * (&s->procY)->height;
         
@@ -1462,18 +1458,10 @@ static int mlhe_decode_video(AVCodecContext *avctx, void *data, int *got_frame, 
         av_frame_unref(s->frame);
         if ((ret = ff_get_buffer(avctx, s->frame, 0)) < 0)
             return ret;
-    
-        if (s->lhe_mode == SEQUENTIAL_BASIC_LHE) 
-        {
-            s->total_blocks_width = 1;
-            s->total_blocks_height = 1;
-        } 
-        else 
-        {
-            s->total_blocks_width = HORIZONTAL_BLOCKS;
-            pixels_block = (&s->procY)->width / HORIZONTAL_BLOCKS;
-            s->total_blocks_height = (&s->procY)->height / pixels_block;
-        }
+
+        s->total_blocks_width = HORIZONTAL_BLOCKS;
+        pixels_block = (&s->procY)->width / HORIZONTAL_BLOCKS;
+        s->total_blocks_height = (&s->procY)->height / pixels_block;
         
         total_blocks = s->total_blocks_height * s->total_blocks_width;
         
@@ -1484,19 +1472,19 @@ static int mlhe_decode_video(AVCodecContext *avctx, void *data, int *got_frame, 
         
         for (int i=0; i<total_blocks; i++) 
         {
-            (&s->lheY)->first_color_block[i] = bytestream_get_byte(&lhe_data); 
+            (&s->lheY)->first_color_block[i] = get_bits(&s->gb, FIRST_COLOR_SIZE_BITS);
         }
 
         
         for (int i=0; i<total_blocks; i++) 
         {
-            (&s->lheU)->first_color_block[i] = bytestream_get_byte(&lhe_data); 
+            (&s->lheU)->first_color_block[i] = get_bits(&s->gb, FIRST_COLOR_SIZE_BITS);
         }
         
             
         for (int i=0; i<total_blocks; i++) 
         {
-            (&s->lheV)->first_color_block[i] = bytestream_get_byte(&lhe_data); 
+            (&s->lheV)->first_color_block[i] = get_bits(&s->gb, FIRST_COLOR_SIZE_BITS); 
         }
 
         //Pointers to different color components
@@ -1523,8 +1511,6 @@ static int mlhe_decode_video(AVCodecContext *avctx, void *data, int *got_frame, 
             (&s->procUV)->basic_block[i] = malloc (sizeof(BasicLheBlock) * (s->total_blocks_width));
         }
             
-        init_get_bits(&s->gb, lhe_data, avpkt->size * 8);
-
         lhe_read_huffman_table(s, he_Y, LHE_MAX_HUFF_SIZE_SYMBOLS, LHE_HUFFMAN_NODE_BITS_SYMBOLS, LHE_HUFFMAN_NO_OCCURRENCES_SYMBOLS);
         lhe_read_huffman_table(s, he_UV, LHE_MAX_HUFF_SIZE_SYMBOLS, LHE_HUFFMAN_NODE_BITS_SYMBOLS, LHE_HUFFMAN_NO_OCCURRENCES_SYMBOLS);
         

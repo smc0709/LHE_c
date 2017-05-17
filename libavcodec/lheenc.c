@@ -337,8 +337,7 @@ static int lhe_basic_write_file(AVCodecContext *avctx, AVPacket *pkt,
               + sizeof(total_blocks_height) + sizeof(total_blocks_width) //Number of blocks heightwise and widthwise
               + total_blocks * (sizeof(*lheY->first_color_block) + sizeof(*lheU->first_color_block) + sizeof(*lheV->first_color_block)) 
               + LHE_HUFFMAN_TABLE_BYTES_SYMBOLS + //huffman table
-              + n_bytes_components
-              + FILE_OFFSET_BYTES; //components
+              + n_bytes_components; //components
               
     //av_log (NULL, AV_LOG_INFO, "YUV+Header bpp: %f \n ", (n_bytes*8.0)/image_size_Y);
               
@@ -347,7 +346,8 @@ static int lhe_basic_write_file(AVCodecContext *avctx, AVPacket *pkt,
         return ret;
 
     buf = pkt->data; //Pointer to write buffer
-        
+    init_put_bits(&s->pb, buf, n_bytes);
+      
     //Lhe mode byte
     if(OPENMP_FLAGS == CONFIG_OPENMP) 
     {
@@ -358,7 +358,7 @@ static int lhe_basic_write_file(AVCodecContext *avctx, AVPacket *pkt,
         lhe_mode = SEQUENTIAL_BASIC_LHE; 
     }
     
-    bytestream_put_byte(&buf, lhe_mode);
+    put_bits(&s->pb, LHE_MODE_SIZE_BITS, lhe_mode);
     
     //Pixel format byte
     if (avctx->pix_fmt == AV_PIX_FMT_YUV420P)
@@ -372,32 +372,28 @@ static int lhe_basic_write_file(AVCodecContext *avctx, AVPacket *pkt,
         pixel_format = LHE_YUV444;
     }
     
-    bytestream_put_byte(&buf, pixel_format);
-    
+    put_bits(&s->pb, PIXEL_FMT_SIZE_BITS, pixel_format);
+   
     //save width and height
-    bytestream_put_le32(&buf, procY->width);
-    bytestream_put_le32(&buf, procY->height);  
+    put_bits32(&s->pb, procY->width);
+    put_bits32(&s->pb, procY->height);
 
     //Save first component of each signal 
     for (i=0; i<total_blocks; i++) 
     {
-        bytestream_put_byte(&buf, lheY->first_color_block[i]);
+        put_bits(&s->pb, FIRST_COLOR_SIZE_BITS, lheY->first_color_block[i]);
     }
     
       for (i=0; i<total_blocks; i++) 
     {
-        bytestream_put_byte(&buf, lheU->first_color_block[i]);
-
+        put_bits(&s->pb, FIRST_COLOR_SIZE_BITS, lheU->first_color_block[i]);
     }
     
       for (i=0; i<total_blocks; i++) 
     {
-        bytestream_put_byte(&buf, lheV->first_color_block[i]);
+        put_bits(&s->pb, FIRST_COLOR_SIZE_BITS, lheV->first_color_block[i]);
     }
     
-      
-    init_put_bits(&s->pb, buf, LHE_HUFFMAN_TABLE_BYTES_SYMBOLS + n_bytes_components + FILE_OFFSET_BYTES);
-
     //Write Huffman tables
     for (i=0; i<LHE_MAX_HUFF_SIZE_SYMBOLS; i++)
     {
@@ -426,9 +422,7 @@ static int lhe_basic_write_file(AVCodecContext *avctx, AVPacket *pkt,
     {
         put_bits(&s->pb, he_UV[lheV->hops[i]].len , he_UV[lheV->hops[i]].code);
     }
-    
-    put_bits(&s->pb, FILE_OFFSET_BITS , 0);
-    
+        
     gettimeofday(&after , NULL);
 
     //av_log(NULL, AV_LOG_INFO, "LHE WriteTime %.0lf ", time_diff(before , after));
@@ -711,8 +705,7 @@ static int lhe_advanced_write_file(AVCodecContext *avctx, AVPacket *pkt,
               + LHE_HUFFMAN_TABLE_BYTES_MESH
               + LHE_HUFFMAN_TABLE_BYTES_SYMBOLS + //huffman table
               + n_bytes_mesh 
-              + n_bytes_components
-              + FILE_OFFSET_BYTES; //components
+              + n_bytes_components;
               
     //av_log (NULL, AV_LOG_INFO, "YUV+Header bpp: %f \n", (n_bytes*8.0)/image_size_Y);
               
@@ -722,11 +715,13 @@ static int lhe_advanced_write_file(AVCodecContext *avctx, AVPacket *pkt,
 
     buf = pkt->data; //Pointer to write buffer
     
+    init_put_bits(&s->pb, buf, n_bytes);
+   
     //LHE Mode
     lhe_mode = ADVANCED_LHE; 
     
     //Lhe mode byte
-    bytestream_put_byte(&buf, lhe_mode);
+    put_bits(&s->pb, LHE_MODE_SIZE_BITS, lhe_mode);    
     
     //Pixel format byte
     if (avctx->pix_fmt == AV_PIX_FMT_YUV420P)
@@ -740,31 +735,29 @@ static int lhe_advanced_write_file(AVCodecContext *avctx, AVPacket *pkt,
         pixel_format = LHE_YUV444;
     }
     
-    bytestream_put_byte(&buf, pixel_format);
+    put_bits(&s->pb, PIXEL_FMT_SIZE_BITS, pixel_format);    
         
     //save width and height
-    bytestream_put_le32(&buf, procY->width);
-    bytestream_put_le32(&buf, procY->height);  
+    put_bits32(&s->pb, procY->width);    
+    put_bits32(&s->pb, procY->height);    
+
 
     //Save first pixel for each block
     for (i=0; i<total_blocks; i++) 
     {
-        bytestream_put_byte(&buf, lheY->first_color_block[i]);
+        put_bits(&s->pb, FIRST_COLOR_SIZE_BITS, lheY->first_color_block[i]);  
     }
     
       for (i=0; i<total_blocks; i++) 
     {
-        bytestream_put_byte(&buf, lheU->first_color_block[i]);
-
+        put_bits(&s->pb, FIRST_COLOR_SIZE_BITS, lheU->first_color_block[i]);  
     }
     
       for (i=0; i<total_blocks; i++) 
     {
-        bytestream_put_byte(&buf, lheV->first_color_block[i]);       
+        put_bits(&s->pb, FIRST_COLOR_SIZE_BITS, lheV->first_color_block[i]);  
     }
          
-    init_put_bits(&s->pb, buf, LHE_HUFFMAN_TABLE_BYTES_MESH + LHE_HUFFMAN_TABLE_BYTES_SYMBOLS + sizeof(s->ql) + n_bytes_mesh + n_bytes_components + FILE_OFFSET_BYTES);
-
     //Write Huffman tables 
     for (i=0; i<LHE_MAX_HUFF_SIZE_SYMBOLS; i++)
     {
@@ -854,9 +847,8 @@ static int lhe_advanced_write_file(AVCodecContext *avctx, AVPacket *pkt,
             }
         }
     }
-
-    put_bits(&s->pb, FILE_OFFSET_BITS , 0);
     
+    flush_put_bits(&s->pb);
     gettimeofday(&after , NULL);
 
     //av_log(NULL, AV_LOG_INFO, "LHE WriteTime %.0lf \n", time_diff(before , after));
@@ -2345,7 +2337,7 @@ static int mlhe_advanced_write_delta_frame(AVCodecContext *avctx, AVPacket *pkt,
 {
   
     uint8_t *buf;
-    uint8_t pr_interval;
+    uint8_t lhe_mode, pr_interval;
     uint64_t n_bits_hops, n_bits_mesh, n_bytes, n_bytes_components, n_bytes_mesh, total_blocks;
     uint32_t xini_Y, xfin_downsampled_Y, yini_Y, yfin_downsampled_Y, xini_UV, xfin_downsampled_UV, yini_UV, yfin_downsampled_UV; 
     uint64_t pix;
@@ -2385,38 +2377,42 @@ static int mlhe_advanced_write_delta_frame(AVCodecContext *avctx, AVPacket *pkt,
     n_bytes_components = (n_bits_hops/8) + 1;           
     
     //File size
-    n_bytes = total_blocks * (sizeof(*lheY->first_color_block) + sizeof(*lheU->first_color_block) + sizeof(*lheV->first_color_block)) 
+    n_bytes = sizeof(lhe_mode) 
+              + total_blocks * (sizeof(*lheY->first_color_block) + sizeof(*lheU->first_color_block) + sizeof(*lheV->first_color_block)) 
               + LHE_HUFFMAN_TABLE_BYTES_MESH
               + LHE_HUFFMAN_TABLE_BYTES_SYMBOLS + //huffman table
               + n_bytes_mesh 
-              + n_bytes_components
-              + FILE_OFFSET_BYTES; //components
+              + n_bytes_components; //components
                             
     //ff_alloc_packet2 reserves n_bytes of memory
     if ((ret = ff_alloc_packet2(avctx, pkt, n_bytes, 0)) < 0)
         return ret;
 
     buf = pkt->data; //Pointer to write buffer   
+    init_put_bits(&s->pb, buf, n_bytes);
+    
+    //LHE Mode
+    lhe_mode = DELTA_MLHE; 
+    
+    //Lhe mode byte
+    put_bits(&s->pb, LHE_MODE_SIZE_BITS, lhe_mode);
 
     //Save first delta for each block
     for (i=0; i<total_blocks; i++) 
     {
-        bytestream_put_byte(&buf, lheY->first_color_block[i]);
+        put_bits(&s->pb, FIRST_COLOR_SIZE_BITS, lheY->first_color_block[i]);
     }
     
     for (i=0; i<total_blocks; i++) 
     {
-        bytestream_put_byte(&buf, lheU->first_color_block[i]);
-
+        put_bits(&s->pb, FIRST_COLOR_SIZE_BITS, lheU->first_color_block[i]);
     }
     
     for (i=0; i<total_blocks; i++) 
     {
-        bytestream_put_byte(&buf, lheV->first_color_block[i]);       
+        put_bits(&s->pb, FIRST_COLOR_SIZE_BITS, lheV->first_color_block[i]);
     }
          
-    init_put_bits(&s->pb, buf, LHE_HUFFMAN_TABLE_BYTES_MESH + LHE_HUFFMAN_TABLE_BYTES_SYMBOLS + n_bytes_mesh + n_bytes_components + FILE_OFFSET_BYTES);
-
     //Write Huffman tables 
     for (i=0; i<LHE_MAX_HUFF_SIZE_SYMBOLS; i++)
     {
@@ -2504,7 +2500,7 @@ static int mlhe_advanced_write_delta_frame(AVCodecContext *avctx, AVPacket *pkt,
         }
     }
 
-    put_bits(&s->pb, FILE_OFFSET_BITS , 0);
+    flush_put_bits(&s->pb);
     
     return n_bytes;
 }
@@ -2747,7 +2743,7 @@ static int mlhe_encode_video(AVCodecContext *avctx, AVPacket *pkt,
     (&s->lheV)->first_color_block = malloc(sizeof(uint8_t) * total_blocks);
           
     /* If there exists any reference to a last frame, we are making video*/
-    if ((&s->lheY)->last_downsampled_image) 
+    if ((&s->lheY)->last_downsampled_image && s->dif_frames_count<30) 
     {
         s->dif_frames_count++;
         mlhe_delta_frame_encode (s, frame,
