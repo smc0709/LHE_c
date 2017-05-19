@@ -227,6 +227,17 @@ static uint8_t lhe_translate_huffman_into_interval (uint32_t huffman_symbol, Lhe
      }
  }
 
+ 
+ 
+ 
+ 
+ 
+ //contar numero de hops nulos
+            //si llega a 4 hops nulos, sabemos que va a llegar un código RLC de 3 bits
+            //get_bits(&s->gb, 3)
+            //si llega 7, viene otro RLC
+            //si no llega 7, vuelves a 1
+
  static void lhe_basic_read_file_symbols_lum (LheState *s, LheHuffEntry *he, uint32_t image_size, uint8_t *symbols)
  {
      uint8_t symbol, count_bits;
@@ -236,22 +247,123 @@ static uint8_t lhe_translate_huffman_into_interval (uint32_t huffman_symbol, Lhe
      decoded_symbols = 0;
      huffman_symbol = 0;
      count_bits = 0;
+     
+     ///
+     int counter_hop_0 = 0;   
+     int bit_number = 1;
+     int max_hops = 4;
+     int counter = 0;
+     // av_log (NULL, AV_LOG_INFO, "\n\n\n");
 
+     
+     av_log (NULL, AV_LOG_INFO, "\n");
+     av_log (NULL, AV_LOG_INFO, ";");
+     
      while (decoded_symbols<image_size) {
+               
+         
+        huffman_symbol = (huffman_symbol<<1) | get_bits(&s->gb, bit_number);
+        count_bits++;
+        symbol = lhe_translate_huffman_into_symbol(huffman_symbol, he, count_bits);
 
-         huffman_symbol = (huffman_symbol<<1) | get_bits(&s->gb, 1);
-         count_bits++;
 
-         symbol = lhe_translate_huffman_into_symbol(huffman_symbol, he, count_bits);
+        if(symbol == HOP_0){   
+            counter_hop_0++; 
+            
+            if(counter_hop_0 == (max_hops)){
+                
+                    count_bits = 0;
+                    
+                    symbols[decoded_symbols] = HOP_0;
+                    decoded_symbols = decoded_symbols + 1;
+                    
+                    if( (decoded_symbols-1) % 64 == 0){
+                        av_log (NULL, AV_LOG_INFO, "\n");
+                        av_log (NULL, AV_LOG_INFO, ";");
+                    }
+        
+                    // av_log (NULL, AV_LOG_INFO, "%d %d   c_h: %d;",decoded_symbols, HOP_0, counter_hop_0);
+                    av_log (NULL, AV_LOG_INFO, "%d;", HOP_0);
 
-         if (symbol != NO_SYMBOL)
-         {
-             symbols[decoded_symbols] = symbol;
-             decoded_symbols++;
-             huffman_symbol = 0;
-             count_bits = 0;
-         }
+                    
+                    huffman_symbol = 0;
+                    count_bits = 0;
+                    
+                    int total = 0;
+                    
+                    unsigned int number = get_bits(&s->gb, 3);
+                    // av_log (NULL, AV_LOG_INFO, "Number: %d c_h: %d;", number, counter_hop_0);
+                    total += number;
+                    
+                    while (number == 7){
+                            number = get_bits(&s->gb, 3);
+                            // av_log (NULL, AV_LOG_INFO, "Number: %d c_h: %d;", number, counter_hop_0);
+                            total += 8;
+                    }
+     
+                    // av_log (NULL, AV_LOG_INFO, "Total: %d;", total);
+                    
+                    for (int i=0; i<total; i++) {    
+                        symbols[decoded_symbols] = HOP_0;
+                        decoded_symbols = decoded_symbols + 1;
+                        
+                        if((decoded_symbols-1) % 64 == 0){
+                            av_log (NULL, AV_LOG_INFO, "\n");
+                            av_log (NULL, AV_LOG_INFO, ";");
+                        }
+                    
+                        // av_log (NULL, AV_LOG_INFO, "%d %d   c_h: %d;",decoded_symbols, HOP_0, counter_hop_0);
+                        av_log (NULL, AV_LOG_INFO, "%d;", HOP_0);
+                    }
+            }
+            else{
+                    
+                symbol = lhe_translate_huffman_into_symbol(huffman_symbol, he, count_bits);
+
+                if (symbol != NO_SYMBOL){      
+                    symbols[decoded_symbols] = symbol;
+                    decoded_symbols++;
+                    
+                    if((decoded_symbols-1) % 64 == 0){
+                            av_log (NULL, AV_LOG_INFO, "\n");
+                            av_log (NULL, AV_LOG_INFO, ";");
+                    }
+                        
+                        
+                    // av_log (NULL, AV_LOG_INFO, "%d %d   c_h: %d;",decoded_symbols, symbol, counter_hop_0);
+                    av_log (NULL, AV_LOG_INFO, "%d;", symbol);
+                    huffman_symbol = 0;
+                    count_bits = 0;
+                }   
+            }
+        }
+        
+        else{                       
+            counter_hop_0 = 0; 
+            
+            symbol = lhe_translate_huffman_into_symbol(huffman_symbol, he, count_bits);
+
+            if (symbol != NO_SYMBOL){      
+                symbols[decoded_symbols] = symbol;
+                decoded_symbols++;
+                
+                if((decoded_symbols-1) % 64 == 0){
+                            av_log (NULL, AV_LOG_INFO, "\n");
+                            av_log (NULL, AV_LOG_INFO, ";");
+                }
+                        
+                // av_log (NULL, AV_LOG_INFO, "%d %d   c_h: %d;",decoded_symbols, symbol, counter_hop_0);
+                av_log (NULL, AV_LOG_INFO, "%d;", symbol);
+                huffman_symbol = 0;
+                count_bits = 0;
+            }
+            
+        }
+         
      }
+     
+     // av_log (NULL, AV_LOG_INFO, "\n\n\n");
+
  }
 
 //==================================================================
@@ -293,8 +405,8 @@ static void lhe_advanced_read_file_symbols (LheState *s, LheHuffEntry *he, LhePr
 
             huffman_symbol = (huffman_symbol<<1) | get_bits(&s->gb, 1);
             count_bits++;
-
             symbol = lhe_translate_huffman_into_symbol(huffman_symbol, he, count_bits);
+
 
             if (symbol != NO_SYMBOL)
             {
