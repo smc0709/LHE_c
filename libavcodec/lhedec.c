@@ -292,18 +292,18 @@ static uint8_t lhe_translate_huffman_into_interval (uint32_t huffman_symbol, Lhe
                     int total = 0;
                     
                     unsigned int number = get_bits(&s->gb, 3);
-                    // av_log (NULL, AV_LOG_INFO, "Number: %d c_h: %d;", number, counter_hop_0);
+                    av_log (NULL, AV_LOG_INFO, "Number: %d c_h: %d;", number, counter_hop_0);
                     total += number;
                     
                     while (number == 7){
                             number = get_bits(&s->gb, 3);
-                            // av_log (NULL, AV_LOG_INFO, "Number: %d c_h: %d;", number, counter_hop_0);
+                            av_log (NULL, AV_LOG_INFO, "Number: %d c_h: %d;", number, counter_hop_0);
                             total += 8;
                     }
      
-                    // av_log (NULL, AV_LOG_INFO, "Total: %d;", total);
+                    av_log (NULL, AV_LOG_INFO, "Total: %d;", total);
                     
-                    for (int i=0; i<total; i++) {    
+                    for (int i=0; i< total; i++) {    
                         symbols[decoded_symbols] = HOP_0;
                         decoded_symbols = decoded_symbols + 1;
                         
