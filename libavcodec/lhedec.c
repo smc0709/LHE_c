@@ -262,11 +262,24 @@ static uint8_t lhe_translate_huffman_into_interval (uint32_t huffman_symbol, Lhe
      while (decoded_symbols<image_size) {
                
          
+        /*
+        unsigned int number = get_bits(&s->gb, 1);
+        av_log (NULL, AV_LOG_INFO, "%d ",number);
+        decoded_symbols++;
+        if(decoded_symbols % 64 == 0){
+            av_log (NULL, AV_LOG_INFO, "%s;","\n");
+        }*/
+        
+        
+        
+        
+        
         huffman_symbol = (huffman_symbol<<1) | get_bits(&s->gb, bit_number);
         count_bits++;
         symbol = lhe_translate_huffman_into_symbol(huffman_symbol, he, count_bits);
 
-
+        
+        
         if(symbol == HOP_0){   
             counter_hop_0++; 
             
@@ -298,7 +311,7 @@ static uint8_t lhe_translate_huffman_into_interval (uint32_t huffman_symbol, Lhe
                     while (number == 7){
                             number = get_bits(&s->gb, 3);
                             av_log (NULL, AV_LOG_INFO, "Number: %d c_h: %d;", number, counter_hop_0);
-                            total += 8;
+                            total += 7;
                     }
      
                     av_log (NULL, AV_LOG_INFO, "Total: %d;", total);
@@ -356,11 +369,10 @@ static uint8_t lhe_translate_huffman_into_interval (uint32_t huffman_symbol, Lhe
                 av_log (NULL, AV_LOG_INFO, "%d;", symbol);
                 huffman_symbol = 0;
                 count_bits = 0;
-            }
-            
-        }
-         
+            }   
+        } 
      }
+     
      
      // av_log (NULL, AV_LOG_INFO, "\n\n\n");
 
