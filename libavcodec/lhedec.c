@@ -189,6 +189,10 @@ static uint8_t lhe_translate_huffman_into_interval (uint32_t huffman_symbol, Lhe
 
 }
 
+
+
+
+
 //==================================================================
 // BASIC LHE FILE
 //==================================================================
@@ -248,21 +252,16 @@ static uint8_t lhe_translate_huffman_into_interval (uint32_t huffman_symbol, Lhe
      huffman_symbol = 0;
      count_bits = 0;
      
-     ///
      int counter_hop_0 = 0;   
-     int bit_number = 1;
+     int bit_number = 3;
      int max_hops = 4;
-     int counter = 0;
-     // av_log (NULL, AV_LOG_INFO, "\n\n\n");
+     int max_number = 7;
 
-     
-//      av_log (NULL, AV_LOG_INFO, "\n");
-//      av_log (NULL, AV_LOG_INFO, ";");
-     
      while (decoded_symbols<image_size) {
                
          
-        /*
+        /*  
+        //Print bit by bit
         unsigned int number = get_bits(&s->gb, 1);
         av_log (NULL, AV_LOG_INFO, "%d ",number);
         decoded_symbols++;
@@ -271,69 +270,36 @@ static uint8_t lhe_translate_huffman_into_interval (uint32_t huffman_symbol, Lhe
         }
         */
         
-        
-        
-        
-        huffman_symbol = (huffman_symbol<<1) | get_bits(&s->gb, bit_number);
+        huffman_symbol = (huffman_symbol<<1) | get_bits(&s->gb, 1);
         count_bits++;
         symbol = lhe_translate_huffman_into_symbol(huffman_symbol, he, count_bits);
 
         
         if(symbol == HOP_0){   
             counter_hop_0++; 
-            
-            
-            
             if(counter_hop_0 == (max_hops)){
-                
                     count_bits = 0;
-                    
                     symbols[decoded_symbols] = HOP_0;
                     decoded_symbols = decoded_symbols + 1;
-                    
-//                     if( (decoded_symbols-1) % 64 == 0){
-//                         av_log (NULL, AV_LOG_INFO, "\n");
-//                         av_log (NULL, AV_LOG_INFO, ";");
-//                     }
-        
-                    // av_log (NULL, AV_LOG_INFO, "%d %d   c_h: %d;",decoded_symbols, HOP_0, counter_hop_0);
-//                     av_log (NULL, AV_LOG_INFO, "%d;", HOP_0);
-
-                    
                     huffman_symbol = 0;
                     count_bits = 0;
-                    
                     int total = 0;
-                    
-                    int number = get_bits(&s->gb, 3);
-//                     av_log (NULL, AV_LOG_INFO, "Number: %d c_h: %d;", number, counter_hop_0);
-                    
-                    if (number != 7){
+                    int number = get_bits(&s->gb, bit_number);
+                    if (number != max_number){
                         total = number;
                     }
                     
                     else{
                         total = total + number;
-                        while(number == 7){
-                            number = get_bits(&s->gb, 3);
-//                             av_log (NULL, AV_LOG_INFO, "Number: %d c_h: %d;", number, counter_hop_0);
+                        while(number == max_number){
+                            number = get_bits(&s->gb, bit_number);
                             total = total + number;
                         }
                     }                    
-                  
-//                     av_log (NULL, AV_LOG_INFO, "Total: %d;", total);
-                    
+
                     for (int i=0; i< total; i++) {    
                         symbols[decoded_symbols] = HOP_0;
                         decoded_symbols = decoded_symbols + 1;
-                        
-//                         if((decoded_symbols-1) % 64 == 0){
-//                             av_log (NULL, AV_LOG_INFO, "\n");
-//                             av_log (NULL, AV_LOG_INFO, ";");
-//                         }
-                    
-                        // av_log (NULL, AV_LOG_INFO, "%d %d   c_h: %d;",decoded_symbols, HOP_0, counter_hop_0);
-//                         av_log (NULL, AV_LOG_INFO, "%d;", HOP_0);
                     }
             }
             else{
@@ -343,15 +309,7 @@ static uint8_t lhe_translate_huffman_into_interval (uint32_t huffman_symbol, Lhe
                 if (symbol != NO_SYMBOL){      
                     symbols[decoded_symbols] = symbol;
                     decoded_symbols++;
-                    
-//                     if((decoded_symbols-1) % 64 == 0){
-//                             av_log (NULL, AV_LOG_INFO, "\n");
-//                             av_log (NULL, AV_LOG_INFO, ";");
-//                     }
-                        
-                        
-                    // av_log (NULL, AV_LOG_INFO, "%d %d   c_h: %d;",decoded_symbols, symbol, counter_hop_0);
-//                     av_log (NULL, AV_LOG_INFO, "%d;", symbol);
+//                     av_log (NULL, AV_LOG_INFO, "%s%d;","\n", symbol);
                     huffman_symbol = 0;
                     count_bits = 0;
                 }   
@@ -360,29 +318,17 @@ static uint8_t lhe_translate_huffman_into_interval (uint32_t huffman_symbol, Lhe
         
         else{                       
             counter_hop_0 = 0; 
-            
             symbol = lhe_translate_huffman_into_symbol(huffman_symbol, he, count_bits);
-
             if (symbol != NO_SYMBOL){      
                 symbols[decoded_symbols] = symbol;
                 decoded_symbols++;
-                
-//                 if((decoded_symbols-1) % 64 == 0){
-//                             av_log (NULL, AV_LOG_INFO, "\n");
-//                             av_log (NULL, AV_LOG_INFO, ";");
-//                 }
-                        
-                // av_log (NULL, AV_LOG_INFO, "%d %d   c_h: %d;",decoded_symbols, symbol, counter_hop_0);
-//                 av_log (NULL, AV_LOG_INFO, "%d;", symbol);
+               
+//                 av_log (NULL, AV_LOG_INFO, "%s%d;","\n", symbol);
                 huffman_symbol = 0;
                 count_bits = 0;
             }   
         } 
      }
-     
-     
-     // av_log (NULL, AV_LOG_INFO, "\n\n\n");
-
  }
 
 //==================================================================
