@@ -256,8 +256,8 @@ static uint8_t lhe_translate_huffman_into_interval (uint32_t huffman_symbol, Lhe
      // av_log (NULL, AV_LOG_INFO, "\n\n\n");
 
      
-     av_log (NULL, AV_LOG_INFO, "\n");
-     av_log (NULL, AV_LOG_INFO, ";");
+//      av_log (NULL, AV_LOG_INFO, "\n");
+//      av_log (NULL, AV_LOG_INFO, ";");
      
      while (decoded_symbols<image_size) {
                
@@ -268,8 +268,8 @@ static uint8_t lhe_translate_huffman_into_interval (uint32_t huffman_symbol, Lhe
         decoded_symbols++;
         if(decoded_symbols % 64 == 0){
             av_log (NULL, AV_LOG_INFO, "%s;","\n");
-        }*/
-        
+        }
+        */
         
         
         
@@ -279,9 +279,10 @@ static uint8_t lhe_translate_huffman_into_interval (uint32_t huffman_symbol, Lhe
         symbol = lhe_translate_huffman_into_symbol(huffman_symbol, he, count_bits);
 
         
-        
         if(symbol == HOP_0){   
             counter_hop_0++; 
+            
+            
             
             if(counter_hop_0 == (max_hops)){
                 
@@ -290,13 +291,13 @@ static uint8_t lhe_translate_huffman_into_interval (uint32_t huffman_symbol, Lhe
                     symbols[decoded_symbols] = HOP_0;
                     decoded_symbols = decoded_symbols + 1;
                     
-                    if( (decoded_symbols-1) % 64 == 0){
-                        av_log (NULL, AV_LOG_INFO, "\n");
-                        av_log (NULL, AV_LOG_INFO, ";");
-                    }
+//                     if( (decoded_symbols-1) % 64 == 0){
+//                         av_log (NULL, AV_LOG_INFO, "\n");
+//                         av_log (NULL, AV_LOG_INFO, ";");
+//                     }
         
                     // av_log (NULL, AV_LOG_INFO, "%d %d   c_h: %d;",decoded_symbols, HOP_0, counter_hop_0);
-                    av_log (NULL, AV_LOG_INFO, "%d;", HOP_0);
+//                     av_log (NULL, AV_LOG_INFO, "%d;", HOP_0);
 
                     
                     huffman_symbol = 0;
@@ -304,29 +305,35 @@ static uint8_t lhe_translate_huffman_into_interval (uint32_t huffman_symbol, Lhe
                     
                     int total = 0;
                     
-                    unsigned int number = get_bits(&s->gb, 3);
-                    av_log (NULL, AV_LOG_INFO, "Number: %d c_h: %d;", number, counter_hop_0);
-                    total += number;
+                    int number = get_bits(&s->gb, 3);
+//                     av_log (NULL, AV_LOG_INFO, "Number: %d c_h: %d;", number, counter_hop_0);
                     
-                    while (number == 7){
-                            number = get_bits(&s->gb, 3);
-                            av_log (NULL, AV_LOG_INFO, "Number: %d c_h: %d;", number, counter_hop_0);
-                            total += 7;
+                    if (number != 7){
+                        total = number;
                     }
-     
-                    av_log (NULL, AV_LOG_INFO, "Total: %d;", total);
+                    
+                    else{
+                        total = total + number;
+                        while(number == 7){
+                            number = get_bits(&s->gb, 3);
+//                             av_log (NULL, AV_LOG_INFO, "Number: %d c_h: %d;", number, counter_hop_0);
+                            total = total + number;
+                        }
+                    }                    
+                  
+//                     av_log (NULL, AV_LOG_INFO, "Total: %d;", total);
                     
                     for (int i=0; i< total; i++) {    
                         symbols[decoded_symbols] = HOP_0;
                         decoded_symbols = decoded_symbols + 1;
                         
-                        if((decoded_symbols-1) % 64 == 0){
-                            av_log (NULL, AV_LOG_INFO, "\n");
-                            av_log (NULL, AV_LOG_INFO, ";");
-                        }
+//                         if((decoded_symbols-1) % 64 == 0){
+//                             av_log (NULL, AV_LOG_INFO, "\n");
+//                             av_log (NULL, AV_LOG_INFO, ";");
+//                         }
                     
                         // av_log (NULL, AV_LOG_INFO, "%d %d   c_h: %d;",decoded_symbols, HOP_0, counter_hop_0);
-                        av_log (NULL, AV_LOG_INFO, "%d;", HOP_0);
+//                         av_log (NULL, AV_LOG_INFO, "%d;", HOP_0);
                     }
             }
             else{
@@ -337,14 +344,14 @@ static uint8_t lhe_translate_huffman_into_interval (uint32_t huffman_symbol, Lhe
                     symbols[decoded_symbols] = symbol;
                     decoded_symbols++;
                     
-                    if((decoded_symbols-1) % 64 == 0){
-                            av_log (NULL, AV_LOG_INFO, "\n");
-                            av_log (NULL, AV_LOG_INFO, ";");
-                    }
+//                     if((decoded_symbols-1) % 64 == 0){
+//                             av_log (NULL, AV_LOG_INFO, "\n");
+//                             av_log (NULL, AV_LOG_INFO, ";");
+//                     }
                         
                         
                     // av_log (NULL, AV_LOG_INFO, "%d %d   c_h: %d;",decoded_symbols, symbol, counter_hop_0);
-                    av_log (NULL, AV_LOG_INFO, "%d;", symbol);
+//                     av_log (NULL, AV_LOG_INFO, "%d;", symbol);
                     huffman_symbol = 0;
                     count_bits = 0;
                 }   
@@ -360,13 +367,13 @@ static uint8_t lhe_translate_huffman_into_interval (uint32_t huffman_symbol, Lhe
                 symbols[decoded_symbols] = symbol;
                 decoded_symbols++;
                 
-                if((decoded_symbols-1) % 64 == 0){
-                            av_log (NULL, AV_LOG_INFO, "\n");
-                            av_log (NULL, AV_LOG_INFO, ";");
-                }
+//                 if((decoded_symbols-1) % 64 == 0){
+//                             av_log (NULL, AV_LOG_INFO, "\n");
+//                             av_log (NULL, AV_LOG_INFO, ";");
+//                 }
                         
                 // av_log (NULL, AV_LOG_INFO, "%d %d   c_h: %d;",decoded_symbols, symbol, counter_hop_0);
-                av_log (NULL, AV_LOG_INFO, "%d;", symbol);
+//                 av_log (NULL, AV_LOG_INFO, "%d;", symbol);
                 huffman_symbol = 0;
                 count_bits = 0;
             }   
