@@ -244,91 +244,85 @@ static uint8_t lhe_translate_huffman_into_interval (uint32_t huffman_symbol, Lhe
 
  static void lhe_basic_read_file_symbols_lum (LheState *s, LheHuffEntry *he, uint32_t image_size, uint8_t *symbols)
  {
-     uint8_t symbol, count_bits;
-     uint32_t huffman_symbol, decoded_symbols;
-
-     symbol = NO_SYMBOL;
-     decoded_symbols = 0;
-     huffman_symbol = 0;
-     count_bits = 0;
-     
-     int counter_hop_0 = 0;   
-     int bit_number = 3;
-     int max_hops = 4;
-     int max_number = 7;
-
-     while (decoded_symbols<image_size) {
-               
-         
+    uint8_t symbol, count_bits;
+    uint32_t huffman_symbol, decoded_symbols;
+    unsigned int counter_hop_0; 
+    symbol = NO_SYMBOL;
+    decoded_symbols = 0;
+    huffman_symbol = 0;
+    count_bits = 0;
+    counter_hop_0 = 0;
+    
+    while (decoded_symbols<image_size)
+    {      
         /*  
         //Print bit by bit
         unsigned int number = get_bits(&s->gb, 1);
         av_log (NULL, AV_LOG_INFO, "%d ",number);
         decoded_symbols++;
         if(decoded_symbols % 64 == 0){
-            av_log (NULL, AV_LOG_INFO, "%s;","\n");
+        av_log (NULL, AV_LOG_INFO, "%s;","\n");
         }
         */
-        
         huffman_symbol = (huffman_symbol<<1) | get_bits(&s->gb, 1);
         count_bits++;
         symbol = lhe_translate_huffman_into_symbol(huffman_symbol, he, count_bits);
-
-        
-        if(symbol == HOP_0){   
+        if(symbol == HOP_0)
+        {   
             counter_hop_0++; 
-            if(counter_hop_0 == (max_hops)){
-                    count_bits = 0;
-                    symbols[decoded_symbols] = HOP_0;
-                    decoded_symbols = decoded_symbols + 1;
-                    huffman_symbol = 0;
-                    count_bits = 0;
-                    int total = 0;
-                    int number = get_bits(&s->gb, bit_number);
-                    if (number != max_number){
-                        total = number;
-                    }
-                    
-                    else{
+            if(counter_hop_0 == (MAX_HOPS))
+            {
+                count_bits = 0;
+                symbols[decoded_symbols] = HOP_0;
+                decoded_symbols = decoded_symbols+1;
+                huffman_symbol = 0;
+                count_bits = 0;
+                int total = 0;
+                int number = get_bits(&s->gb, BIT_NUMBER);
+                if (number != MAX_NUMBER)
+                {
+                    total = number;
+                }
+                else
+                {
+                    total = total + number;
+                    while(number == MAX_NUMBER)
+                    {
+                        number = get_bits(&s->gb, BIT_NUMBER);
                         total = total + number;
-                        while(number == max_number){
-                            number = get_bits(&s->gb, bit_number);
-                            total = total + number;
-                        }
-                    }                    
-
-                    for (int i=0; i< total; i++) {    
-                        symbols[decoded_symbols] = HOP_0;
-                        decoded_symbols = decoded_symbols + 1;
                     }
+                }                    
+                for (int i=0; i< total; i++) 
+                {    
+                    symbols[decoded_symbols] = HOP_0;
+                    decoded_symbols = decoded_symbols+1;
+                }
             }
-            else{
-                    
+            else
+            {
                 symbol = lhe_translate_huffman_into_symbol(huffman_symbol, he, count_bits);
-
-                if (symbol != NO_SYMBOL){      
+                if (symbol != NO_SYMBOL)
+                {      
                     symbols[decoded_symbols] = symbol;
                     decoded_symbols++;
-//                     av_log (NULL, AV_LOG_INFO, "%s%d;","\n", symbol);
                     huffman_symbol = 0;
                     count_bits = 0;
                 }   
             }
         }
-        
-        else{                       
+        else
+        {                       
             counter_hop_0 = 0; 
             symbol = lhe_translate_huffman_into_symbol(huffman_symbol, he, count_bits);
-            if (symbol != NO_SYMBOL){      
+            if (symbol != NO_SYMBOL)
+            {      
                 symbols[decoded_symbols] = symbol;
                 decoded_symbols++;
-               
-//                 av_log (NULL, AV_LOG_INFO, "%s%d;","\n", symbol);
                 huffman_symbol = 0;
                 count_bits = 0;
             }   
-        } 
-     }
+        }
+    }
  }
 
 //==================================================================

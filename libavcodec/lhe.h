@@ -143,6 +143,11 @@ static const uint8_t mlhe_sig[4] = "MLHE";
 #define FILE_OFFSET_BYTES 4//800
 #define FILE_OFFSET_BITS FILE_OFFSET_BYTES*8
 
+//RLC - ricardo
+#define MAX_HOPS 4
+#define BIT_NUMBER 3
+#define MAX_NUMBER 7
+
 typedef struct LheBasicPrec {
     uint8_t prec_luminance[Y_MAX_COMPONENT][RATIO][H1_RANGE][NUMBER_OF_HOPS]; // precomputed luminance component
     uint8_t best_hop [RATIO][H1_RANGE][Y_MAX_COMPONENT][Y_MAX_COMPONENT]; //ratio - h1 - original color - prediction
