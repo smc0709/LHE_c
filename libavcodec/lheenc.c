@@ -1960,9 +1960,9 @@ static float lhe_advanced_encode (LheContext *s, const AVFrame *frame,
     ppp_max_theoric = (&s->procY)->theoretical_block_width/SIDE_MIN;
     compression_factor = (&s->prec)->compression_factor[ppp_max_theoric][s->ql];
 
-    intermediate_downsample_Y = malloc (sizeof(uint8_t) * image_size_Y);
-    intermediate_downsample_U = malloc (sizeof(uint8_t) * image_size_UV);
-    intermediate_downsample_V = malloc (sizeof(uint8_t) * image_size_UV);
+    intermediate_downsample_Y = av_calloc (image_size_Y, sizeof(uint8_t));
+    intermediate_downsample_U = av_calloc (image_size_UV, sizeof(uint8_t));
+    intermediate_downsample_V = av_calloc (image_size_UV, sizeof(uint8_t));
     
     #pragma omp parallel for
     for (int block_y=0; block_y<total_blocks_height; block_y++)      
@@ -2042,6 +2042,10 @@ static float lhe_advanced_encode (LheContext *s, const AVFrame *frame,
             lhe_advanced_encode_block (&s->prec, &s->procUV, &s->lheV, total_blocks_width, block_x,  block_y);         
         }
     } 
+    
+    av_free(intermediate_downsample_Y);
+    av_free(intermediate_downsample_U);
+    av_free(intermediate_downsample_V);
    
     return compression_factor;
 }
@@ -2506,8 +2510,89 @@ static int mlhe_advanced_write_delta_frame(AVCodecContext *avctx, AVPacket *pkt,
 }
 
 //==================================================================
-// LHE VIDEO FUNCTIONS
+// LHE IMAGE FUNCTIONS
 //==================================================================
+/**
+ * Free pointers
+ * 
+ * @param *s Pointers
+ * @param total_blocks_width 
+ * @param total_blocks_height 
+ */
+static void lhe_basic_free(LheContext *s, uint32_t total_blocks_width, uint32_t total_blocks_height) 
+{
+    av_free((&s->lheY)->component_prediction);
+    av_free((&s->lheU)->component_prediction);
+    av_free((&s->lheV)->component_prediction);
+    av_free((&s->lheY)->hops);
+    av_free((&s->lheU)->hops);
+    av_free((&s->lheV)->hops);
+    av_free((&s->lheY)->first_color_block);
+    av_free((&s->lheU)->first_color_block);
+    av_free((&s->lheV)->first_color_block);
+        
+    for (int i=0; i < total_blocks_height; i++)
+    {
+        av_free((&s->procY)->basic_block[i]);
+    }
+    
+    av_free((&s->procY)->basic_block);
+
+        
+    for (int i=0; i < total_blocks_height; i++)
+    {
+        av_free((&s->procUV)->basic_block[i]);
+    }
+    
+    av_free((&s->procUV)->basic_block);
+}
+
+/**
+ * Free pointers
+ * 
+ * @param *s Pointers
+ * @param total_blocks_width 
+ * @param total_blocks_height 
+ */
+static void lhe_advanced_free(LheContext *s, uint32_t total_blocks_width, uint32_t total_blocks_height) 
+{    
+    lhe_basic_free(s, total_blocks_width, total_blocks_height);
+
+    for (int i=0; i<total_blocks_height+1; i++) 
+    {
+        av_free((&s->procY)->perceptual_relevance_x[i]);
+    }
+    
+    av_free((&s->procY)->perceptual_relevance_x);
+    
+    for (int i=0; i<total_blocks_height+1; i++) 
+    {
+        av_free((&s->procY)->perceptual_relevance_y[i]);
+    }   
+    
+    av_free((&s->procY)->perceptual_relevance_y);
+
+    //Advanced blocks    
+    for (int i=0; i < total_blocks_height; i++)
+    {
+        av_free((&s->procY)->advanced_block[i]); 
+    }
+    
+    av_free((&s->procY)->advanced_block); 
+
+        
+    for (int i=0; i < total_blocks_height; i++)
+    {
+        av_free((&s->procUV)->advanced_block[i]);
+    }
+    
+    av_free((&s->procUV)->advanced_block); 
+    
+    av_free((&s->lheY)->downsampled_image);
+    av_free((&s->lheU)->downsampled_image);
+    av_free((&s->lheV)->downsampled_image);
+}
+
 /**
  * Image encode method
  * 
@@ -2555,34 +2640,35 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     component_original_data_U = frame->data[1];
     component_original_data_V = frame->data[2];
       
-    (&s->lheY)->component_prediction = malloc(sizeof(uint8_t) * image_size_Y);  
-    (&s->lheU)->component_prediction = malloc(sizeof(uint8_t) * image_size_UV); 
-    (&s->lheV)->component_prediction = malloc(sizeof(uint8_t) * image_size_UV);  
-    (&s->lheY)->hops = malloc(sizeof(uint8_t) * image_size_Y);
-    (&s->lheU)->hops = malloc(sizeof(uint8_t) * image_size_UV);
-    (&s->lheV)->hops = malloc(sizeof(uint8_t) * image_size_UV);
-    (&s->lheY)->first_color_block = malloc(sizeof(uint8_t) * total_blocks);
-    (&s->lheU)->first_color_block = malloc(sizeof(uint8_t) * total_blocks);
-    (&s->lheV)->first_color_block = malloc(sizeof(uint8_t) * total_blocks);
+    
+    (&s->lheY)->component_prediction = av_calloc(image_size_Y , sizeof(uint8_t));  
+    (&s->lheU)->component_prediction = av_calloc(image_size_UV , sizeof(uint8_t));
+    (&s->lheV)->component_prediction = av_calloc(image_size_UV , sizeof(uint8_t)); 
+    (&s->lheY)->hops = av_calloc(image_size_Y , sizeof(uint8_t));
+    (&s->lheU)->hops = av_calloc(image_size_UV , sizeof(uint8_t));
+    (&s->lheV)->hops = av_calloc(image_size_UV , sizeof(uint8_t));
+    (&s->lheY)->first_color_block = av_calloc(total_blocks , sizeof(uint8_t));
+    (&s->lheU)->first_color_block = av_calloc(total_blocks , sizeof(uint8_t));
+    (&s->lheV)->first_color_block = av_calloc(total_blocks , sizeof(uint8_t));
+    
+    (&s->procY)->basic_block = av_calloc(total_blocks_height, sizeof(BasicLheBlock *));
+    
+    for (int i=0; i < total_blocks_height; i++)
+    {
+        (&s->procY)->basic_block[i] = av_calloc (total_blocks_width, sizeof(BasicLheBlock));  
+    }
+    
+    (&s->procUV)->basic_block = av_calloc (total_blocks_height, sizeof(BasicLheBlock *));
+    
+    for (int i=0; i < total_blocks_height; i++)
+    {
+        (&s->procUV)->basic_block[i] = av_calloc (total_blocks_width, sizeof(BasicLheBlock));
+    }
       
     gettimeofday(&before , NULL);
     
     if (s->basic_lhe) 
-    {
-        (&s->procY)->basic_block = malloc(sizeof(BasicLheBlock *) * total_blocks_height);
-    
-        for (int i=0; i < total_blocks_height; i++)
-        {
-            (&s->procY)->basic_block[i] = malloc (sizeof(BasicLheBlock) * (total_blocks_width));
-        }
-        
-        (&s->procUV)->basic_block = malloc(sizeof(BasicLheBlock *) * total_blocks_height);
-        
-        for (int i=0; i < total_blocks_height; i++)
-        {
-           (&s->procUV)->basic_block[i] = malloc (sizeof(BasicLheBlock) * (total_blocks_width));
-        }
-        
+    {  
         //BASIC LHE        
         if(OPENMP_FLAGS == CONFIG_OPENMP) {
      
@@ -2594,65 +2680,50 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
             total_blocks_width = 1;
             total_blocks = 1;
             
-            lhe_basic_encode_frame_sequential (s, frame, component_original_data_Y, component_original_data_U, component_original_data_V);     
-            
-             
+            lhe_basic_encode_frame_sequential (s, frame, component_original_data_Y, component_original_data_U, component_original_data_V);                
         }
+        
         gettimeofday(&after , NULL);
         
         lhe_basic_write_file(avctx, pkt,image_size_Y, image_size_UV, total_blocks_width, total_blocks_height);  
-                          
+        
+        lhe_basic_free(s, total_blocks_width, total_blocks_height);                       
     } 
     else 
     {
         //ADVANCED LHE
-        //Basic blocks
-        (&s->procY)->basic_block = malloc(sizeof(BasicLheBlock *) * total_blocks_height);
-    
-        for (int i=0; i < total_blocks_height; i++)
-        {
-            (&s->procY)->basic_block[i] = malloc (sizeof(BasicLheBlock) * (total_blocks_width));
-        }
-        
-        (&s->procUV)->basic_block = malloc(sizeof(BasicLheBlock *) * total_blocks_height);
-        
-        for (int i=0; i < total_blocks_height; i++)
-        {
-            (&s->procUV)->basic_block[i] = malloc (sizeof(BasicLheBlock) * (total_blocks_width));
-        }
-        
-        (&s->procY)->perceptual_relevance_x = malloc(sizeof(float*) * (total_blocks_height+1));  
+        (&s->procY)->perceptual_relevance_x = av_calloc((total_blocks_height+1), sizeof(float*));  
     
         for (int i=0; i<total_blocks_height+1; i++) 
         {
-            (&s->procY)->perceptual_relevance_x[i] = malloc(sizeof(float) * (total_blocks_width+1));
+            (&s->procY)->perceptual_relevance_x[i] = av_calloc((total_blocks_width+1), sizeof(float));
         }
         
-        (&s->procY)->perceptual_relevance_y = malloc(sizeof(float*) * (total_blocks_height+1)); 
+        (&s->procY)->perceptual_relevance_y = av_calloc((total_blocks_height+1), sizeof(float*)); 
         
         for (int i=0; i<total_blocks_height+1; i++) 
         {
-            (&s->procY)->perceptual_relevance_y[i] = malloc(sizeof(float) * (total_blocks_width+1));
+            (&s->procY)->perceptual_relevance_y[i] = av_calloc((total_blocks_width+1), sizeof(float));
         }   
     
         //Advanced blocks
-        (&s->procY)->advanced_block = malloc(sizeof(AdvancedLheBlock *) * total_blocks_height);
+        (&s->procY)->advanced_block = av_calloc (total_blocks_height, sizeof(AdvancedLheBlock *));
         
         for (int i=0; i < total_blocks_height; i++)
         {
-            (&s->procY)->advanced_block[i] = malloc (sizeof(AdvancedLheBlock) * (total_blocks_width));
+            (&s->procY)->advanced_block[i] = av_calloc (total_blocks_width, sizeof(AdvancedLheBlock));
         }
         
-        (&s->procUV)->advanced_block = malloc(sizeof(AdvancedLheBlock *) * total_blocks_height);
+        (&s->procUV)->advanced_block = av_calloc (total_blocks_height, sizeof(AdvancedLheBlock *));
         
         for (int i=0; i < total_blocks_height; i++)
         {
-            (&s->procUV)->advanced_block[i] = malloc (sizeof(AdvancedLheBlock) * (total_blocks_width));
+            (&s->procUV)->advanced_block[i] = av_calloc (total_blocks_width, sizeof(AdvancedLheBlock));
         }
         
-        (&s->lheY)->downsampled_image = malloc (sizeof(uint8_t) * image_size_Y);
-        (&s->lheU)->downsampled_image = malloc (sizeof(uint8_t) * image_size_UV);
-        (&s->lheV)->downsampled_image = malloc (sizeof(uint8_t) * image_size_UV);
+        (&s->lheY)->downsampled_image = av_calloc (image_size_Y, sizeof(uint8_t));
+        (&s->lheU)->downsampled_image = av_calloc (image_size_UV, sizeof(uint8_t));
+        (&s->lheV)->downsampled_image = av_calloc (image_size_UV, sizeof(uint8_t));
         
         
         compression_factor =  lhe_advanced_encode (s, frame, 
@@ -2664,6 +2735,8 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
         //av_log (NULL, AV_LOG_INFO, "Advanced LHE with ql = %d and cf = %f \n",s->ql, compression_factor); 
                    
         lhe_advanced_write_file(avctx, pkt, image_size_Y, image_size_UV, total_blocks_width, total_blocks_height);   
+ 
+        lhe_advanced_free(s, total_blocks_width, total_blocks_height);
     }
     
     if(avctx->flags&AV_CODEC_FLAG_PSNR){
@@ -2677,10 +2750,10 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
 
     //av_log (NULL, AV_LOG_INFO, " %.0lf; ",time_diff(before , after));
     //av_log(NULL, AV_LOG_INFO, "CodingTime %.0lf \n", time_diff(before , after));
-
+    
     pkt->flags |= AV_PKT_FLAG_KEY;
     *got_packet = 1;
-
+ 
     return 0;
 
 }
@@ -2688,6 +2761,53 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
 //==================================================================
 // ENCODE VIDEO
 //==================================================================
+
+/**
+ * Free pointers
+ * 
+ * @param *s Pointers
+ * @param total_blocks_width 
+ * @param total_blocks_height 
+ */
+static void mlhe_free(LheContext *s, uint32_t total_blocks_width, uint32_t total_blocks_height) 
+{    
+    lhe_basic_free(s, total_blocks_width, total_blocks_height);
+
+    for (int i=0; i<total_blocks_height+1; i++) 
+    {
+        av_free((&s->procY)->perceptual_relevance_x[i]);
+    }
+    
+    av_free((&s->procY)->perceptual_relevance_x);
+    
+    for (int i=0; i<total_blocks_height+1; i++) 
+    {
+        av_free((&s->procY)->perceptual_relevance_y[i]);
+    }   
+    
+    av_free((&s->procY)->perceptual_relevance_y);
+
+    //Advanced blocks    
+    for (int i=0; i < total_blocks_height; i++)
+    {
+        av_free((&s->procY)->advanced_block[i]); 
+    }
+    
+    av_free((&s->procY)->advanced_block); 
+
+        
+    for (int i=0; i < total_blocks_height; i++)
+    {
+        av_free((&s->procUV)->advanced_block[i]);
+    }
+    
+    av_free((&s->procUV)->advanced_block); 
+    
+    av_free((&s->lheY)->downsampled_image);
+    av_free((&s->lheU)->downsampled_image);
+    av_free((&s->lheV)->downsampled_image);
+}
+
 /**
  * Video encode method
  * 
@@ -2732,15 +2852,15 @@ static int mlhe_encode_video(AVCodecContext *avctx, AVPacket *pkt,
     component_original_data_U = frame->data[1];
     component_original_data_V = frame->data[2];
     
-    (&s->lheY)->component_prediction = malloc(sizeof(uint8_t) * image_size_Y);  
-    (&s->lheU)->component_prediction = malloc(sizeof(uint8_t) * image_size_UV); 
-    (&s->lheV)->component_prediction = malloc(sizeof(uint8_t) * image_size_UV);  
-    (&s->lheY)->hops = malloc(sizeof(uint8_t) * image_size_Y);
-    (&s->lheU)->hops = malloc(sizeof(uint8_t) * image_size_UV);
-    (&s->lheV)->hops = malloc(sizeof(uint8_t) * image_size_UV);
-    (&s->lheY)->first_color_block = malloc(sizeof(uint8_t) * total_blocks);
-    (&s->lheU)->first_color_block = malloc(sizeof(uint8_t) * total_blocks);
-    (&s->lheV)->first_color_block = malloc(sizeof(uint8_t) * total_blocks);
+    (&s->lheY)->component_prediction = av_calloc(image_size_Y , sizeof(uint8_t));  
+    (&s->lheU)->component_prediction = av_calloc(image_size_UV , sizeof(uint8_t));
+    (&s->lheV)->component_prediction = av_calloc(image_size_UV , sizeof(uint8_t)); 
+    (&s->lheY)->hops = av_calloc(image_size_Y , sizeof(uint8_t));
+    (&s->lheU)->hops = av_calloc(image_size_UV , sizeof(uint8_t));
+    (&s->lheV)->hops = av_calloc(image_size_UV , sizeof(uint8_t));
+    (&s->lheY)->first_color_block = av_calloc(total_blocks , sizeof(uint8_t));
+    (&s->lheU)->first_color_block = av_calloc(total_blocks , sizeof(uint8_t));
+    (&s->lheV)->first_color_block = av_calloc(total_blocks , sizeof(uint8_t));
           
     /* If there exists any reference to a last frame, we are making video*/
     if ((&s->lheY)->last_downsampled_image && s->dif_frames_count<30) 
@@ -2758,53 +2878,53 @@ static int mlhe_encode_video(AVCodecContext *avctx, AVPacket *pkt,
     {
         /*Init dif frames count*/
         s->dif_frames_count = 0;
+        
+        (&s->procY)->basic_block = av_calloc(total_blocks_height, sizeof(BasicLheBlock *));
+        
+        for (int i=0; i < total_blocks_height; i++)
+        {
+            (&s->procY)->basic_block[i] = av_calloc (total_blocks_width, sizeof(BasicLheBlock));  
+        }
+        
+        (&s->procUV)->basic_block = av_calloc (total_blocks_height, sizeof(BasicLheBlock *));
+        
+        for (int i=0; i < total_blocks_height; i++)
+        {
+            (&s->procUV)->basic_block[i] = av_calloc (total_blocks_width, sizeof(BasicLheBlock));
+        }
 
-        (&s->procY)->basic_block = malloc(sizeof(BasicLheBlock *) * total_blocks_height);
-    
-        for (int i=0; i < total_blocks_height; i++)
-        {
-            (&s->procY)->basic_block[i] = malloc (sizeof(BasicLheBlock) * (total_blocks_width));
-        }
-        
-        (&s->procUV)->basic_block = malloc(sizeof(BasicLheBlock *) * total_blocks_height);
-        
-        for (int i=0; i < total_blocks_height; i++)
-        {
-            (&s->procUV)->basic_block[i] = malloc (sizeof(BasicLheBlock) * (total_blocks_width));
-        }
-        
-        (&s->procY)->perceptual_relevance_x = malloc(sizeof(float*) * (total_blocks_height+1));  
+        (&s->procY)->perceptual_relevance_x = av_calloc((total_blocks_height+1), sizeof(float*));  
     
         for (int i=0; i<total_blocks_height+1; i++) 
         {
-            (&s->procY)->perceptual_relevance_x[i] = malloc(sizeof(float) * (total_blocks_width+1));
+            (&s->procY)->perceptual_relevance_x[i] = av_calloc((total_blocks_width+1), sizeof(float));
         }
         
-        (&s->procY)->perceptual_relevance_y = malloc(sizeof(float*) * (total_blocks_height+1)); 
+        (&s->procY)->perceptual_relevance_y = av_calloc((total_blocks_height+1), sizeof(float*)); 
         
         for (int i=0; i<total_blocks_height+1; i++) 
         {
-            (&s->procY)->perceptual_relevance_y[i] = malloc(sizeof(float) * (total_blocks_width+1));
+            (&s->procY)->perceptual_relevance_y[i] = av_calloc((total_blocks_width+1), sizeof(float));
         }   
     
         //Advanced blocks
-        (&s->procY)->advanced_block = malloc(sizeof(AdvancedLheBlock *) * total_blocks_height);
+        (&s->procY)->advanced_block = av_calloc (total_blocks_height, sizeof(AdvancedLheBlock *));
         
         for (int i=0; i < total_blocks_height; i++)
         {
-            (&s->procY)->advanced_block[i] = malloc (sizeof(AdvancedLheBlock) * (total_blocks_width));
+            (&s->procY)->advanced_block[i] = av_calloc (total_blocks_width, sizeof(AdvancedLheBlock));
         }
         
-        (&s->procUV)->advanced_block = malloc(sizeof(AdvancedLheBlock *) * total_blocks_height);
+        (&s->procUV)->advanced_block = av_calloc (total_blocks_height, sizeof(AdvancedLheBlock *));
         
         for (int i=0; i < total_blocks_height; i++)
         {
-            (&s->procUV)->advanced_block[i] = malloc (sizeof(AdvancedLheBlock) * (total_blocks_width));
+            (&s->procUV)->advanced_block[i] = av_calloc (total_blocks_width, sizeof(AdvancedLheBlock));
         }
         
-        (&s->lheY)->downsampled_image = malloc (sizeof(uint8_t) * image_size_Y);
-        (&s->lheU)->downsampled_image = malloc (sizeof(uint8_t) * image_size_UV);
-        (&s->lheV)->downsampled_image = malloc (sizeof(uint8_t) * image_size_UV);
+        (&s->lheY)->downsampled_image = av_calloc (image_size_Y, sizeof(uint8_t));
+        (&s->lheU)->downsampled_image = av_calloc (image_size_UV, sizeof(uint8_t));
+        (&s->lheV)->downsampled_image = av_calloc (image_size_UV, sizeof(uint8_t));
         
         lhe_advanced_encode (s, frame, component_original_data_Y, component_original_data_U, component_original_data_V,
                              total_blocks_width, total_blocks_height);     
