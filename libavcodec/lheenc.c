@@ -596,16 +596,13 @@ static int lhe_basic_write_file(AVCodecContext *avctx, AVPacket *pkt,
                 }
             }
             
-            // av_log (NULL, AV_LOG_INFO, "%d ",number);
             uint32_t code =  he_Y[ lheY->hops[i] ].code;
             uint32_t leng =  he_Y[ lheY->hops[i] ].len;
-
-            
             int mask = 0;
-            
             for (int ll=0; ll<leng; ll++)
             {
-                    if(ll==0){
+                    if(ll==0)
+                    {
                         int val = he_Y[HOP_0].code;
                         for (int mm=0; mm<(leng-(ll+1)); mm++)
                         {
@@ -613,7 +610,8 @@ static int lhe_basic_write_file(AVCodecContext *avctx, AVPacket *pkt,
                         }
                         mask += val;
                     }
-                    else{
+                    else
+                    {
                         int val = !(he_Y[HOP_0].code);
                         for (int mm=0; mm<(leng-(ll+1)); mm++)
                         {
@@ -622,8 +620,21 @@ static int lhe_basic_write_file(AVCodecContext *avctx, AVPacket *pkt,
                         mask += val;
                     }
             }
-            // av_log (NULL, AV_LOG_INFO, "\n code:%d mask:%d masked:%d", code, mask, code&mask);
-            put_bits(&s->pb, (he_Y[lheY->hops[i]].len) , he_Y[ lheY->hops[i] ].code);  // truncado 
+            
+            if (counter_bin != 0)
+            {
+                    put_bits(&s->pb,leng-1, code&mask);  // truncado 
+            }
+            else{
+                if (counter_hop_0 == MAX_HOPS)
+                {
+                    put_bits(&s->pb,leng-1, code&mask);  // truncado 
+                }
+                else
+                {
+                    put_bits(&s->pb, he_Y[ lheY->hops[i] ].len, he_Y[ lheY->hops[i] ].code);  // NO truncado 
+                }
+            }           
             counter_hop_0 = 0;
             counter_bin = 0;
         }
