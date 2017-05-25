@@ -1060,21 +1060,21 @@ static void mlhe_decode_delta_frame (LheState *s, LheHuffEntry *he_Y, LheHuffEnt
     uint8_t *adapted_downsampled_image_Y, *adapted_downsampled_image_U, *adapted_downsampled_image_V;
     uint8_t *intermediate_interpolated_Y, *intermediate_interpolated_U, *intermediate_interpolated_V;
     
-    delta_prediction_Y = malloc (sizeof(uint8_t) * image_size_Y);
-    delta_prediction_U = malloc (sizeof(uint8_t) * image_size_UV);
-    delta_prediction_V = malloc (sizeof(uint8_t) * image_size_UV);
+    delta_prediction_Y = av_calloc (image_size_Y, sizeof(uint8_t));
+    delta_prediction_U = av_calloc (image_size_UV, sizeof(uint8_t));
+    delta_prediction_V = av_calloc (image_size_UV, sizeof(uint8_t));
     
-    intermediate_interpolated_Y = malloc (sizeof(uint8_t) * image_size_Y);
-    intermediate_interpolated_U = malloc (sizeof(uint8_t) * image_size_UV);
-    intermediate_interpolated_V = malloc (sizeof(uint8_t) * image_size_UV);
+    intermediate_interpolated_Y = av_calloc (image_size_Y, sizeof(uint8_t));
+    intermediate_interpolated_U = av_calloc (image_size_UV, sizeof(uint8_t));
+    intermediate_interpolated_V = av_calloc (image_size_UV, sizeof(uint8_t));
     
-    intermediate_adapted_downsampled_data_Y = malloc(sizeof(uint8_t) * image_size_Y);  
-    intermediate_adapted_downsampled_data_U = malloc(sizeof(uint8_t) * image_size_UV); 
-    intermediate_adapted_downsampled_data_V = malloc(sizeof(uint8_t) * image_size_UV); 
+    intermediate_adapted_downsampled_data_Y = av_calloc(image_size_Y, sizeof(uint8_t));  
+    intermediate_adapted_downsampled_data_U = av_calloc(image_size_UV, sizeof(uint8_t)); 
+    intermediate_adapted_downsampled_data_V = av_calloc(image_size_UV, sizeof(uint8_t)); 
     
-    adapted_downsampled_image_Y = malloc(sizeof(uint8_t) * image_size_Y);  
-    adapted_downsampled_image_U = malloc(sizeof(uint8_t) * image_size_UV); 
-    adapted_downsampled_image_V = malloc(sizeof(uint8_t) * image_size_UV); 
+    adapted_downsampled_image_Y = av_calloc(image_size_Y, sizeof(uint8_t));  
+    adapted_downsampled_image_U = av_calloc(image_size_UV, sizeof(uint8_t)); 
+    adapted_downsampled_image_V = av_calloc(image_size_UV, sizeof(uint8_t)); 
     
     #pragma omp parallel for
     for (int block_y=0; block_y<s->total_blocks_height; block_y++)
@@ -1126,6 +1126,22 @@ static void mlhe_decode_delta_frame (LheState *s, LheHuffEntry *he_Y, LheHuffEnt
                                                                      s->frame->linesize[2], block_x, block_y);    
         }
     }     
+    
+    av_free(delta_prediction_Y); 
+    av_free(delta_prediction_U); 
+    av_free(delta_prediction_V); 
+    
+    av_free(intermediate_interpolated_Y); 
+    av_free(intermediate_interpolated_U); 
+    av_free(intermediate_interpolated_V); 
+    
+    av_free(intermediate_adapted_downsampled_data_Y); 
+    av_free(intermediate_adapted_downsampled_data_U); 
+    av_free(intermediate_adapted_downsampled_data_V);  
+    
+    av_free(adapted_downsampled_image_Y); 
+    av_free(adapted_downsampled_image_U); 
+    av_free(adapted_downsampled_image_V);  
 }
 
 //==================================================================
@@ -1467,7 +1483,7 @@ static int mlhe_decode_video(AVCodecContext *avctx, void *data, int *got_frame, 
     
     s->lhe_mode = get_bits(&s->gb, LHE_MODE_SIZE_BITS);  
      
-    if (s->lhe_mode == DELTA_MLHE) { /*DELTA VIDEO FRAME*/
+    if (s->lhe_mode == DELTA_MLHE && s->global_frames_count>0) { /*DELTA VIDEO FRAME*/
         s->dif_frames_count++;
                 
         image_size_Y = (&s->procY)->width * (&s->procY)->height;
@@ -1551,9 +1567,9 @@ static int mlhe_decode_video(AVCodecContext *avctx, void *data, int *got_frame, 
         total_blocks = s->total_blocks_height * s->total_blocks_width;
         
         //First pixel array
-        (&s->lheY)->first_color_block = malloc(sizeof(uint8_t) * image_size_Y);
-        (&s->lheU)->first_color_block = malloc(sizeof(uint8_t) * image_size_UV);
-        (&s->lheV)->first_color_block = malloc(sizeof(uint8_t) * image_size_UV);
+        (&s->lheY)->first_color_block = av_calloc(image_size_Y, sizeof(uint8_t));
+        (&s->lheU)->first_color_block = av_calloc(image_size_UV, sizeof(uint8_t));
+        (&s->lheV)->first_color_block = av_calloc(image_size_UV, sizeof(uint8_t));
         
         for (int i=0; i<total_blocks; i++) 
         {
@@ -1578,53 +1594,53 @@ static int mlhe_decode_video(AVCodecContext *avctx, void *data, int *got_frame, 
         (&s->lheV)->component_prediction  = s->frame->data[2];
         
         
-        (&s->lheY)->hops = malloc(sizeof(uint8_t) * image_size_Y);      
-        (&s->lheU)->hops = malloc(sizeof(uint8_t) * image_size_UV);    
-        (&s->lheV)->hops = malloc(sizeof(uint8_t) * image_size_UV); 
+        (&s->lheY)->hops = av_calloc(image_size_Y, sizeof(uint8_t));      
+        (&s->lheU)->hops = av_calloc(image_size_UV, sizeof(uint8_t));    
+        (&s->lheV)->hops = av_calloc(image_size_UV, sizeof(uint8_t)); 
         
-        (&s->procY)->basic_block = malloc(sizeof(BasicLheBlock *) * s->total_blocks_height);
+        (&s->procY)->basic_block = av_calloc(s->total_blocks_height, sizeof(BasicLheBlock *));
         
         for (int i=0; i < s->total_blocks_height; i++)
         {
-            (&s->procY)->basic_block[i] = malloc (sizeof(BasicLheBlock) * (s->total_blocks_width));
+            (&s->procY)->basic_block[i] = av_calloc (s->total_blocks_width, sizeof(BasicLheBlock));
         }
         
-        (&s->procUV)->basic_block = malloc(sizeof(BasicLheBlock *) * s->total_blocks_height);
+        (&s->procUV)->basic_block = av_calloc(s->total_blocks_height, sizeof(BasicLheBlock *));
         
         for (int i=0; i < s->total_blocks_height; i++)
         {
-            (&s->procUV)->basic_block[i] = malloc (sizeof(BasicLheBlock) * (s->total_blocks_width));
+            (&s->procUV)->basic_block[i] = av_calloc (s->total_blocks_width, sizeof(BasicLheBlock));
         }
             
         lhe_read_huffman_table(s, he_Y, LHE_MAX_HUFF_SIZE_SYMBOLS, LHE_HUFFMAN_NODE_BITS_SYMBOLS, LHE_HUFFMAN_NO_OCCURRENCES_SYMBOLS);
         lhe_read_huffman_table(s, he_UV, LHE_MAX_HUFF_SIZE_SYMBOLS, LHE_HUFFMAN_NODE_BITS_SYMBOLS, LHE_HUFFMAN_NO_OCCURRENCES_SYMBOLS);
         
-        (&s->procY)->perceptual_relevance_x = malloc(sizeof(float*) * (s->total_blocks_height+1));  
+        (&s->procY)->perceptual_relevance_x = av_calloc(s->total_blocks_height+1, sizeof(float*));  
         
         for (int i=0; i<s->total_blocks_height+1; i++) 
         {
-            (&s->procY)->perceptual_relevance_x[i] = malloc(sizeof(float) * (s->total_blocks_width+1));
+            (&s->procY)->perceptual_relevance_x[i] = av_calloc(s->total_blocks_width+1, sizeof(float));
         }
         
-        (&s->procY)->perceptual_relevance_y = malloc(sizeof(float*) * (s->total_blocks_height+1)); 
+        (&s->procY)->perceptual_relevance_y = av_calloc(s->total_blocks_height+1, sizeof(float*)); 
         
         for (int i=0; i<s->total_blocks_height+1; i++) 
         {
-            (&s->procY)->perceptual_relevance_y[i] = malloc(sizeof(float) * (s->total_blocks_width+1));
+            (&s->procY)->perceptual_relevance_y[i] = av_calloc(s->total_blocks_width+1, sizeof(float));
         }   
 
-        (&s->procY)->advanced_block = malloc(sizeof(AdvancedLheBlock *) * s->total_blocks_height);
+        (&s->procY)->advanced_block = av_calloc(s->total_blocks_height, sizeof(AdvancedLheBlock *));
         
         for (int i=0; i < s->total_blocks_height; i++)
         {
-            (&s->procY)->advanced_block[i] = malloc (sizeof(AdvancedLheBlock) * (s->total_blocks_width));
+            (&s->procY)->advanced_block[i] = av_calloc (s->total_blocks_width, sizeof(AdvancedLheBlock));
         }
         
-        (&s->procUV)->advanced_block = malloc(sizeof(AdvancedLheBlock *) * s->total_blocks_height);
+        (&s->procUV)->advanced_block = av_calloc(s->total_blocks_height, sizeof(AdvancedLheBlock *));
         
         for (int i=0; i < s->total_blocks_height; i++)
         {
-            (&s->procUV)->advanced_block[i] = malloc (sizeof(AdvancedLheBlock) * (s->total_blocks_width));
+            (&s->procUV)->advanced_block[i] = av_calloc (s->total_blocks_width, sizeof(AdvancedLheBlock));
         }
         
         (&s->procY)-> theoretical_block_width = (&s->procY)->width / s->total_blocks_width;    
@@ -1633,9 +1649,9 @@ static int mlhe_decode_video(AVCodecContext *avctx, void *data, int *got_frame, 
         (&s->procUV)-> theoretical_block_width = (&s->procUV)->width / s->total_blocks_width;
         (&s->procUV)-> theoretical_block_height = (&s->procUV)->height / s->total_blocks_height; 
         
-        (&s->lheY)-> downsampled_image = malloc (sizeof(uint8_t) * image_size_Y);
-        (&s->lheU)-> downsampled_image = malloc (sizeof(uint8_t) * image_size_UV);
-        (&s->lheV)-> downsampled_image = malloc (sizeof(uint8_t) * image_size_UV);
+        (&s->lheY)-> downsampled_image = av_calloc (image_size_Y, sizeof(uint8_t));
+        (&s->lheU)-> downsampled_image = av_calloc (image_size_UV, sizeof(uint8_t));
+        (&s->lheV)-> downsampled_image = av_calloc (image_size_UV, sizeof(uint8_t));
         
         //MESH Huffman
         lhe_read_huffman_table(s, he_mesh, LHE_MAX_HUFF_SIZE_MESH, LHE_HUFFMAN_NODE_BITS_MESH, LHE_HUFFMAN_NO_OCCURRENCES_MESH);
@@ -1654,36 +1670,36 @@ static int mlhe_decode_video(AVCodecContext *avctx, void *data, int *got_frame, 
  
     if (!(&s->procY)->last_advanced_block) 
     {
-         (&s->procY)->last_advanced_block = malloc(sizeof(AdvancedLheBlock *) * s->total_blocks_height);
+         (&s->procY)->last_advanced_block = av_calloc(s->total_blocks_height, sizeof(AdvancedLheBlock *));
         
         for (int i=0; i < s->total_blocks_height; i++)
         {
-            (&s->procY)->last_advanced_block[i] = malloc (sizeof(AdvancedLheBlock) * (s->total_blocks_width));
+            (&s->procY)->last_advanced_block[i] = av_calloc (s->total_blocks_width, sizeof(AdvancedLheBlock));
         }      
     }
     
     if (!(&s->procUV)->last_advanced_block) {
-        (&s->procUV)->last_advanced_block = malloc(sizeof(AdvancedLheBlock *) * s->total_blocks_height);
+        (&s->procUV)->last_advanced_block = av_calloc(s->total_blocks_height, sizeof(AdvancedLheBlock *));
         
         for (int i=0; i < s->total_blocks_height; i++)
         {
-            (&s->procUV)->last_advanced_block[i] = malloc (sizeof(AdvancedLheBlock) * (s->total_blocks_width));
+            (&s->procUV)->last_advanced_block[i] = av_calloc (s->total_blocks_width, sizeof(AdvancedLheBlock));
         }
     }
 
     
     if (!(&s->lheY)->last_downsampled_image) {
-        (&s->lheY)->last_downsampled_image = malloc(sizeof(uint8_t) * image_size_Y);  
+        (&s->lheY)->last_downsampled_image = av_calloc(image_size_Y, sizeof(uint8_t));  
     }
     
 
     if (!(&s->lheU)->last_downsampled_image) {
-        (&s->lheU)->last_downsampled_image = malloc(sizeof(uint8_t) * image_size_UV); 
+        (&s->lheU)->last_downsampled_image = av_calloc(image_size_UV, sizeof(uint8_t)); 
     }
     
     
     if (!(&s->lheV)->last_downsampled_image) {
-        (&s->lheV)->last_downsampled_image = malloc(sizeof(uint8_t) * image_size_UV);  
+        (&s->lheV)->last_downsampled_image = av_calloc(image_size_UV, sizeof(uint8_t));  
     }
     
      for (int i=0; i < s->total_blocks_height; i++)
