@@ -20,7 +20,9 @@
 #include "get_bits.h"
 #include "golomb.h"
 #include "h264.h"
+#include "h264dec.h"
 #include "h264_parse.h"
+#include "h264_ps.h"
 
 int ff_h264_pred_weight_table(GetBitContext *gb, const SPS *sps,
                               const int *ref_count, int slice_type_nos,
@@ -57,6 +59,9 @@ int ff_h264_pred_weight_table(GetBitContext *gb, const SPS *sps,
             if (luma_weight_flag) {
                 pwt->luma_weight[i][list][0] = get_se_golomb(gb);
                 pwt->luma_weight[i][list][1] = get_se_golomb(gb);
+                if ((int8_t)pwt->luma_weight[i][list][0] != pwt->luma_weight[i][list][0] ||
+                    (int8_t)pwt->luma_weight[i][list][1] != pwt->luma_weight[i][list][1])
+                    goto out_range_weight;
                 if (pwt->luma_weight[i][list][0] != luma_def ||
                     pwt->luma_weight[i][list][1] != 0) {
                     pwt->use_weight             = 1;
@@ -74,6 +79,9 @@ int ff_h264_pred_weight_table(GetBitContext *gb, const SPS *sps,
                     for (j = 0; j < 2; j++) {
                         pwt->chroma_weight[i][list][j][0] = get_se_golomb(gb);
                         pwt->chroma_weight[i][list][j][1] = get_se_golomb(gb);
+                        if ((int8_t)pwt->chroma_weight[i][list][j][0] != pwt->chroma_weight[i][list][j][0] ||
+                            (int8_t)pwt->chroma_weight[i][list][j][1] != pwt->chroma_weight[i][list][j][1])
+                            goto out_range_weight;
                         if (pwt->chroma_weight[i][list][j][0] != chroma_def ||
                             pwt->chroma_weight[i][list][j][1] != 0) {
                             pwt->use_weight_chroma        = 1;
@@ -102,6 +110,9 @@ int ff_h264_pred_weight_table(GetBitContext *gb, const SPS *sps,
     }
     pwt->use_weight = pwt->use_weight || pwt->use_weight_chroma;
     return 0;
+out_range_weight:
+    avpriv_request_sample(logctx, "Out of range weight\n");
+    return AVERROR_INVALIDDATA;
 }
 
 /**
@@ -335,7 +346,7 @@ static int decode_extradata_ps(const uint8_t *data, int size, H264ParamSets *ps,
     H2645Packet pkt = { 0 };
     int i, ret = 0;
 
-    ret = ff_h2645_packet_split(&pkt, data, size, logctx, is_avc, 2, AV_CODEC_ID_H264);
+    ret = ff_h2645_packet_split(&pkt, data, size, logctx, is_avc, 2, AV_CODEC_ID_H264, 1);
     if (ret < 0) {
         ret = 0;
         goto fail;
@@ -344,12 +355,12 @@ static int decode_extradata_ps(const uint8_t *data, int size, H264ParamSets *ps,
     for (i = 0; i < pkt.nb_nals; i++) {
         H2645NAL *nal = &pkt.nals[i];
         switch (nal->type) {
-        case NAL_SPS:
+        case H264_NAL_SPS:
             ret = ff_h264_decode_seq_parameter_set(&nal->gb, logctx, ps, 0);
             if (ret < 0)
                 goto fail;
             break;
-        case NAL_PPS:
+        case H264_NAL_PPS:
             ret = ff_h264_decode_picture_parameter_set(&nal->gb, logctx, ps,
                                                        nal->size_bits);
             if (ret < 0)

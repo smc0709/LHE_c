@@ -19,6 +19,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "libavutil/thread.h"
 #include "avformat.h"
 #include "rtp.h"
 #include "rdt.h"
@@ -41,13 +42,8 @@
 
 #define REGISTER_MUXDEMUX(X, x) REGISTER_MUXER(X, x); REGISTER_DEMUXER(X, x)
 
-void av_register_all(void)
+static void register_all(void)
 {
-    static int initialized;
-
-    if (initialized)
-        return;
-
     avcodec_register_all();
 
     /* (de)muxers */
@@ -123,6 +119,7 @@ void av_register_all(void)
     REGISTER_MUXER   (F4V,              f4v);
     REGISTER_MUXDEMUX(FFM,              ffm);
     REGISTER_MUXDEMUX(FFMETADATA,       ffmetadata);
+    REGISTER_MUXER   (FIFO,             fifo);
     REGISTER_MUXDEMUX(FILMSTRIP,        filmstrip);
     REGISTER_MUXDEMUX(FLAC,             flac);
     REGISTER_DEMUXER (FLIC,             flic);
@@ -182,6 +179,7 @@ void av_register_all(void)
     REGISTER_DEMUXER (MGSTS,            mgsts);
     REGISTER_MUXDEMUX(MICRODVD,         microdvd);
     REGISTER_MUXDEMUX(MJPEG,            mjpeg);
+    REGISTER_DEMUXER (MJPEG_2000,       mjpeg_2000);
     REGISTER_MUXDEMUX(MLHE,             mlhe);
     REGISTER_MUXDEMUX(MLP,              mlp);
     REGISTER_DEMUXER (MLV,              mlv);
@@ -226,6 +224,7 @@ void av_register_all(void)
     REGISTER_DEMUXER (NUV,              nuv);
     REGISTER_MUXER   (OGA,              oga);
     REGISTER_MUXDEMUX(OGG,              ogg);
+    REGISTER_MUXER   (OGV,              ogv);
     REGISTER_MUXDEMUX(OMA,              oma);
     REGISTER_MUXER   (OPUS,             opus);
     REGISTER_DEMUXER (PAF,              paf);
@@ -271,8 +270,11 @@ void av_register_all(void)
     REGISTER_DEMUXER (SAMI,             sami);
     REGISTER_MUXDEMUX(SAP,              sap);
     REGISTER_DEMUXER (SBG,              sbg);
+    REGISTER_MUXDEMUX(SCC,              scc);
     REGISTER_DEMUXER (SDP,              sdp);
     REGISTER_DEMUXER (SDR2,             sdr2);
+    REGISTER_DEMUXER (SDS,              sds);
+    REGISTER_DEMUXER (SDX,              sdx);
 #if CONFIG_RTPDEC
     ff_register_rtp_dynamic_payload_handlers();
     ff_register_rdt_dynamic_payload_handlers();
@@ -311,7 +313,7 @@ void av_register_all(void)
     REGISTER_MUXER   (MKVTIMESTAMP_V2,  mkvtimestamp_v2);
     REGISTER_DEMUXER (TMV,              tmv);
     REGISTER_MUXDEMUX(TRUEHD,           truehd);
-    REGISTER_DEMUXER (TTA,              tta);
+    REGISTER_MUXDEMUX(TTA,              tta);
     REGISTER_DEMUXER (TXD,              txd);
     REGISTER_DEMUXER (TTY,              tty);
     REGISTER_MUXER   (UNCODEDFRAMECRC,  uncodedframecrc);
@@ -357,7 +359,6 @@ void av_register_all(void)
     REGISTER_DEMUXER (IMAGE_J2K_PIPE,        image_j2k_pipe);
     REGISTER_DEMUXER (IMAGE_JPEG_PIPE,       image_jpeg_pipe);
     REGISTER_DEMUXER (IMAGE_JPEGLS_PIPE,     image_jpegls_pipe);
-    REGISTER_DEMUXER (IMAGE_LHE_PIPE,        image_lhe_pipe);
     REGISTER_DEMUXER (IMAGE_PAM_PIPE,        image_pam_pipe);
     REGISTER_DEMUXER (IMAGE_PBM_PIPE,        image_pbm_pipe);
     REGISTER_DEMUXER (IMAGE_PCX_PIPE,        image_pcx_pipe);
@@ -366,11 +367,14 @@ void av_register_all(void)
     REGISTER_DEMUXER (IMAGE_PICTOR_PIPE,     image_pictor_pipe);
     REGISTER_DEMUXER (IMAGE_PNG_PIPE,        image_png_pipe);
     REGISTER_DEMUXER (IMAGE_PPM_PIPE,        image_ppm_pipe);
+    REGISTER_DEMUXER (IMAGE_PSD_PIPE,        image_psd_pipe);
     REGISTER_DEMUXER (IMAGE_QDRAW_PIPE,      image_qdraw_pipe);
     REGISTER_DEMUXER (IMAGE_SGI_PIPE,        image_sgi_pipe);
+    REGISTER_DEMUXER (IMAGE_SVG_PIPE,        image_svg_pipe);
     REGISTER_DEMUXER (IMAGE_SUNRAST_PIPE,    image_sunrast_pipe);
     REGISTER_DEMUXER (IMAGE_TIFF_PIPE,       image_tiff_pipe);
     REGISTER_DEMUXER (IMAGE_WEBP_PIPE,       image_webp_pipe);
+    REGISTER_DEMUXER (IMAGE_XPM_PIPE,        image_xpm_pipe);
 
     /* external libraries */
     REGISTER_MUXER   (CHROMAPRINT,      chromaprint);
@@ -378,6 +382,11 @@ void av_register_all(void)
     REGISTER_DEMUXER (LIBMODPLUG,       libmodplug);
     REGISTER_MUXDEMUX(LIBNUT,           libnut);
     REGISTER_DEMUXER (LIBOPENMPT,       libopenmpt);
+}
 
-    initialized = 1;
+void av_register_all(void)
+{
+    static AVOnce control = AV_ONCE_INIT;
+
+    ff_thread_once(&control, register_all);
 }

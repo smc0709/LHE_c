@@ -285,7 +285,7 @@ static int tta_decode_frame(AVCodecContext *avctx, void *data,
         }
 
         if (k) {
-            if (k > MIN_CACHE_BITS) {
+            if (k > MIN_CACHE_BITS || unary > INT32_MAX >> k) {
                 ret = AVERROR_INVALIDDATA;
                 goto error;
             }
@@ -314,8 +314,8 @@ static int tta_decode_frame(AVCodecContext *avctx, void *data,
         *p = 1 + ((value >> 1) ^ ((value & 1) - 1));
 
         // run hybrid filter
-        s->dsp.ttafilter_process_dec(filter->qm, filter->dx, filter->dl, &filter->error, p,
-                                     filter->shift, filter->round);
+        s->dsp.filter_process(filter->qm, filter->dx, filter->dl, &filter->error, p,
+                              filter->shift, filter->round);
 
         // fixed order prediction
 #define PRED(x, k) (int32_t)((((uint64_t)(x) << (k)) - (x)) >> (k))

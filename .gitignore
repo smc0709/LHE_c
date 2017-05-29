@@ -22,6 +22,9 @@
 *.so.*
 *.swp
 *.ver
+*.version
+*.ptx
+*.ptx.c
 *_g
 \#*
 .\#*
@@ -31,7 +34,8 @@
 /ffplay
 /ffprobe
 /ffserver
-/config.*
+/config.asm
+/config.h
 /coverage.info
 /avversion.h
 /lcov/

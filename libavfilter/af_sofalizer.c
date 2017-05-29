@@ -70,6 +70,7 @@ typedef struct SOFAlizerContext {
     float *speaker_azim;        /* azimuth of the virtual loudspeakers */
     float *speaker_elev;        /* elevation of the virtual loudspeakers */
     char *speakers_pos;         /* custom positions of the virtual loudspeakers */
+    float lfe_gain;             /* initial gain for the LFE channel */
     float gain_lfe;             /* gain applied to LFE channel */
     int lfe_channel;            /* LFE channel position in channel layout */
 
@@ -373,9 +374,8 @@ error:
     return ret;
 }
 
-static int parse_channel_name(char **arg, int *rchannel)
+static int parse_channel_name(char **arg, int *rchannel, char *buf)
 {
-    char buf[8];
     int len, i, channel_id = 0;
     int64_t layout, layout0;
 
@@ -384,13 +384,13 @@ static int parse_channel_name(char **arg, int *rchannel)
         layout0 = layout = av_get_channel_layout(buf);
         /* channel_id <- first set bit in layout */
         for (i = 32; i > 0; i >>= 1) {
-            if (layout >= (int64_t)1 << i) {
+            if (layout >= 1LL << i) {
                 channel_id += i;
                 layout >>= i;
             }
         }
         /* reject layouts that are not a single channel */
-        if (channel_id >= 64 || layout0 != (int64_t)1 << channel_id)
+        if (channel_id >= 64 || layout0 != 1LL << channel_id)
             return AVERROR(EINVAL);
         *rchannel = channel_id;
         *arg += len;
@@ -409,12 +409,15 @@ static void parse_speaker_pos(AVFilterContext *ctx, int64_t in_channel_layout)
     p = args;
 
     while ((arg = av_strtok(p, "|", &tokenizer))) {
+        char buf[8];
         float azim, elev;
         int out_ch_id;
 
         p = NULL;
-        if (parse_channel_name(&arg, &out_ch_id))
+        if (parse_channel_name(&arg, &out_ch_id, buf)) {
+            av_log(ctx, AV_LOG_WARNING, "Failed to parse \'%s\' as channel name.\n", buf);
             continue;
+        }
         if (sscanf(arg, "%f %f", &azim, &elev) == 2) {
             s->vspkrpos[out_ch_id].set = 1;
             s->vspkrpos[out_ch_id].azim = azim;
@@ -448,7 +451,7 @@ static int get_speaker_pos(AVFilterContext *ctx,
 
     /* set speaker positions according to input channel configuration: */
     for (m = 0, ch = 0; ch < n_conv && m < 64; m++) {
-        uint64_t mask = channels_layout & (1 << m);
+        uint64_t mask = channels_layout & (1ULL << m);
 
         switch (mask) {
         case AV_CH_FRONT_LEFT:            azim[ch] =  30;      break;
@@ -701,6 +704,8 @@ static int sofalizer_fast_convolute(AVFilterContext *ctx, void *arg, int jobnr, 
     FFTContext *fft = s->fft[jobnr];
     const int n_conv = s->n_conv;
     const int n_fft = s->n_fft;
+    const float fft_scale = 1.0f / s->n_fft;
+    FFTComplex *hrtf_offset;
     int wr = *write;
     int n_read;
     int i, j;
@@ -734,6 +739,7 @@ static int sofalizer_fast_convolute(AVFilterContext *ctx, void *arg, int jobnr, 
 
         /* outer loop: go through all input channels to be convolved */
         offset = i * n_fft; /* no. samples already processed */
+        hrtf_offset = hrtf + offset;
 
         /* fill FFT input with 0 (we want to zero-pad) */
         memset(fft_in, 0, sizeof(FFTComplex) * n_fft);
@@ -748,14 +754,15 @@ static int sofalizer_fast_convolute(AVFilterContext *ctx, void *arg, int jobnr, 
         av_fft_permute(fft, fft_in);
         av_fft_calc(fft, fft_in);
         for (j = 0; j < n_fft; j++) {
+            const FFTComplex *hcomplex = hrtf_offset + j;
             const float re = fft_in[j].re;
             const float im = fft_in[j].im;
 
             /* complex multiplication of input signal and HRTFs */
             /* output channel (real): */
-            fft_in[j].re = re * (hrtf + offset + j)->re - im * (hrtf + offset + j)->im;
+            fft_in[j].re = re * hcomplex->re - im * hcomplex->im;
             /* output channel (imag): */
-            fft_in[j].im = re * (hrtf + offset + j)->im + im * (hrtf + offset + j)->re;
+            fft_in[j].im = re * hcomplex->im + im * hcomplex->re;
         }
 
         /* transform output signal of current channel back to time domain */
@@ -764,14 +771,14 @@ static int sofalizer_fast_convolute(AVFilterContext *ctx, void *arg, int jobnr, 
 
         for (j = 0; j < in->nb_samples; j++) {
             /* write output signal of current channel to output buffer */
-            dst[2 * j] += fft_in[j].re / (float)n_fft;
+            dst[2 * j] += fft_in[j].re * fft_scale;
         }
 
         for (j = 0; j < n_samples - 1; j++) { /* overflow length is IR length - 1 */
             /* write the rest of output signal to overflow buffer */
             int write_pos = (wr + j) & modulo;
 
-            *(ringbuffer + write_pos) += fft_in[in->nb_samples + j].re / (float)n_fft;
+            *(ringbuffer + write_pos) += fft_in[in->nb_samples + j].re * fft_scale;
         }
     }
 
@@ -779,7 +786,7 @@ static int sofalizer_fast_convolute(AVFilterContext *ctx, void *arg, int jobnr, 
     for (i = 0; i < out->nb_samples; i++) {
         /* clippings counter */
         if (fabs(*dst) > 1) { /* if current output sample > 1 */
-            *n_clippings = *n_clippings + 1;
+            n_clippings[0]++;
         }
 
         /* move output buffer pointer by +2 to get to next sample of processed channel: */
@@ -1061,7 +1068,7 @@ static int config_input(AVFilterLink *inlink)
     }
 
     /* gain -3 dB per channel, -6 dB to get LFE on a similar level */
-    s->gain_lfe = expf((s->gain - 3 * inlink->channels - 6) / 20 * M_LN10);
+    s->gain_lfe = expf((s->gain - 3 * inlink->channels - 6 + s->lfe_gain) / 20 * M_LN10);
 
     s->n_conv = nb_input_channels;
 
@@ -1191,6 +1198,7 @@ static const AVOption sofalizer_options[] = {
     { "time",      "time domain",      0,               AV_OPT_TYPE_CONST,  {.i64=0},       0,   0, .flags = FLAGS, "type" },
     { "freq",      "frequency domain", 0,               AV_OPT_TYPE_CONST,  {.i64=1},       0,   0, .flags = FLAGS, "type" },
     { "speakers",  "set speaker custom positions", OFFSET(speakers_pos), AV_OPT_TYPE_STRING,  {.str=0},    0, 0, .flags = FLAGS },
+    { "lfegain",   "set lfe gain",                 OFFSET(lfe_gain),     AV_OPT_TYPE_FLOAT,   {.dbl=0},   -9, 9, .flags = FLAGS },
     { NULL }
 };
 

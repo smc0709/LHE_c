@@ -401,6 +401,48 @@ error:
 }
 
 /**
+ * Parse a comment tag.
+ */
+static void read_comment(AVFormatContext *s, AVIOContext *pb, int taglen,
+                      AVDictionary **metadata)
+{
+    const char *key = "comment";
+    uint8_t *dst;
+    int encoding, dict_flags = AV_DICT_DONT_OVERWRITE | AV_DICT_DONT_STRDUP_VAL;
+    av_unused int language;
+
+    if (taglen < 4)
+        return;
+
+    encoding = avio_r8(pb);
+    language = avio_rl24(pb);
+    taglen -= 4;
+
+    if (decode_str(s, pb, encoding, &dst, &taglen) < 0) {
+        av_log(s, AV_LOG_ERROR, "Error reading comment frame, skipped\n");
+        return;
+    }
+
+    if (dst && !*dst)
+        av_freep(&dst);
+
+    if (dst) {
+        key = (const char *) dst;
+        dict_flags |= AV_DICT_DONT_STRDUP_KEY;
+    }
+
+    if (decode_str(s, pb, encoding, &dst, &taglen) < 0) {
+        av_log(s, AV_LOG_ERROR, "Error reading comment frame, skipped\n");
+        if (dict_flags & AV_DICT_DONT_STRDUP_KEY)
+            av_freep((void*)&key);
+        return;
+    }
+
+    if (dst)
+        av_dict_set(metadata, key, (const char *) dst, dict_flags);
+}
+
+/**
  * Parse GEOB tag into a ID3v2ExtraMetaGEOB struct.
  */
 static void read_geobtag(AVFormatContext *s, AVIOContext *pb, int taglen,
@@ -782,6 +824,7 @@ static void id3v2_parse(AVIOContext *pb, AVDictionary **metadata,
     const ID3v2EMFunc *extra_func = NULL;
     unsigned char *uncompressed_buffer = NULL;
     av_unused int uncompressed_buffer_size = 0;
+    const char *comm_frame;
 
     av_log(s, AV_LOG_DEBUG, "id3v2 ver:%d flags:%02X len:%d\n", version, flags, len);
 
@@ -793,12 +836,14 @@ static void id3v2_parse(AVIOContext *pb, AVDictionary **metadata,
         }
         isv34     = 0;
         taghdrlen = 6;
+        comm_frame = "COM";
         break;
 
     case 3:
     case 4:
         isv34     = 1;
         taghdrlen = 10;
+        comm_frame = "COMM";
         break;
 
     default:
@@ -909,6 +954,7 @@ static void id3v2_parse(AVIOContext *pb, AVDictionary **metadata,
         /* check for text tag or supported special meta tag */
         } else if (tag[0] == 'T' ||
                    !memcmp(tag, "USLT", 4) ||
+                   !strcmp(tag, comm_frame) ||
                    (extra_meta &&
                     (extra_func = get_extra_meta_func(tag, isv34)))) {
             pbx = pb;
@@ -976,6 +1022,8 @@ static void id3v2_parse(AVIOContext *pb, AVDictionary **metadata,
                 read_ttag(s, pbx, tlen, metadata, tag);
             else if (!memcmp(tag, "USLT", 4))
                 read_uslt(s, pbx, tlen, metadata);
+            else if (!strcmp(tag, comm_frame))
+                read_comment(s, pbx, tlen, metadata);
             else
                 /* parse special meta tag */
                 extra_func->read(s, pbx, tlen, tag, extra_meta, isv34);
@@ -1025,7 +1073,9 @@ static void id3v2_read_internal(AVIOContext *pb, AVDictionary **metadata,
             break;
         }
 
-        ret = avio_read(pb, buf, ID3v2_HEADER_SIZE);
+        ret = ffio_ensure_seekback(pb, ID3v2_HEADER_SIZE);
+        if (ret >= 0)
+            ret = avio_read(pb, buf, ID3v2_HEADER_SIZE);
         if (ret != ID3v2_HEADER_SIZE) {
             avio_seek(pb, off, SEEK_SET);
             break;
