@@ -884,8 +884,13 @@ static void lhe_basic_encode_one_hop_per_pixel (LheBasicPrec *prec, LheProcessin
 
     //Hops computation.
     bool small_hop, last_small_hop;
-    uint8_t predicted_component, hop_1, hop_number, original_color, r_max;
-    int pix, pix_original_data, dif_line, x, y;
+    uint8_t predicted_component, hop_1, hop_number, original_color,
+    component_prediction_final, predicted_component_w_hop;
+    int pix, pix_original_data, dif_line, x, y, min_error, error, hop_pos;
+    float positive_ratio, negative_ratio;
+    const float r_max= PARAM_R/10.0,
+                percent_range= 0.8f,
+                pow_index = 1.0f/3;
 
     small_hop = false;
     last_small_hop=false;          // indicates if last hop is small
@@ -897,7 +902,6 @@ static void lhe_basic_encode_one_hop_per_pixel (LheBasicPrec *prec, LheProcessin
     x = 0;
     y = 0;
     original_color=0;              // original color
-    r_max=PARAM_R;
 
     dif_line = linesize - proc->width;
 
@@ -931,10 +935,93 @@ static void lhe_basic_encode_one_hop_per_pixel (LheBasicPrec *prec, LheProcessin
                 predicted_component = (lhe->component_prediction[pix-1]+lhe->component_prediction[pix+1-proc->width])>>1;
             }
 
+            // r calculation
+            positive_ratio=(float)pow(percent_range*(255-predicted_component)/(hop_1), pow_index);
+            negative_ratio=(float)pow(percent_range*(predicted_component)/(hop_1), pow_index);
 
-            hop_number = prec->best_hop[r_max][hop_1][original_color][predicted_component];
-            lhe->component_prediction[pix]=prec -> prec_luminance[predicted_component][r_max][hop_1][hop_number];
+            if (positive_ratio>r_max)
+            {
+              positive_ratio=r_max;
+            }
+            if (negative_ratio>r_max)
+            {
+              negative_ratio=r_max;
+            }
+
+            predicted_component_w_hop = predicted_component;
+            if (predicted_component_w_hop<=MIN_COMPONENT_VALUE)
+            {
+                predicted_component_w_hop=1; //null hop
+            }
+
+            if (predicted_component_w_hop>MAX_COMPONENT_VALUE)
+            {
+                predicted_component_w_hop=MAX_COMPONENT_VALUE;//null hop
+            }
+
+            //Hop0
+            min_error = 255;
+            error= original_color - predicted_component_w_hop;
+            if(error < 0) {
+              error = -error;
+            }
+            if (error < min_error)
+            {
+              min_error = error;
+              component_prediction_final= predicted_component_w_hop;
+              hop_number = 4;
+            }
+
+            if (original_color - predicted_component>=0) //Positive hops computation
+            {
+              hop_pos = hop_1;
+              for (int i = 0; i<4; i++)
+              {
+                predicted_component_w_hop= predicted_component + hop_pos;
+                if (predicted_component_w_hop>MAX_COMPONENT_VALUE)
+                {
+                    predicted_component_w_hop=MAX_COMPONENT_VALUE;
+                }
+
+                error = original_color - predicted_component_w_hop;
+                if(error < 0) {
+                  error = -error;
+                }
+                if (error < min_error)
+                {
+                  min_error = error;
+                  component_prediction_final= predicted_component_w_hop;
+                  hop_number = i+5;
+                }
+                hop_pos = hop_pos *positive_ratio;
+              }
+            }
+            else //Negative hops computation
+            {
+              hop_pos = -hop_1;
+              for (int i = 0; i<4; i++)
+              {
+                predicted_component_w_hop= predicted_component + hop_pos;
+                if (predicted_component_w_hop <= MIN_COMPONENT_VALUE)
+                {
+                    predicted_component_w_hop=1;
+                }
+                error = original_color - predicted_component_w_hop;
+                if(error < 0) {
+                  error = -error;
+                }
+                if (error < min_error)
+                {
+                  min_error = error;
+                  component_prediction_final= predicted_component_w_hop;
+                  hop_number = 3-i;
+                }
+                hop_pos = hop_pos *negative_ratio;
+              }
+            }
             lhe->hops[pix]= hop_number;
+            lhe->component_prediction[pix]= component_prediction_final;
+
 
             H1_ADAPTATION;
             pix++;
