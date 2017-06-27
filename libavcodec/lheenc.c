@@ -66,6 +66,10 @@ typedef struct LheContext {
     int dif_frames_count;
 } LheContext;
 
+void calulate_hop_prediction_binary(uint8_t original_color,
+                                    uint8_t predicted_component,
+                                    uint8_t hop_1, uint8_t *hops,
+                                    uint8_t *component_prediction);
 /**
  * Initializes coder
  *
@@ -884,10 +888,8 @@ static void lhe_basic_encode_one_hop_per_pixel (LheBasicPrec *prec, LheProcessin
 
     //Hops computation.
     bool small_hop, last_small_hop;
-    uint8_t predicted_component, hop_1, hop_number, original_color,
-    component_prediction_final;
-    int pix, pix_original_data, dif_line, x, y, min_error, error,
-    predicted_component_w_hop;
+    uint8_t predicted_component, hop_1, hop_number, original_color;
+    int pix, pix_original_data, dif_line, x, y;
 
     small_hop = false;
     last_small_hop=false;          // indicates if last hop is small
@@ -932,58 +934,11 @@ static void lhe_basic_encode_one_hop_per_pixel (LheBasicPrec *prec, LheProcessin
                 predicted_component = (lhe->component_prediction[pix-1]+lhe->component_prediction[pix+1-proc->width])>>1;
             }
 
-            min_error = 255;
+            calulate_hop_prediction_binary(original_color, predicted_component,
+                                          hop_1, &lhe->hops[pix],
+                                          &lhe->component_prediction[pix]);
 
-            if (original_color - predicted_component> hop_1>>1) //Positive hops computation
-            {
-
-              for (int i = 0; i<4; i++)
-              {
-                predicted_component_w_hop= predicted_component + (hop_1<<i);
-                if (predicted_component_w_hop>MAX_COMPONENT_VALUE)
-                {
-                    predicted_component_w_hop=MAX_COMPONENT_VALUE;
-                }
-                error = original_color - predicted_component_w_hop;
-                if(error < 0) {
-                  error = -error;
-                }
-                if (error < min_error)
-                {
-                  min_error = error;
-                  component_prediction_final= predicted_component_w_hop;
-                  hop_number = i+5;
-                }
-              }
-            }
-            else if(predicted_component - original_color > (hop_1>>1))//Negative hops computation
-            {
-              for (int i = 0; i<4; i++)
-              {
-                predicted_component_w_hop= predicted_component - (hop_1<<i);
-                if (predicted_component_w_hop <= MIN_COMPONENT_VALUE)
-                {
-                    predicted_component_w_hop=1;
-                }
-                error = original_color - predicted_component_w_hop;
-                if(error < 0) {
-                  error = -error;
-                }
-                if (error < min_error)
-                {
-                  min_error = error;
-                  component_prediction_final= predicted_component_w_hop;
-                  hop_number = 3-i;
-                }
-              }
-            }
-            else // Hop0 case
-            {
-              component_prediction_final= predicted_component;
-              hop_number = 4;
-            }
-            lhe->hops[pix]= hop_number;
-            lhe->component_prediction[pix]= component_prediction_final;
+            hop_number =lhe->hops[pix];
 
             H1_ADAPTATION;
             pix++;
@@ -992,7 +947,6 @@ static void lhe_basic_encode_one_hop_per_pixel (LheBasicPrec *prec, LheProcessin
         }
         pix_original_data+=dif_line;
     }
-
 }
 
 /**
@@ -1021,6 +975,15 @@ static void lhe_basic_encode_one_hop_per_pixel_block (LheBasicPrec *prec, LhePro
   shifted_pix_original_data;
 
   num_block = block_y * total_blocks_width + block_x;
+
+  uint8_t *pixel_before, *pixel_after, *original_colors, *pixel_predicted,
+  *hop_numbers, *component_predictions;
+  pixel_before=(uint8_t *) malloc(sizeof(uint8_t) * 8);
+  pixel_after = (uint8_t *) malloc(sizeof(uint8_t) * 8);
+  original_colors = (uint8_t *) malloc(sizeof(uint8_t) * 8);
+  pixel_predicted = (uint8_t *) malloc(sizeof(uint8_t) * 8);
+  hop_numbers = (uint8_t *) malloc(sizeof(uint8_t) * 8);
+  component_predictions = (uint8_t *) malloc(sizeof(uint8_t) * 8);
 
   //ORIGINAL IMAGE
   xini = proc->basic_block[block_y][block_x].x_ini;
@@ -1165,7 +1128,7 @@ static void lhe_basic_encode_one_hop_per_pixel_block (LheBasicPrec *prec, LhePro
         // Core stage of the parallelization. Can be parallelizated.
         for (int x=xini+15; x< xfin-1; x++)
         {
-          for (int i = 0; i< 8; i++)
+          /*for (int i = 0; i< 8; i++)
           {
             shifted_pix = pix+i*(proc->width-2);
             shifted_pix_original_data = pix_original_data+i*(linesize-2);
@@ -1183,7 +1146,31 @@ static void lhe_basic_encode_one_hop_per_pixel_block (LheBasicPrec *prec, LhePro
             H1_ADAPTATION;
             column_hop_1[y-yini-1+i]= hop_1;
             column_last_small_hop[y-yini-1+i]= last_small_hop;
+          }*/
+          for (int i = 0; i< 8; i++)
+          {
+            shifted_pix = pix+i*(proc->width-2);
+            shifted_pix_original_data = pix_original_data+i*(linesize-2);
+            pixel_before[i]=lhe->component_prediction[shifted_pix-1];
+            pixel_after[i]=lhe->component_prediction[shifted_pix+1-proc->width];
+            original_colors[i]=component_original_data[shifted_pix_original_data];
           }
+          lhe_neon_prediction(pixel_before, pixel_after, pixel_predicted);
+          calulate_hop_prediction_binary_neon(original_colors, pixel_predicted,
+                                              &column_hop_1[y-yini+1],
+                                              hop_numbers,
+                                              component_predictions);
+          lhe_h1adapt_neon( hop_numbers, &column_hop_1[y-yini+1],
+                            &column_last_small_hop[y-yini-1]);
+
+          for (int i = 0; i< 8; i++)
+          {
+            shifted_pix = pix+i*(proc->width-2);
+            shifted_pix_original_data = pix_original_data+i*(linesize-2);
+            lhe->hops[shifted_pix]= hop_numbers[i];
+            lhe->component_prediction[shifted_pix]=component_predictions[i];
+          }
+
           pix++;
           pix_original_data++;
         }
@@ -1366,6 +1353,67 @@ static void lhe_basic_encode_frame_pararell (LheContext *s, const AVFrame *frame
     }
 }
 
+void calulate_hop_prediction_binary(uint8_t original_color, uint8_t predicted_component,
+                             uint8_t hop_1, uint8_t *hops,
+                             uint8_t *component_prediction)
+{
+  int error, min_error, predicted_component_w_hop;
+  uint8_t component_prediction_final, hop_number;
+
+  min_error = 255;
+
+ if (original_color - predicted_component> hop_1>>1) //Positive hops computation
+ {
+   for (int i = 0; i<4; i++)
+   {
+     predicted_component_w_hop= predicted_component + (hop_1<<i);
+     if (predicted_component_w_hop>MAX_COMPONENT_VALUE)
+     {
+         predicted_component_w_hop=MAX_COMPONENT_VALUE;
+     }
+     error = original_color - predicted_component_w_hop;
+     if(error < 0) {
+       error = -error;
+     }
+     if (error < min_error)
+     {
+       min_error = error;
+       component_prediction_final= predicted_component_w_hop;
+       hop_number = i+5;
+     }
+   }
+ }
+ else if(predicted_component - original_color > (hop_1>>1))//Negative hops computation
+ {
+   for (int i = 0; i<4; i++)
+   {
+     predicted_component_w_hop= predicted_component - (hop_1<<i);
+     if (predicted_component_w_hop <= MIN_COMPONENT_VALUE)
+     {
+         predicted_component_w_hop=1;
+     }
+     error = original_color - predicted_component_w_hop;
+     if(error < 0) {
+       error = -error;
+     }
+     if (error < min_error)
+     {
+       min_error = error;
+       component_prediction_final= predicted_component_w_hop;
+       hop_number = 3-i;
+     }
+   }
+ }
+ else // Hop0 case
+ {
+   component_prediction_final= predicted_component;
+   hop_number = 4;
+ }
+
+  *hops = hop_number;
+  *component_prediction = component_prediction_final;
+  return;
+}
 
 //==================================================================
 // ADVANCED LHE FUNCTIONS

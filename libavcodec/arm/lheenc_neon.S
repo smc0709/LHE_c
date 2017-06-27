@@ -47,13 +47,13 @@ function calulate_hop_prediction_binary_neon, export=1
  *  d8 -> predicted_component_w_hop
  *
  * TODO -> When storing review the shift that has to be done when storing the
- * final results.
+ * final results. VMOV LDRB STRB.
  */
 
 	vld1.8     d0, [r0]             // Load original_color into a register
 	vld1.8     d1, [r1]             // Load predicted_component into a register
   vmov.i8    d2, #0xFF            // Create the vector of min error filled with 255
-  vst1.8     d8, [sp]!            // Backup of d8 to preserve data.
+  vpush      {d8}                    // Backup of d8 to preserve data.
 
  // HOP_0
   vabd.u8    d3, d0, d1           // Compute the absolute error.
@@ -154,8 +154,8 @@ function calulate_hop_prediction_binary_neon, export=1
   vbit       d5, d3, d4           // Update the hops with the mask.
 
 // Save results and restore state.
-  vld1.8     d8, [sp]!             // Restore the bank d8- TODO -Review VPUSH instruction
-  ldmia      sp!, r0              // pop argument from the stack
+  vpop       {d8}                 // Restore the bank d8- TODO -Review VPUSH instruction
+  pop        {r0}                   // pop argument from the stack
 
   vst1.8     d5, [r3]             // Save the hops in the memory.
   vst1.8     d6, [r0]             // Save the component prediction in the memory.

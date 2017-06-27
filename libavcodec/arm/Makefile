@@ -148,3 +148,5 @@ NEON-OBJS-$(CONFIG_VP9_DECODER)        += arm/vp9itxfm_16bpp_neon.o     \
                                           arm/vp9lpf_neon.o             \
                                           arm/vp9mc_16bpp_neon.o        \
                                           arm/vp9mc_neon.o
+NEON-OBJS-$(CONFIG_LHE_ENCODER)        += arm/lheenc_neon.o
+NEON-OBJS-$(CONFIG_LHE_DECODER)        += arm/lhedec_neon.o
