@@ -22,10 +22,10 @@
 #define H1_ADAPTATION                                   \
     if (hop_number<=HOP_POS_1 && hop_number>=HOP_NEG_1) \
     {                                                   \
-        small_hop=true;                                 \
+        small_hop=1;                                 \
     } else                                              \
     {                                                   \
-        small_hop=false;                                \
+        small_hop=0;                                \
     }                                                   \
                                                         \
     if( (small_hop) && (last_small_hop))  {             \
@@ -887,12 +887,13 @@ static void lhe_basic_encode_one_hop_per_pixel (LheBasicPrec *prec, LheProcessin
 {
 
     //Hops computation.
-    bool small_hop, last_small_hop;
+    //bool small_hop, last_small_hop;
+    uint8_t small_hop, last_small_hop;
     uint8_t predicted_component, hop_1, hop_number, original_color;
     int pix, pix_original_data, dif_line, x, y;
 
-    small_hop = false;
-    last_small_hop=false;          // indicates if last hop is small
+    small_hop = 0;
+    last_small_hop=0;          // indicates if last hop is small
     predicted_component=0;         // predicted signal
     hop_1= START_HOP_1;
     hop_number=4;                  // pre-selected hop // 4 is NULL HOP
@@ -922,7 +923,7 @@ static void lhe_basic_encode_one_hop_per_pixel (LheBasicPrec *prec, LheProcessin
             else if (x == 0) //First column
             {
                 predicted_component=lhe->component_prediction[pix-proc->width];
-                last_small_hop=false;
+                last_small_hop=0;
                 hop_1=START_HOP_1;
             }
             else if (x == proc->width -1) //Last column
@@ -968,7 +969,8 @@ static void lhe_basic_encode_one_hop_per_pixel_block (LheBasicPrec *prec, LhePro
 
   //Hops computation.
   int xini, xfin, yini, yfin;
-  bool small_hop, last_small_hop, *column_last_small_hop;
+  //bool small_hop, last_small_hop, *column_last_small_hop;
+  uint8_t small_hop, last_small_hop, *column_last_small_hop;
   uint8_t predicted_component, hop_1, hop_number, original_color, r_max,
   *column_hop_1;
   int pix, pix_original_data, dif_line, dif_pix ,num_block, shifted_pix,
@@ -991,15 +993,15 @@ static void lhe_basic_encode_one_hop_per_pixel_block (LheBasicPrec *prec, LhePro
   yini = proc->basic_block[block_y][block_x].y_ini;
   yfin = proc->basic_block[block_y][block_x].y_fin;
 
-  small_hop = false;
-  last_small_hop=false;          // indicates if last hop is small
+  small_hop = 0;
+  last_small_hop=0;          // indicates if last hop is small
   predicted_component=0;         // predicted signal
   hop_1= START_HOP_1;
   hop_number=4;                  // pre-selected hop // 4 is NULL HOP
   pix=0;                         // pixel possition, from 0 to image size
   original_color=0;              // original color
   column_hop_1 = (uint8_t *) malloc(sizeof(uint8_t) * (yfin-yini-1));
-  column_last_small_hop = (bool *) malloc (sizeof(bool)* (yfin-yini-1));
+  column_last_small_hop = (uint8_t *) malloc (sizeof(uint8_t)* (yfin-yini-1));//(bool *) malloc (sizeof(bool)* (yfin-yini-1));
   r_max=PARAM_R;
 
   pix = yini*proc->width + xini;
@@ -1053,7 +1055,7 @@ static void lhe_basic_encode_one_hop_per_pixel_block (LheBasicPrec *prec, LhePro
 
     for (int y=yini+1; y < yfin; y++)
     {
-      last_small_hop=false;
+      last_small_hop=0;
       hop_1=START_HOP_1;
 
       original_color = component_original_data[pix_original_data];
@@ -1268,7 +1270,7 @@ static void lhe_basic_encode_one_hop_per_pixel_block (LheBasicPrec *prec, LhePro
         else if (x == xini) //First column
         {
           predicted_component=lhe->component_prediction[pix-proc->width];
-          last_small_hop=false;
+          last_small_hop=0;
           hop_1=START_HOP_1;
         } else if (x == xfin - 1) //Last column
         {
@@ -1449,8 +1451,8 @@ static float lhe_advanced_compute_prx (LheBasicPrec *prec,
     count_hx = 0;
     prx =0;
 
-    small_hop = false;
-    last_small_hop=false;          // indicates if last hop is small
+    small_hop = 0;
+    last_small_hop=0;          // indicates if last hop is small
     predicted_component=0;         // predicted signal
     hop_1= START_HOP_1;
     hop_number=4;                  // pre-selected hop // 4 is NULL HOP
@@ -1476,7 +1478,7 @@ static float lhe_advanced_compute_prx (LheBasicPrec *prec,
 
             if (x == xini) //First column
             {
-                last_small_hop=false;
+                last_small_hop=0;
                 hop_1=START_HOP_1;
                 predicted_component=original_color;//first pixel always is perfectly predicted! :-)
 
@@ -1555,7 +1557,8 @@ static float lhe_advanced_compute_pry (LheBasicPrec *prec, LheProcessing *proc,
 {
 
     //Hops computation.
-    bool small_hop, last_small_hop;
+    //bool small_hop, last_small_hop;
+    uint8_t small_hop, last_small_hop;
     uint8_t predicted_component, hop_1, hop_number, original_color, r_max;
     int pix, pix_original_data;
 
@@ -1567,8 +1570,8 @@ static float lhe_advanced_compute_pry (LheBasicPrec *prec, LheProcessing *proc,
     count_hy = 0;
     pry = 0;
 
-    small_hop = false;
-    last_small_hop=false;          // indicates if last hop is small
+    small_hop = 0;
+    last_small_hop=0;          // indicates if last hop is small
     predicted_component=0;         // predicted signal
     hop_1= START_HOP_1;
     hop_number=4;                  // pre-selected hop // 4 is NULL HOP
@@ -1593,7 +1596,7 @@ static float lhe_advanced_compute_pry (LheBasicPrec *prec, LheProcessing *proc,
             //----------------------------------------------------------
             if (y == yini) //First column
             {
-                last_small_hop=false;
+                last_small_hop=0;
                 hop_1=START_HOP_1;
                 predicted_component=original_color;//first pixel always is perfectly predicted! :-)
             } else {
@@ -2193,7 +2196,8 @@ static void lhe_advanced_encode_block (LheBasicPrec *prec, LheProcessing *proc, 
 
     //Hops computation.
     int xini, xfin_downsampled, yini, yfin_downsampled;
-    bool small_hop, last_small_hop;
+    //bool small_hop, last_small_hop;
+    uint8_t small_hop, last_small_hop;
     uint8_t predicted_luminance, hop_1, hop_number, original_color, r_max;
     int pix, dif_pix, num_block;
 
@@ -2206,8 +2210,8 @@ static void lhe_advanced_encode_block (LheBasicPrec *prec, LheProcessing *proc, 
     yini = proc->basic_block[block_y][block_x].y_ini;
     yfin_downsampled = proc->advanced_block[block_y][block_x].y_fin_downsampled;
 
-    small_hop = false;
-    last_small_hop=false;          // indicates if last hop is small
+    small_hop = 0;
+    last_small_hop=0;          // indicates if last hop is small
     predicted_luminance=0;         // predicted signal
     hop_1= START_HOP_1;
     hop_number=4;                  // pre-selected hop // 4 is NULL HOP
@@ -2240,7 +2244,7 @@ static void lhe_advanced_encode_block (LheBasicPrec *prec, LheProcessing *proc, 
             else if (x == xini)
             {
                 predicted_luminance=lhe->component_prediction[pix-proc->width];
-                last_small_hop=false;
+                last_small_hop=0;
                 hop_1=START_HOP_1;
             } else if (x == xfin_downsampled -1)
             {
@@ -2434,7 +2438,8 @@ static void mlhe_encode_delta (LheBasicPrec *prec, LheProcessing *proc, LheImage
 
     //Hops computation.
     int xini, xfin_downsampled, yini, yfin_downsampled;
-    bool small_hop, last_small_hop;
+    //bool small_hop, last_small_hop;
+    uint8_t small_hop, last_small_hop;
     uint8_t predicted_luminance, hop_1, hop_number, r_max;
     int pix, dif_pix, num_block, original_color;
 
@@ -2447,8 +2452,8 @@ static void mlhe_encode_delta (LheBasicPrec *prec, LheProcessing *proc, LheImage
     yini = proc->basic_block[block_y][block_x].y_ini;
     yfin_downsampled = proc->advanced_block[block_y][block_x].y_fin_downsampled;
 
-    small_hop = false;
-    last_small_hop=false;          // indicates if last hop is small
+    small_hop = 0;
+    last_small_hop=0;          // indicates if last hop is small
     predicted_luminance=0;         // predicted signal
     hop_1= START_HOP_1;
     hop_number=4;                  // pre-selected hop // 4 is NULL HOP
@@ -2489,7 +2494,7 @@ static void mlhe_encode_delta (LheBasicPrec *prec, LheProcessing *proc, LheImage
             else if (x == xini)
             {
                 predicted_luminance=delta_prediction[pix-proc->width];
-                last_small_hop=false;
+                last_small_hop=0;
                 hop_1=START_HOP_1;
             } else if (x == xfin_downsampled -1)
             {
