@@ -183,35 +183,47 @@ endfunc
 
 function lhe_h1adapt_neon, export =1
 	/*Primer If*/
-	vld1.8		d0,[r0]			 /*Cargo hop_number[]*/
-	vmov.i8	d1, #5
-	vmov.i8 	d2, #3
-	vcge.u8	d3,d1,d0		 /*5>=hop_number[]*/
-	vcge.u8	d4,d0,d2		 /*hop_number[]>=3*/
-	vand 		d5,d3,d4		/*And de los anteriores*/
-	/*d5 contiene el array de small hop*/
+	/*if (hop_number<=HOP_POS_1 && hop_number>=HOP_NEG_1)*/
+	/*small_hop=true o small_hop=false*/
+	vld1.8		d0,[r0]			/*Cargo hop_number[] en d0*/
+	vmov.i8	d1, #5				/*Cargo un 5 que es hop_pos_1*/
+	vmov.i8 	d2, #3			/*Cargo un 3 que es hop_neg_1*/
+	vcge.u8	d3,d1,d0		 	/*5>=hop_number[], devuelve todo 1s en las posciones que se cumple*/
+	vcge.u8	d4,d0,d2		 	/*hop_number[]>=3, devuelve todo 1s en las posciones que se cumple*/
+	vand 		d5,d3,d4			/*And de los anteriores, si se cumplen los dos (los dos son todo 1s) es true y devuelve un 1*/
+	/*d5 contiene el array de small hop que vale 0 para false y 1 para true*/
 
 	/*Segundo if*/
-	vld1.8 		d0, [r1]	 /*Cargo hop1[]*/
-	vld1.8 		d1, [r2]		 /*Cargo last_small_hop[]*/
-	vand 		d2, d5, d1
-	vabd.u8		d0, d0, d2 /*En d0 con h1-1 si es necesario*/
-	vmov.i8 	d4, #10 /*Max hop 1*/
-	vmov.i8 	d3, #0 /*0 auxiliar para la siguiente instruccion*/
-	vcgt.u8 	d2, d2, d3 /*chapucilla para pasar d2 de 1,0 a 255,0*/
-	vbif 			d0, d4,d2 /*Si el bit del segundo oper es 1, dejo el destino igual, si es 0, meto en el destino el primer oper*/
+	/*if( (small_hop) && (last_small_hop))*/
+	/*hop1=hop1-1 o hop_1=MAX_HOP1*/
+	/*Tiene un if anidado que haré mas adelante*/
+	vld1.8 		d0, [r1]			/*Cargo hop1[] en d0*/
+	vld1.8 		d1, [r2]		 	/*Cargo last_small_hop[] en d1*/
+	vand 		d2, d5, d1			/*And de small hop que es d5, y last_small_hop que es d1*/
+	vabd.u8		d0, d0, d2 		/*Resta de hop1[] - d2, que es el resultado del and anterior*/
+	/*Esta resta lo que hace es hop1=hop1-1 en los casos en que se cumple small_hop && last_small_hop*/
+	/*Porque el and, devuelve un 1 cuando es true y un 0 cuando no, así que al restar el resultado del and*/
+	/*Lo que hacemos es restar 1 en las posiciones que tenemos que restarlo*/
+	vmov.i8 	d4, #10			/*En d4 ponemos todo 10, que es MAX_HOP1*/
+	vmov.i8 	d3, #0 			/*0 auxiliar para la siguiente instruccion*/
+	vcgt.u8 	d2, d2, d3 	/*chapucilla para pasar d2 de 1,0 a 255,0*/
+	/*Comparamos si es > 0, cuando se cumple, en los 1s los convierte en 255 que nos viene bien ahora*/
+	vbif 			d0, d4,d2 	/*Si el bit del segundo oper es 1, dejo el destino igual, si es 0, meto en el destino el primer oper*/
+	/*Cuando es 0 el bit del segundo operando se mete en el primer operando el 10 que teniamos en d4*/
+	/*En las posiciones en que en d2 hay 0s se meterá un 10, que es lo que dice la función, cuando no se cumple el segundo if: hop1=MAX_HOP1*/
+	/*Esto tiene sentido porque en d2 estaba el resultado de ese and, dando 0 cuando no se cumplía y uno cuando sí*/
 	/*Ahora d0 contiene hop1-1 cuando hace falta y max hop 1 cuando hace falta*/
 
 	/*if anidado, si hop1 < min_hop1  entonces hop1 = min_hop1*/
-	vmov.i8 	d3,#4
-	vcgt.u8	d4, d3, d0
-	vbit		d0, d3,d4 /*Al reves que vbif*/
+	vmov.i8 	d3,#4			/*Metemos un 4 en d3 que es min_hop1*/
+	vcgt.u8	d4, d3, d0	/*Comprobamos si 4>hop1[]*/
+	vbit		d0, d3,d4 	/*Al reves que vbif, cuando sea mayor (todo 1s) mete un 4 en lugar de lo que había, que era mayor que 4 y por eso era todo 1s*/
 
 	/*Ahora d0 que es hop1[] esta bien ajustado*/
 	/*Lo que queda es devolver correctamente los arrays*/
 
 	vst1.8 		d0, [r1]  	/*hop1 o column hop1*/
-	vmov.i8 	d6, #254	/*Hago una resta saturada para pasar de 255 a 1*/
+	vmov.i8 	d6, #254		/*Hago una resta saturada para pasar de 255 a 1*/
 	vqsub.u8	d5, d5,d6
 	vst1.8		d5, [r2]		/*last small hop que ahora es small hop*/
 	bx	lr
