@@ -50,8 +50,8 @@ function calulate_hop_prediction_binary_neon, export=1
  * final results. VMOV LDRB STRB.
  */
 
-	vld1.8     d0, [r0]             // Load original_color into a register
-	vld1.8     d1, [r1]             // Load predicted_component into a register
+  vld1.8     d0, [r0]             // Load original_color into a register
+  vld1.8     d1, [r1]             // Load predicted_component into a register
   vmov.i8    d2, #0xFF            // Create the vector of min error filled with 255
   vpush      {d8}                    // Backup of d8 to preserve data.
 
@@ -153,12 +153,172 @@ function calulate_hop_prediction_binary_neon, export=1
   vmov.i8    d3, #0x00
   vbit       d5, d3, d4           // Update the hops with the mask.
 
-// Save results and restore state.
-  vpop       {d8}                 // Restore the bank d8- TODO -Review VPUSH instruction
-  pop        {r0}                   // pop argument from the stack
+ // Save results and restore state.
+  vpop       {d8}                 // Restore the bank d8
+  ldr        r1, [sp]             // Read  the fifth argument from the stack
 
   vst1.8     d5, [r3]             // Save the hops in the memory.
-  vst1.8     d6, [r0]             // Save the component prediction in the memory.
+  vst1.8     d6, [r1]             // Save the component prediction in the memory.
+
+  bx         lr
+endfunc
+
+function calulate_hop_prediction_binary_neon_2, export=1
+/*
+ * This function takes the next parameters:
+ * uint8_t *original_color             Stored in r0
+ * uint8_t *predicted_component        Stored in r1
+ * uint8_t *hop_1                      Stored in r2
+ * uint8_t shifted_pix_original_data                    Stored in r3
+ * uint8_t *hops                       Stored in the stack
+ * uint8_t *component_prediction       Stored in the stack +1
+ *
+ * Pseudocode:
+ * - Backup of the registers used.
+ * - Load original_color using the shift into ARM registers.
+ * - Load the content of the AMR reg into the NEON register.
+ * - Load predicted_component into a register
+ * - Create the vector of min error filled with 255
+ * - For each of the hops we have
+ *   - Load and calculate the current hop
+ *   - Compute value with the prediction and the hop_1- saturating operation
+ *   - Compute the absolute error.
+ *   - Create a mask comparing min error and error.
+ *   - Update the hops with the mask.
+ *   - Update the component_prediction with the mask.
+ *   - Update the min _error.
+ * - Save the hops in the ARM Registers.
+ * - Save form the ARM registers following the shift.
+ * - Save the component prediction in the ARM Registers.
+ * - Save form the ARM registers following the shift.
+ * - Restore the registers used.
+ *
+ * Registers use are:
+ *  d0 -> original_color
+ *  d1 -> predicted_component
+ *  d2 -> min_error
+ *  d3 -> error
+ *  d4 -> mask of errors
+ *  d5 -> hops
+ *  d6 -> component prediction
+ *  d7 -> hop_1 (later become HOP_POS_x)
+ *  d8 -> predicted_component_w_hop
+ *  r4,r5, r6, r7, r8, r9, r10, r11 -> Used to load the values with the shift
+ * TODO -> When storing review the shift that has to be done when storing the
+ * final results. VMOV LDRB STRB.
+ */
+
+  vpush      {d8}                 // Backup of d8 to preserve data.
+  push       {r4, r5. r6, r7, r8, r9, r10, r11} //Backup to preserve the data.
+  vld1.8     d0, [r0]             // Load original_color into a register
+  vld1.8     d1, [r1]             // Load predicted_component into a register
+  vmov.i8    d2, #0xFF            // Create the vector of min error filled with 255
+
+
+ // HOP_0
+  vabd.u8    d3, d0, d1           // Compute the absolute error.
+  vcgt.u8    d4, d2, d3           // Create a mask comparing min error and error.
+
+  vbit       d2, d3, d4           // Update the min _error.
+  vbit       d6, d1, d4           // Update the component_prediction with the mask.
+  vmov.i8    d3, #0x04
+  vbit       d5, d3, d4           // Update the hops with the mask.
+
+
+ // HOP_POS_1
+  vld1.8     d7, [r2]             // Load and calculate the current hop
+  vqadd.u8   d8, d7, d1           // Compute value with the prediction and the current hop.
+  vabd.u8    d3, d0, d8           // Compute the absolute error.
+  vcgt.u8    d4, d2, d3           // Create a mask comparing min error and error.
+
+  vbit       d2, d3, d4           // Update the min _error.
+  vbit       d6, d8, d4           // Update the component_prediction with the mask.
+  vmov.i8    d3, #0x05
+  vbit       d5, d3, d4           // Update the hops with the mask.
+
+// HOP_POS_2
+  vqshl.u8   d7, d7, #0x01        // Load and calculate the current hop
+  vqadd.u8   d8, d7, d1           // Compute value with the prediction and the current hop.
+  vabd.u8    d3, d0, d8           // Compute the absolute error.
+  vcgt.u8    d4, d2, d3           // Create a mask comparing min error and error.
+
+  vbit       d2, d3, d4           // Update the min _error.
+  vbit       d6, d8, d4           // Update the component_prediction with the mask.
+  vmov.i8    d3, #0x06
+  vbit       d5, d3, d4           // Update the hops with the mask.
+
+ // HOP_POS_3
+  vqshl.u8   d7, d7, #0x01        // Load and calculate the current hop
+  vqadd.u8   d8, d7, d1           // Compute value with the prediction and the current hop.
+  vabd.u8    d3, d0, d8           // Compute the absolute error.
+  vcgt.u8    d4, d2, d3           // Create a mask comparing min error and error.
+
+  vbit       d2, d3, d4           // Update the min _error.
+  vbit       d6, d8, d4           // Update the component_prediction with the mask.
+  vmov.i8    d3, #0x07
+  vbit       d5, d3, d4           // Update the hops with the mask.
+
+ // HOP_POS_4
+  vqshl.u8   d7, d7, #0x01        // Load and calculate the current hop
+  vqadd.u8   d8, d7, d1           // Compute value with the prediction and the current hop.
+  vabd.u8    d3, d0, d8           // Compute the absolute error.
+  vcgt.u8    d4, d2, d3           // Create a mask comparing min error and error.
+
+  vbit       d2, d3, d4           // Update the min _error.
+  vbit       d6, d8, d4           // Update the component_prediction with the mask.
+  vmov.i8    d3, #0x08
+  vbit       d5, d3, d4           // Update the hops with the mask.
+
+ // HOP_NEG_1
+  vld1.8     d7, [r2]             // Load and calculate the current hop
+  vqsub.u8   d8, d1, d7           // Compute value with the prediction and the current hop.
+  vabd.u8    d3, d0, d8           // Compute the absolute error.
+  vcgt.u8    d4, d2, d3           // Create a mask comparing min error and error.
+
+  vbit       d2, d3, d4           // Update the min _error.
+  vbit       d6, d8, d4           // Update the component_prediction with the mask.
+  vmov.i8    d3, #0x03
+  vbit       d5, d3, d4           // Update the hops with the mask.
+
+ // HOP_NEG_2
+  vqshl.u8   d7, d7, #0x01        // Load and calculate the current hop
+  vqsub.u8   d8, d1, d7           // Compute value with the prediction and the current hop.
+  vabd.u8    d3, d0, d8           // Compute the absolute error.
+  vcgt.u8    d4, d2, d3           // Create a mask comparing min error and error.
+
+  vbit       d2, d3, d4           // Update the min _error.
+  vbit       d6, d8, d4           // Update the component_prediction with the mask.
+  vmov.i8    d3, #0x02
+  vbit       d5, d3, d4           // Update the hops with the mask.
+
+ // HOP_NEG_3
+  vqshl.u8   d7, d7, #0x01        // Load and calculate the current hop
+  vqsub.u8   d8, d1, d7           // Compute value with the prediction and the current hop.
+  vabd.u8    d3, d0, d8           // Compute the absolute error.
+  vcgt.u8    d4, d2, d3           // Create a mask comparing min error and error.
+
+  vbit       d2, d3, d4           // Update the min _error.
+  vbit       d6, d8, d4           // Update the component_prediction with the mask.
+  vmov.i8    d3, #0x01
+  vbit       d5, d3, d4           // Update the hops with the mask.
+
+// HOP_NEG_4
+  vqshl.u8   d7, d7, #0x01        // Load and calculate the current hop
+  vqsub.u8   d8, d1, d7           // Compute value with the prediction and the current hop.
+  vabd.u8    d3, d0, d8           // Compute the absolute error.
+  vcgt.u8    d4, d2, d3           // Create a mask comparing min error and error.
+
+  vbit       d2, d3, d4           // Update the min _error.
+  vbit       d6, d8, d4           // Update the component_prediction with the mask.
+  vmov.i8    d3, #0x00
+  vbit       d5, d3, d4           // Update the hops with the mask.
+
+ // Save results and restore state.
+  vpop       {d8}                 // Restore the bank d8
+  ldr        r1, [sp]             // Read  the fifth argument from the stack
+
+  vst1.8     d5, [r3]             // Save the hops in the memory.
+  vst1.8     d6, [r1]             // Save the component prediction in the memory.
 
   bx         lr
 endfunc

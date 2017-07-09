@@ -15,6 +15,12 @@ void calulate_hop_prediction_binary_neon( uint8_t *original_color,
                                           uint8_t *hop_1, uint8_t *hops,
                                           uint8_t *component_prediction);
 
+void calulate_hop_prediction_binary_neon_2( uint8_t *original_color,
+                                          uint8_t *predicted_component,
+                                          uint8_t *hop_1, uint8_t distance,
+                                          uint8_t *hops,
+                                          uint8_t *component_prediction);
+
 void lhe_neon_prediction( uint8_t pixel_before[], uint8_t pixel_upafter[],
                           uint8_t pixel_predicted[]);
 
