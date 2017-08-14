@@ -54,7 +54,7 @@ static const uint8_t mlhe_sig[4] = "MLHE";
 #define BLOCK_HEIGHT_Y 64
 #define BLOCK_WIDTH_UV BLOCK_WIDTH_Y/CHROMA_FACTOR_WIDTH
 #define BLOCK_HEIGHT_UV BLOCK_HEIGHT_Y/CHROMA_FACTOR_HEIGHT
-#define HORIZONTAL_BLOCKS 32
+#define HORIZONTAL_BLOCKS 2
 
 //Params for precomputation
 #define H1_RANGE 20

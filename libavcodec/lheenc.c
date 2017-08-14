@@ -70,6 +70,9 @@ void calulate_hop_prediction_binary(uint8_t original_color,
                                     uint8_t predicted_component,
                                     uint8_t hop_1, uint8_t *hops,
                                     uint8_t *component_prediction);
+void lhe_h1adapt( uint8_t *hop_number, uint8_t *column_hop_1,
+                       uint8_t *column_last_small_hop);
+                                  
 /**
  * Initializes coder
  *
@@ -940,8 +943,10 @@ static void lhe_basic_encode_one_hop_per_pixel (LheBasicPrec *prec, LheProcessin
                                           &lhe->component_prediction[pix]);
 
             hop_number =lhe->hops[pix];
-
-            H1_ADAPTATION;
+	
+            //H1_ADAPTATION;
+            
+			lhe_h1adapt( &hop_number, &hop_1, &last_small_hop);
             pix++;
             pix_original_data++;
 
@@ -1157,13 +1162,37 @@ static void lhe_basic_encode_one_hop_per_pixel_block (LheBasicPrec *prec, LhePro
             pixel_after[i]=lhe->component_prediction[shifted_pix+1-proc->width];
             original_colors[i]=component_original_data[shifted_pix_original_data];
           }
-          lhe_neon_prediction(pixel_before, pixel_after, pixel_predicted);
-          calulate_hop_prediction_binary_neon(original_colors, pixel_predicted,
-                                              &column_hop_1[y-yini+1],
-                                              hop_numbers,
-                                              component_predictions);
-          lhe_h1adapt_neon( hop_numbers, &column_hop_1[y-yini+1],
-                            &column_last_small_hop[y-yini-1]);
+          
+          //lhe_neon_prediction(pixel_before, pixel_after, pixel_predicted);
+          for (int i = 0; i< 8; i++)
+          {   
+				pixel_predicted[i]=(pixel_before[i]+pixel_after[i])>>1;
+          }  
+          
+          //calulate_hop_prediction_binary_neon(original_colors, pixel_predicted,
+           //                                   &column_hop_1[y-yini-1],
+             //                                 hop_numbers,
+               //                               component_predictions);
+          for (int i = 0; i< 8; i++)
+          {   
+			  calulate_hop_prediction_binary(original_colors[i], pixel_predicted[i],
+                             column_hop_1[y-yini-1+i], &hop_numbers[i], &component_predictions[i]);
+              //hop_numbers[i] = prec->best_hop[20][column_hop_1[y-yini-1+i]][original_colors[i]][pixel_predicted[i]];
+               //component_predictions[i] = prec -> prec_luminance[pixel_predicted[i]][20][column_hop_1[y-yini-1+i]][hop_numbers[i]];
+          }
+          
+          
+          //lhe_h1adapt_neon( hop_numbers, &column_hop_1[y-yini-1],
+           //                 &column_last_small_hop[y-yini-1]);
+          for (int i = 0; i< 8; i++)
+          {   
+				lhe_h1adapt( &hop_numbers[i], &column_hop_1[y-yini-1+i],&column_last_small_hop[y-yini-1+i]);
+				//hop_1 = column_hop_1[y-yini-1+i];
+				//last_small_hop = column_last_small_hop[y-yini-1+i];
+				//H1_ADAPTATION;
+				//column_hop_1[y-yini-1+i]= hop_1;
+				//column_last_small_hop[y-yini-1+i]= last_small_hop;
+          }                
 
           for (int i = 0; i< 8; i++)
           {
@@ -1310,6 +1339,7 @@ static void lhe_basic_encode_one_hop_per_pixel_block (LheBasicPrec *prec, LhePro
 static void lhe_basic_encode_frame_sequential (LheContext *s, const AVFrame *frame,
                                                uint8_t *component_original_data_Y, uint8_t *component_original_data_U, uint8_t *component_original_data_V)
 {
+	av_log (NULL, AV_LOG_PANIC, "Secuential \n ");
     //Luminance
     lhe_basic_encode_one_hop_per_pixel(&s->prec, &s->procY, &s->lheY, component_original_data_Y, frame->linesize[0]);
 
@@ -1328,6 +1358,7 @@ static void lhe_basic_encode_frame_pararell (LheContext *s, const AVFrame *frame
                                              uint8_t *component_original_data_Y, uint8_t *component_original_data_U, uint8_t *component_original_data_V,
                                              int total_blocks_width, int total_blocks_height)
 {
+	av_log (NULL, AV_LOG_PANIC, "Paralel \n ");
     #pragma omp parallel for
     for (int block_y=0; block_y<total_blocks_height; block_y++)
     {
@@ -1415,6 +1446,35 @@ void calulate_hop_prediction_binary(uint8_t original_color, uint8_t predicted_co
   *hops = hop_number;
   *component_prediction = component_prediction_final;
   return;
+}
+
+void lhe_h1adapt( uint8_t *hop_number, uint8_t *column_hop_1,
+                       uint8_t *column_last_small_hop)
+{
+	uint8_t small_hop;
+	
+	if (*hop_number<=HOP_POS_1 && *hop_number>=HOP_NEG_1)
+    {
+        small_hop=1;
+    }
+    else
+    {
+        small_hop=0;
+    }
+
+    if(small_hop == 1 && *column_last_small_hop == 1)
+    {
+        *column_hop_1=*column_hop_1-1;
+        if (*column_hop_1<MIN_HOP_1)
+        {
+            *column_hop_1=MIN_HOP_1;
+        }
+    }
+    else
+    {
+        *column_hop_1=MAX_HOP_1;
+    }
+    *column_last_small_hop=small_hop;
 }
 
 //==================================================================
