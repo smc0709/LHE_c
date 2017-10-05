@@ -208,9 +208,26 @@ function calulate_hop_prediction_binary_neon_2, export=1
  * final results. VMOV LDRB STRB.
  */
 
-  vpush      {d8}                 // Backup of d8 to preserve data.
   push       {r4, r5. r6, r7, r8, r9, r10, r11} //Backup to preserve the data.
-  vld1.8     d0, [r0]             // Load original_color into a register
+  vpush      {d8}                 // Backup of d8 to preserve data.
+
+  ldrb       r4, [r0], r3         //
+  ldrb       r5, [r0], r3         //
+  ldrb       r6, [r0], r3         //
+  ldrb       r7, [r0], r3         // Load Original color into ARM Registers
+  ldrb       r8, [r0], r3         //
+  ldrb       r9, [r0], r3         //
+  ldrb       r10, [r0], r3        //
+  ldrb       r11, [r0], r3        //
+  vmov.8     d0[0], r4            //
+  vmov.8     d0[1], r5            //
+  vmov.8     d0[2], r6            //
+  vmov.8     d0[3], r7            //
+  vmov.8     d0[4], r8            //   Now from ARM Registers to d0 in order
+  vmov.8     d0[5], r9            //
+  vmov.8     d0[6], r10           //
+  vmov.8     d0[7], r11           //
+
   vld1.8     d1, [r1]             // Load predicted_component into a register
   vmov.i8    d2, #0xFF            // Create the vector of min error filled with 255
 
@@ -315,10 +332,47 @@ function calulate_hop_prediction_binary_neon_2, export=1
 
  // Save results and restore state.
   vpop       {d8}                 // Restore the bank d8
-  ldr        r1, [sp]             // Read  the fifth argument from the stack
+  ldr        r0, [sp, #-32]       // Read the fifth argument(hops) from the
+                                  // stack. Right now we have 8 registers so the
+                                  // shift is 8*4=32 bytes
+  ldr        r1, [sp, #-36]       // Read the sixth argument(predicted) from
+                                  // the stack. We have 9 registers so shift is
+                                  // 9*4= 36 bytes.
+  vmov.u8    r4, d5[0]
+  vmov.u8    r5, d5[1]
+  vmov.u8    r6, d5[2]
+  vmov.u8    r7, d5[3]
+  vmov.u8    r8, d5[4]
+  vmov.u8    r9, d5[5]
+  vmov.u8    r10, d5[6]
+  vmov.u8    r11, d5[7]
+  strb       r4, [r0], r3         //
+  strb       r5, [r0], r3         //
+  strb       r6, [r0], r3         //
+  strb       r7, [r0], r3         // Save the hops in the memory.
+  strb       r8, [r0], r3         //
+  strb       r9, [r0], r3         //
+  strb       r10, [r0], r3        //
+  strb       r11, [r0], r3        //
 
-  vst1.8     d5, [r3]             // Save the hops in the memory.
-  vst1.8     d6, [r1]             // Save the component prediction in the memory.
+  vmov.u8    r4, d6[0]
+  vmov.u8    r5, d6[1]
+  vmov.u8    r6, d6[2]
+  vmov.u8    r7, d6[3]
+  vmov.u8    r8, d6[4]
+  vmov.u8    r9, d6[5]
+  vmov.u8    r10, d6[6]
+  vmov.u8    r11, d6[7]
+  strb       r4, [r1], r3         //
+  strb       r5, [r1], r3         //
+  strb       r6, [r1], r3         //
+  strb       r7, [r1], r3         // Save the component prediction in the memory.
+  strb       r8, [r1], r3         //
+  strb       r9, [r1], r3         //
+  strb       r10, [r1], r3        //
+  strb       r11, [r1], r3        //
+
+  pop        {r4, r5. r6, r7, r8, r9, r10, r11} // Restore the bank d8
 
   bx         lr
 endfunc
