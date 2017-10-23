@@ -354,6 +354,7 @@ static void register_all(void)
     REGISTER_DEMUXER (XWMA,             xwma);
     REGISTER_DEMUXER (YOP,              yop);
     REGISTER_MUXDEMUX(YUV4MPEGPIPE,     yuv4mpegpipe);
+    REGISTER_MUXDEMUX(MLHE,             mlhe);
 
     /* image demuxers */
     REGISTER_DEMUXER (IMAGE_BMP_PIPE,        image_bmp_pipe);

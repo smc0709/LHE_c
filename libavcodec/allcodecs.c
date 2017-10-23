@@ -413,6 +413,8 @@ static void register_all(void)
     REGISTER_DECODER(ZEROCODEC,         zerocodec);
     REGISTER_ENCDEC (ZLIB,              zlib);
     REGISTER_ENCDEC (ZMBV,              zmbv);
+    REGISTER_ENCDEC (LHE,		lhe);
+    REGISTER_ENCDEC (MLHE,              mlhe);
 
     /* audio codecs */
     REGISTER_ENCDEC (AAC,               aac);
