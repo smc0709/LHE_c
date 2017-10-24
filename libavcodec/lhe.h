@@ -167,7 +167,7 @@ static const uint8_t mlhe_sig[4] = "MLHE";
 #define PPP_MAX_IMAGES 64 //this value allows to compress images up to 4096 px widthwise
 #define PPP_MIN 1
 #define PPP_MAX 4
-#define ELASTIC_MAX 4
+#define ELASTIC_MAX 3
 #define MAX_QL 100
 
 //STREAMING
@@ -201,6 +201,7 @@ typedef struct LheReconfParams {
     uint8_t down_mode_p;
     bool color;
     bool pr_metrics;
+    uint8_t gop;
 } LheReconfParams;
 
 typedef struct BasicLheBlock {

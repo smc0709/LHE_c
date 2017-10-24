@@ -1126,6 +1126,7 @@ static void entropic_enc(LheProcessing *proc, LheContext *s, uint8_t *hops, uint
 
     int block_x = block_y_ini*HORIZONTAL_BLOCKS;
     int inc_x = 1;
+    bool empty_block = false;
 
     uint8_t hop = 0;
     uint8_t number[9] = { 0,1,1,1,1,1,1,1,1 };
@@ -1142,6 +1143,28 @@ static void entropic_enc(LheProcessing *proc, LheContext *s, uint8_t *hops, uint
 
             pix = yini*proc->width+xini;
             dif_pix = proc->width-xfin_downsampled+xini;
+
+
+            /*
+            
+
+            empty_block = true;
+            for (int y = yini; y < yfin_downsampled; y++) {
+                for (int x = xini; x < xfin_downsampled; x++) {
+                    hop = hops[pix];
+                    if (hop != 4) empty_block = false;
+                    pix++;
+                }
+                pix+=dif_pix;
+            }
+
+            pix = yini*proc->width+xini;
+            if (empty_block) continue;
+
+            */
+
+
+
 
             for (int y = yini; y < yfin_downsampled; y++) {
                 for (int x = xini; x < xfin_downsampled; x++) {
@@ -1192,8 +1215,9 @@ static void entropic_enc(LheProcessing *proc, LheContext *s, uint8_t *hops, uint
 
             block_x += inc_x;
         }
-        block_x -= inc_x;
-        inc_x = -inc_x;
+        //block_x -= inc_x;
+        block_x = 0;
+        //inc_x = -inc_x;
     }
 
     if (h0_counter != 0 && mode != HUFFMAN) put_bits(&s->pb, rlc_length+1, h0_counter);

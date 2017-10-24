@@ -446,8 +446,9 @@ static void lhe_advanced_read_file_symbols2 (LheState *s, LheProcessing *proc, u
 
             block_x += inc_x;
         }
-        block_x -= inc_x;
-        inc_x = -inc_x;
+        block_x=0;
+        //block_x -= inc_x;
+        //inc_x = -inc_x;
     }
 
 }
