@@ -874,248 +874,6 @@ static uint64_t lhe_basic_gen_huffman (LheHuffEntry *he_Y, LheHuffEntry *he_UV,
     
 }
 
-/*
-static uint64_t entropic_enc(LheProcessing *proc, LheContext *s, uint8_t *hops, uint16_t block_y_ini, uint16_t block_y_fin) {
-
-    uint8_t rlc_length, condition_length;
-    uint64_t counterh0 = 0;
-    uint8_t mode = 0; //0=huffman, 1=rlc
-    uint8_t mode_prev = mode;
-    uint8_t rlc_length_ini = 4;
-    uint8_t condition_length_ini = 7;
-    uint64_t bytes = 0;
-    uint64_t moves = 1;
-    uint64_t mask = 1UL << (sizeof(mask)*(CHAR_BIT))-1;
-    uint64_t aux = 0;
-    int hop = 0;
-    int xini, yini, xfin_downsampled, yfin_downsampled, pix, dif_pix;
-
-    rlc_length = rlc_length_ini;
-    condition_length = condition_length_ini;
-    int block_x = block_y_ini*HORIZONTAL_BLOCKS;
-    int inc_x = 1;
-
-    for (int block_y = block_y_ini; block_y < block_y_fin; block_y++) {
-        for (int i = 0; i < HORIZONTAL_BLOCKS; i++) {
-            /*if ((&proc->advanced_block[block_y][block_x])->empty_flag == 1) {
-                //av_log(NULL, AV_LOG_INFO, "Bloque vacio\n");
-                goto SIGUIENTE;
-            }*//*
-            xini = proc->basic_block[block_y][block_x].x_ini;
-            yini = proc->basic_block[block_y][block_x].y_ini;
-            
-            xfin_downsampled = proc->advanced_block[block_y][block_x].x_fin_downsampled;          
-            yfin_downsampled = proc->advanced_block[block_y][block_x].y_fin_downsampled;
-
-            pix = yini*proc->width+xini;
-            dif_pix = proc->width-xfin_downsampled+xini;
-            //----------------------------------------------------------------------------------------------
-            for (int y = yini; y < yfin_downsampled; y++) {
-                for (int x = xini; x < xfin_downsampled; x++) {
-
-                    hop = hops[pix];
-                    if (hop==4){
-                        counterh0+=1;
-                        if (mode==0 && counterh0==condition_length) {
-                            mode=1;
-                            counterh0=0;
-                            aux |= mask;
-                            mask = (mask >> 1) | (mask << (LENGTH-1));
-                            moves += 1;
-                            if (moves >= LENGTH) {put_bits64(&s->pb, sizeof(uint64_t), aux); av_log(NULL, AV_LOG_INFO, "aux: %lld\n", aux); aux=0; bytes++; moves-=LENGTH;}
-                        }
-                    } else {
-                        if (mode_prev == 0) {counterh0 = 0;}
-                        mode=0;
-                    }
-
-                    if (mode == 0 && mode_prev == 0) {
-                        switch (hop) {
-                            case 4:
-                                aux |= mask;
-                                mask = (mask >> 1) | (mask << (LENGTH-1));
-                                moves += 1;
-                                if (moves >= LENGTH) {put_bits64(&s->pb, sizeof(uint64_t), aux); av_log(NULL, AV_LOG_INFO, "aux: %lld\n", aux); aux=0; bytes++; moves-=LENGTH;}
-                                break;
-                            case 5:
-                                mask = (mask >> 1) | (mask << (LENGTH-1));
-                                moves += 1;
-                                if (moves >= LENGTH) {put_bits64(&s->pb, sizeof(uint64_t), aux); av_log(NULL, AV_LOG_INFO, "aux: %lld\n", aux); aux=0; bytes++; moves-=LENGTH;}
-                                aux |= mask;
-                                mask = (mask >> 1) | (mask << (LENGTH-1));
-                                moves += 1;
-                                if (moves >= LENGTH) {put_bits64(&s->pb, sizeof(uint64_t), aux); av_log(NULL, AV_LOG_INFO, "aux: %lld\n", aux); aux=0; bytes++; moves-=LENGTH;}
-                                break;
-                            case 3:
-                                mask = (mask >> 2) | (mask << (LENGTH-2));
-                                moves += 2;
-                                if (moves >= LENGTH) {put_bits64(&s->pb, sizeof(uint64_t), aux); av_log(NULL, AV_LOG_INFO, "aux: %lld\n", aux); aux=0; bytes++; moves-=LENGTH;}
-                                aux |= mask;
-                                mask = (mask >> 1) | (mask << (LENGTH-1));
-                                moves += 1;
-                                if (moves >= LENGTH) {put_bits64(&s->pb, sizeof(uint64_t), aux); av_log(NULL, AV_LOG_INFO, "aux: %lld\n", aux); aux=0; bytes++; moves-=LENGTH;}
-                                break;
-                            case 6:
-                                mask = (mask >> 3) | (mask << (LENGTH-3));
-                                moves += 3;
-                                if (moves >= LENGTH) {put_bits64(&s->pb, sizeof(uint64_t), aux); av_log(NULL, AV_LOG_INFO, "aux: %lld\n", aux); aux=0; bytes++; moves-=LENGTH;}
-                                aux |= mask;
-                                mask = (mask >> 1) | (mask << (LENGTH-1));
-                                moves += 1;
-                                if (moves >= LENGTH) {put_bits64(&s->pb, sizeof(uint64_t), aux); av_log(NULL, AV_LOG_INFO, "aux: %lld\n", aux); aux=0; bytes++; moves-=LENGTH;}
-                                break;
-                            case 2:
-                                mask = (mask >> 4) | (mask << (LENGTH-4));
-                                moves += 4;
-                                if (moves >= LENGTH) {put_bits64(&s->pb, sizeof(uint64_t), aux); av_log(NULL, AV_LOG_INFO, "aux: %lld\n", aux); aux=0; bytes++; moves-=LENGTH;}
-                                aux |= mask;
-                                mask = (mask >> 1) | (mask << (LENGTH-1));
-                                moves += 1;
-                                if (moves >= LENGTH) {put_bits64(&s->pb, sizeof(uint64_t), aux); av_log(NULL, AV_LOG_INFO, "aux: %lld\n", aux); aux=0; bytes++; moves-=LENGTH;}
-                                break;
-                            case 7:
-                                mask = (mask >> 5) | (mask << (LENGTH-5));
-                                moves += 5;
-                                if (moves >= LENGTH) {put_bits64(&s->pb, sizeof(uint64_t), aux); av_log(NULL, AV_LOG_INFO, "aux: %lld\n", aux); aux=0; bytes++; moves-=LENGTH;}
-                                aux |= mask;
-                                mask = (mask >> 1) | (mask << (LENGTH-1));
-                                moves += 1;
-                                if (moves >= LENGTH) {put_bits64(&s->pb, sizeof(uint64_t), aux); av_log(NULL, AV_LOG_INFO, "aux: %lld\n", aux); aux=0; bytes++; moves-=LENGTH;}
-                                break;
-                            case 1:
-                                mask = (mask >> 6) | (mask << (LENGTH-6));
-                                moves += 6;
-                                if (moves >= LENGTH) {put_bits64(&s->pb, sizeof(uint64_t), aux); av_log(NULL, AV_LOG_INFO, "aux: %lld\n", aux); aux=0; bytes++; moves-=LENGTH;}
-                                aux |= mask;
-                                mask = (mask >> 1) | (mask << (LENGTH-1));
-                                moves += 1;
-                                if (moves >= LENGTH) {put_bits64(&s->pb, sizeof(uint64_t), aux); av_log(NULL, AV_LOG_INFO, "aux: %lld\n", aux); aux=0; bytes++; moves-=LENGTH;}
-                                break;
-                            case 8:
-                                mask = (mask >> 7) | (mask << (LENGTH-7));
-                                moves += 7;
-                                if (moves >= LENGTH) {put_bits64(&s->pb, sizeof(uint64_t), aux); av_log(NULL, AV_LOG_INFO, "aux: %lld\n", aux); aux=0; bytes++; moves-=LENGTH;}
-                                aux |= mask;
-                                mask = (mask >> 1) | (mask << (LENGTH-1));
-                                moves += 1;
-                                if (moves >= LENGTH) {put_bits64(&s->pb, sizeof(uint64_t), aux); av_log(NULL, AV_LOG_INFO, "aux: %lld\n", aux); aux=0; bytes++; moves-=LENGTH;}
-                                break;
-                            case 0:
-                                mask = (mask >> 8) | (mask << (LENGTH-8));
-                                moves += 8;
-                                if (moves >= LENGTH) {put_bits64(&s->pb, sizeof(uint64_t), aux); av_log(NULL, AV_LOG_INFO, "aux: %lld\n", aux); aux=0; bytes++; moves-=LENGTH;}
-                                break;
-                        }
-                    } else if (mode_prev==1 && mode==0) {
-                        //Salida del modo RLC
-                        mask = (mask >> 1) | (mask << (LENGTH-1));
-                        moves++;
-                        for (int b = rlc_length-1; b >= 0; b--){
-                            aux |= (testBit(counterh0, b) * mask);
-                            mask = (mask >> 1) | (mask << (LENGTH-1));
-                            moves += 1;
-                            if (moves >= LENGTH) {put_bits64(&s->pb, sizeof(uint64_t), aux); av_log(NULL, AV_LOG_INFO, "aux: %lld\n", aux); aux=0; bytes++; moves-=LENGTH;}
-                        }
-                        condition_length=condition_length_ini;
-                        rlc_length=rlc_length_ini;
-                        counterh0=0;
-
-                        switch (hop) {
-                            case 5:
-                                aux |= mask;
-                                mask = (mask >> 1) | (mask << (LENGTH-1));
-                                moves += 1;
-                                if (moves >= LENGTH) {put_bits64(&s->pb, sizeof(uint64_t), aux); av_log(NULL, AV_LOG_INFO, "aux: %lld\n", aux); aux=0; bytes++; moves-=LENGTH;}
-                                break;
-                            case 3:
-                                mask = (mask >> 1) | (mask << (LENGTH-1));
-                                moves += 1;
-                                if (moves >= LENGTH) {put_bits64(&s->pb, sizeof(uint64_t), aux); av_log(NULL, AV_LOG_INFO, "aux: %lld\n", aux); aux=0; bytes++; moves-=LENGTH;}
-                                aux |= mask;
-                                mask = (mask >> 1) | (mask << (LENGTH-1));
-                                moves += 1;
-                                if (moves >= LENGTH) {put_bits64(&s->pb, sizeof(uint64_t), aux); av_log(NULL, AV_LOG_INFO, "aux: %lld\n", aux); aux=0; bytes++; moves-=LENGTH;}
-                                break;
-                            case 6:
-                                mask = (mask >> 2) | (mask << (LENGTH-2));
-                                moves += 2;
-                                if (moves >= LENGTH) {put_bits64(&s->pb, sizeof(uint64_t), aux); av_log(NULL, AV_LOG_INFO, "aux: %lld\n", aux); aux=0; bytes++; moves-=LENGTH;}
-                                aux |= mask;
-                                mask = (mask >> 1) | (mask << (LENGTH-1));
-                                moves += 1;
-                                if (moves >= LENGTH) {put_bits64(&s->pb, sizeof(uint64_t), aux); av_log(NULL, AV_LOG_INFO, "aux: %lld\n", aux); aux=0; bytes++; moves-=LENGTH;}
-                                break;
-                            case 2:
-                                mask = (mask >> 3) | (mask << (LENGTH-3));
-                                moves += 3;
-                                if (moves >= LENGTH) {put_bits64(&s->pb, sizeof(uint64_t), aux); av_log(NULL, AV_LOG_INFO, "aux: %lld\n", aux); aux=0; bytes++; moves-=LENGTH;}
-                                aux |= mask;
-                                mask = (mask >> 1) | (mask << (LENGTH-1));
-                                moves += 1;
-                                if (moves >= LENGTH) {put_bits64(&s->pb, sizeof(uint64_t), aux); av_log(NULL, AV_LOG_INFO, "aux: %lld\n", aux); aux=0; bytes++; moves-=LENGTH;}
-                                break;
-                            case 7:
-                                mask = (mask >> 4) | (mask << (LENGTH-4));
-                                moves += 4;
-                                if (moves >= LENGTH) {put_bits64(&s->pb, sizeof(uint64_t), aux); av_log(NULL, AV_LOG_INFO, "aux: %lld\n", aux); aux=0; bytes++; moves-=LENGTH;}
-                                aux |= mask;
-                                mask = (mask >> 1) | (mask << (LENGTH-1));
-                                moves += 1;
-                                if (moves >= LENGTH) {put_bits64(&s->pb, sizeof(uint64_t), aux); av_log(NULL, AV_LOG_INFO, "aux: %lld\n", aux); aux=0; bytes++; moves-=LENGTH;}
-                                break;
-                            case 1:
-                                mask = (mask >> 5) | (mask << (LENGTH-5));
-                                moves += 5;
-                                if (moves >= LENGTH) {put_bits64(&s->pb, sizeof(uint64_t), aux); av_log(NULL, AV_LOG_INFO, "aux: %lld\n", aux); aux=0; bytes++; moves-=LENGTH;}
-                                aux |= mask;
-                                mask = (mask >> 1) | (mask << (LENGTH-1));
-                                moves += 1;
-                                if (moves >= LENGTH) {put_bits64(&s->pb, sizeof(uint64_t), aux); av_log(NULL, AV_LOG_INFO, "aux: %lld\n", aux); aux=0; bytes++; moves-=LENGTH;}
-                                break;
-                            case 8:
-                                mask = (mask >> 6) | (mask << (LENGTH-6));
-                                moves += 6;
-                                if (moves >= LENGTH) {put_bits64(&s->pb, sizeof(uint64_t), aux); av_log(NULL, AV_LOG_INFO, "aux: %lld\n", aux); aux=0; bytes++; moves-=LENGTH;}
-                                aux |= mask;
-                                mask = (mask >> 1) | (mask << (LENGTH-1));
-                                moves += 1;
-                                if (moves >= LENGTH) {put_bits64(&s->pb, sizeof(uint64_t), aux); av_log(NULL, AV_LOG_INFO, "aux: %lld\n", aux); aux=0; bytes++; moves-=LENGTH;}
-                                break;
-                            case 0:
-                                mask = (mask >> 7) | (mask << (LENGTH-7));
-                                moves += 7;
-                                if (moves >= LENGTH) {put_bits64(&s->pb, sizeof(uint64_t), aux); av_log(NULL, AV_LOG_INFO, "aux: %lld\n", aux); aux=0; bytes++; moves-=LENGTH;}
-                                break;
-                        }
-                    } else if (mode==1 && ((rlc_length==4 && counterh0==15) || (rlc_length==5 && counterh0==31))){
-                        counterh0=0;
-                        rlc_length=5;
-                        aux |= mask;
-                        mask = (mask >> 1) | (mask << (LENGTH-1));
-                        moves += 1;
-                        if (moves >= LENGTH) {put_bits64(&s->pb, sizeof(uint64_t), aux); av_log(NULL, AV_LOG_INFO, "aux: %lld\n", aux); aux=0; bytes++; moves-=LENGTH;}
-                    }
-
-                    mode_prev = mode;
-                    pix++;
-                }
-                pix+=dif_pix;
-            }
-            put_bits64(&s->pb, sizeof(uint64_t), aux); av_log(NULL, AV_LOG_INFO, "aux: %lld\n", aux);
-            //-----------------------------------------------------------------------------------------------
-            //SIGUIENTE:
-            block_x += inc_x;
-        }
-        block_x -= inc_x;
-        inc_x = -inc_x;
-    }
-
-    int bits_count = (bytes-1)*32+moves;
-    return bits_count;
-
-}*/
-
-
 static void entropic_enc(LheProcessing *proc, LheContext *s, uint8_t *hops, uint16_t block_y_ini, uint16_t block_y_fin) {
 
     int xini, yini, xfin_downsampled, yfin_downsampled, pix, dif_pix;
@@ -1636,10 +1394,13 @@ static uint64_t lhe_advanced_gen_huffman_mesh (LheHuffEntry *he_mesh, LheProcess
 
         }
     }*/
+    for (int i = 0; i < 5; i++){ 
+
+        proc->pr_quanta_counter[i]++;
+    }
     //Generates Huffman length for mesh
     if ((ret = ff_huff_gen_len_table(huffman_lengths_mesh, proc->pr_quanta_counter, 5, 1)) < 0)
         return ret;
-    
     //Fills he_mesh struct with data
     for (int i = 0; i < 5; i++) {
         he_mesh[i].len = huffman_lengths_mesh[i];
@@ -1650,7 +1411,7 @@ static uint64_t lhe_advanced_gen_huffman_mesh (LheHuffEntry *he_mesh, LheProcess
     
     //Generates mesh Huffman codes
     n_bits = lhe_generate_huffman_codes(he_mesh, LHE_MAX_HUFF_SIZE_MESH);
-  
+
     return n_bits; 
 }
 
@@ -1699,46 +1460,9 @@ static int lhe_advanced_write_file2(AVCodecContext *avctx, AVPacket *pkt,
     total_blocks = total_blocks_height * total_blocks_width;
     
     //gettimeofday(&before , NULL);
-
+    
     //Generates HUffman
     n_bits_mesh = lhe_advanced_gen_huffman_mesh (he_mesh, procY, total_blocks_width, total_blocks_height);
-  
-    n_bytes_mesh = (n_bits_mesh / 8) + 1;
-    
-    /*n_bits_hops = lhe_advanced_gen_huffman (he_Y, he_UV, 
-                                            procY, procUV, lheY, lheU, lheV,
-                                            total_blocks_width, total_blocks_height);
-    */
-    /*n_bitsY = entropic_enc(procY, s, lheY->hops, lheY->bits, 0, total_blocks_height);
-    n_bitsU = entropic_enc(procUV, s, lheU->hops, lheU->bits, 0, total_blocks_height);
-    n_bitsV = entropic_enc(procUV, s, lheV->hops, lheV->bits, 0, total_blocks_height);
-
-    n_bits_hops = n_bitsY + n_bitsU + n_bitsV;*/
-    /*n_bits_hops = lhe_advanced_gen_huffman (he_Y, he_UV, 
-                                            procY, procUV, lheY, lheU, lheV,
-                                            total_blocks_width, total_blocks_height);*/
-    /*n_bytes_components = (n_bits_hops/8) + 1; 
-    
-    
-    //File size
-    n_bytes = sizeof(lhe_mode) + sizeof (pixel_format) +
-              + sizeof(procY->width) + sizeof(procY->height) //width and height
-              + total_blocks * 3 * sizeof(uint8_t)//(sizeof(*lheY->first_color_block) + sizeof(*lheU->first_color_block) + sizeof(*lheV->first_color_block)) //first pixel blocks array value
-              + sizeof (s->ql) + //quality level
-              + LHE_HUFFMAN_TABLE_BYTES_MESH
-              + LHE_HUFFMAN_TABLE_BYTES_SYMBOLS + //huffman table
-              + n_bytes_mesh 
-              + n_bytes_components;
-      */        
-    //av_log (NULL, AV_LOG_INFO, "YUV+Header bpp: %f \n", (n_bytes*8.0)/image_size_Y);
-              
-    //ff_alloc_packet2 reserves n_bytes of memory
-    //if ((ret = ff_alloc_packet2(avctx, pkt, n_bytes, 0)) < 0)
-    //    return ret;
-
-    //buf = pkt->data; //Pointer to write buffer
-    
-    //init_put_bits(&s->pb, buf, n_bytes);
    
     //LHE Mode
     lhe_mode = ADVANCED_LHE; 
@@ -1781,19 +1505,6 @@ static int lhe_advanced_write_file2(AVCodecContext *avctx, AVPacket *pkt,
         put_bits(&s->pb, FIRST_COLOR_SIZE_BITS, lheV->first_color_block[i]);  
     }
          
-    //Write Huffman tables 
-    /*for (i=0; i<LHE_MAX_HUFF_SIZE_SYMBOLS; i++)
-    {
-        if (he_Y[i].len==255) he_Y[i].len=LHE_HUFFMAN_NO_OCCURRENCES_SYMBOLS;
-        put_bits(&s->pb, LHE_HUFFMAN_NODE_BITS_SYMBOLS, he_Y[i].len);
-    }
-    
-    for (i=0; i<LHE_MAX_HUFF_SIZE_SYMBOLS; i++)
-    {
-        if (he_UV[i].len==255) he_UV[i].len=LHE_HUFFMAN_NO_OCCURRENCES_SYMBOLS;
-        put_bits(&s->pb, LHE_HUFFMAN_NODE_BITS_SYMBOLS, he_UV[i].len);
-    } 
-    */
     for (i=0; i<LHE_MAX_HUFF_SIZE_MESH; i++)
     {
         if (he_mesh[i].len==255) he_mesh[i].len=LHE_HUFFMAN_NO_OCCURRENCES_MESH;
@@ -1824,82 +1535,14 @@ static int lhe_advanced_write_file2(AVCodecContext *avctx, AVPacket *pkt,
 
         }
     }
-    
-    //Write hops
-    /*for (int byte = 0; byte < (n_bitsY/sizeof(uint64_t)); byte++) {
-        put_bits64(&s->pb, sizeof(uint64_t), lheY->bits[byte]);
-    }
-    put_bits64(&s->pb, n_bitsY%sizeof(uint64_t), lheY->bits[(n_bitsY/sizeof(uint64_t))+1]);
-
-    for (int byte = 0; byte < (n_bitsU/sizeof(uint64_t)); byte++) {
-        put_bits64(&s->pb, sizeof(uint64_t), lheU->bits[byte]);
-    }
-    put_bits64(&s->pb, n_bitsU%sizeof(uint64_t), lheU->bits[(n_bitsU/sizeof(uint64_t))+1]);
-
-    for (int byte = 0; byte < (n_bitsV/sizeof(uint64_t)); byte++) {
-        put_bits64(&s->pb, sizeof(uint64_t), lheV->bits[byte]);
-    }
-    put_bits64(&s->pb, n_bitsV%sizeof(uint64_t), lheV->bits[(n_bitsV/sizeof(uint64_t))+1]);*/
 
     entropic_enc(procY, s, lheY->hops, 0, total_blocks_height);
     entropic_enc(procUV, s, lheU->hops, 0, total_blocks_height);
     entropic_enc(procUV, s, lheV->hops, 0, total_blocks_height);
 
-    n_bytes = (put_bits_count(&s->pb)/8)+1;/*sizeof(lhe_mode) + sizeof (pixel_format) +
-              + sizeof(procY->width) + sizeof(procY->height) //width and height
-              + total_blocks * 3 * sizeof(uint8_t)//(sizeof(*lheY->first_color_block) + sizeof(*lheU->first_color_block) + sizeof(*lheV->first_color_block)) //first pixel blocks array value
-              + sizeof (s->ql) + //quality level
-              + LHE_HUFFMAN_TABLE_BYTES_MESH
-              + LHE_HUFFMAN_TABLE_BYTES_SYMBOLS + //huffman table
-              + n_bytes_mesh 
-              + n_bytes_components;*/
-    /*for (int block_y=0; block_y<total_blocks_height; block_y++) 
-    {
-        for (int block_x=0; block_x<total_blocks_width; block_x++)
-        {
-            xini_Y = procY->basic_block[block_y][block_x].x_ini;
-            yini_Y = procY->basic_block[block_y][block_x].y_ini;
-            
-            xfin_downsampled_Y = procY->advanced_block[block_y][block_x].x_fin_downsampled;          
-            yfin_downsampled_Y = procY->advanced_block[block_y][block_x].y_fin_downsampled;
-               
-            xini_UV = procUV->basic_block[block_y][block_x].x_ini;
-            yini_UV = procUV->basic_block[block_y][block_x].y_ini;
-            
-            xfin_downsampled_UV = procUV->advanced_block[block_y][block_x].x_fin_downsampled;
-            yfin_downsampled_UV = procUV->advanced_block[block_y][block_x].y_fin_downsampled;
-         
-            //LUMINANCE
-            for (int y=yini_Y; y<yfin_downsampled_Y; y++) 
-            {
-                for (int x=xini_Y; x<xfin_downsampled_Y; x++) {
-                    pix = y*procY->width + x;
-                    put_bits(&s->pb, he_Y[lheY->hops[pix]].len , he_Y[lheY->hops[pix]].code);
-                }
-            }
-            
-            //CHROMINANCE U
-            for (int y=yini_UV; y<yfin_downsampled_UV; y++) 
-            {
-                for (int x=xini_UV; x<xfin_downsampled_UV; x++) {
-                    pix = y*procUV->width + x;
-                    put_bits(&s->pb, he_UV[lheU->hops[pix]].len , he_UV[lheU->hops[pix]].code);
-                }
-            }
-            
-            //CHROMINANCE_V
-            for (int y=yini_UV; y<yfin_downsampled_UV; y++) 
-            {
-                for (int x=xini_UV; x<xfin_downsampled_UV; x++) {
-                    pix = y*procUV->width + x;
-                    put_bits(&s->pb, he_UV[lheV->hops[pix]].len , he_UV[lheV->hops[pix]].code);
-                }
-            }
-        }
-    }*/
+    n_bytes = (put_bits_count(&s->pb)/8)+1;
 
     pkt->size = n_bytes;
-    //set_put_bits_buffer_size(&s->pb, n_bytes);
     
     flush_put_bits(&s->pb);
     //gettimeofday(&after , NULL);
@@ -3769,7 +3412,7 @@ static int mlhe_encode_video(AVCodecContext *avctx, AVPacket *pkt,
         mlhe_delta_frame_encode (s, frame,
                                  component_original_data_Y, component_original_data_U, component_original_data_V,
                                  total_blocks_width, total_blocks_height);
-     
+        
         mlhe_advanced_write_delta_frame2(avctx, pkt, 
                                         total_blocks_width, total_blocks_height); 
         
@@ -3813,14 +3456,14 @@ static int mlhe_encode_video(AVCodecContext *avctx, AVPacket *pkt,
         (&s->procY)->advanced_block = (&s->procY)->buffer_advanced_block;
         (&s->procUV)->advanced_block = (&s->procUV)->buffer_advanced_block;
 
-
+        
         lhe_advanced_encode (s, frame, component_original_data_Y, component_original_data_U, component_original_data_V,
                              total_blocks_width, total_blocks_height);     
-
+        
         lhe_advanced_write_file2(avctx, pkt, 
                                 image_size_Y, image_size_UV, 
                                 total_blocks_width, total_blocks_height);
-
+        
         (&s->lheY)->last_downsampled_image = (&s->lheY)->buffer2;//(&s->lheY)->component_prediction;
         (&s->lheU)->last_downsampled_image = (&s->lheU)->buffer2;//(&s->lheU)->component_prediction;
         (&s->lheV)->last_downsampled_image = (&s->lheV)->buffer2;//(&s->lheV)->component_prediction;
