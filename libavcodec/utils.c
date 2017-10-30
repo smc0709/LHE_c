@@ -191,13 +191,6 @@ av_cold void avcodec_register(AVCodec *codec)
         codec->init_static_data(codec);
 }
 
-#if FF_API_EMU_EDGE
-unsigned avcodec_get_edge_width(void)
-{
-    return EDGE_WIDTH;
-}
-#endif
-
 int ff_set_dimensions(AVCodecContext *s, int width, int height)
 {
     int ret = av_image_check_size2(width, height, s->max_pixels, AV_PIX_FMT_NONE, 0, s);
@@ -823,12 +816,6 @@ int attribute_align_arg avcodec_open2(AVCodecContext *avctx, const AVCodec *code
         avctx->lowres = avctx->codec->max_lowres;
     }
 
-#if FF_API_VISMV
-    if (avctx->debug_mv)
-        av_log(avctx, AV_LOG_WARNING, "The 'vismv' option is deprecated, "
-               "see the codecview filter instead.\n");
-#endif
-
     if (av_codec_is_encoder(avctx->codec)) {
         int i;
 #if FF_API_CODED_FRAME
@@ -1014,11 +1001,6 @@ FF_ENABLE_DEPRECATION_WARNINGS
     }
 
     ret=0;
-
-#if FF_API_AUDIOENC_DELAY
-    if (av_codec_is_encoder(avctx->codec))
-        avctx->delay = avctx->initial_padding;
-#endif
 
     if (av_codec_is_decoder(avctx->codec)) {
         if (!avctx->bit_rate)
