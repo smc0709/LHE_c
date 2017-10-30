@@ -767,28 +767,6 @@ static int mov_read_hdlr(MOVContext *c, AVIOContext *pb, MOVAtom atom)
     return 0;
 }
 
-int ff_mov_read_esds(AVFormatContext *fc, AVIOContext *pb)
-{
-    AVStream *st;
-    int tag;
-
-    if (fc->nb_streams < 1)
-        return 0;
-    st = fc->streams[fc->nb_streams-1];
-
-    avio_rb32(pb); /* version + flags */
-    ff_mp4_read_descr(fc, pb, &tag);
-    if (tag == MP4ESDescrTag) {
-        ff_mp4_parse_es_descr(pb, NULL);
-    } else
-        avio_rb16(pb); /* ID */
-
-    ff_mp4_read_descr(fc, pb, &tag);
-    if (tag == MP4DecConfigDescrTag)
-        ff_mp4_read_dec_config_descr(fc, st, pb);
-    return 0;
-}
-
 static int mov_read_esds(MOVContext *c, AVIOContext *pb, MOVAtom atom)
 {
     return ff_mov_read_esds(c->fc, pb);
@@ -2011,20 +1989,6 @@ static int mov_read_stco(MOVContext *c, AVIOContext *pb, MOVAtom atom)
         return AVERROR_EOF;
 
     return 0;
-}
-
-/**
- * Compute codec id for 'lpcm' tag.
- * See CoreAudioTypes and AudioStreamBasicDescription at Apple.
- */
-enum AVCodecID ff_mov_get_lpcm_codec_id(int bps, int flags)
-{
-    /* lpcm flags:
-     * 0x1 = float
-     * 0x2 = big-endian
-     * 0x4 = signed
-     */
-    return ff_get_pcm_codec_id(bps, flags & 1, flags & 2, flags & 4 ? -1 : 0);
 }
 
 static int mov_codec_id(AVStream *st, uint32_t format)
@@ -4888,6 +4852,7 @@ static int mov_read_elst(MOVContext *c, AVIOContext *pb, MOVAtom atom)
 {
     MOVStreamContext *sc;
     int i, edit_count, version;
+    int64_t elst_entry_size;
 
     if (c->fc->nb_streams < 1 || c->ignore_editlist)
         return 0;
@@ -4896,6 +4861,21 @@ static int mov_read_elst(MOVContext *c, AVIOContext *pb, MOVAtom atom)
     version = avio_r8(pb); /* version */
     avio_rb24(pb); /* flags */
     edit_count = avio_rb32(pb); /* entries */
+    atom.size -= 8;
+
+    elst_entry_size = version == 1 ? 20 : 12;
+    if (atom.size != edit_count * elst_entry_size) {
+        if (c->fc->strict_std_compliance >= FF_COMPLIANCE_STRICT) {
+            av_log(c->fc, AV_LOG_ERROR, "Invalid edit list entry_count: %d for elst atom of size: %"PRId64" bytes.\n",
+                   edit_count, atom.size + 8);
+            return AVERROR_INVALIDDATA;
+        } else {
+            edit_count = atom.size / elst_entry_size;
+            if (edit_count * elst_entry_size != atom.size) {
+                av_log(c->fc, AV_LOG_WARNING, "ELST atom of %"PRId64" bytes, bigger than %d entries.", atom.size, edit_count);
+            }
+        }
+    }
 
     if (!edit_count)
         return 0;
@@ -4908,17 +4888,20 @@ static int mov_read_elst(MOVContext *c, AVIOContext *pb, MOVAtom atom)
         return AVERROR(ENOMEM);
 
     av_log(c->fc, AV_LOG_TRACE, "track[%u].edit_count = %i\n", c->fc->nb_streams - 1, edit_count);
-    for (i = 0; i < edit_count && !pb->eof_reached; i++) {
+    for (i = 0; i < edit_count && atom.size > 0 && !pb->eof_reached; i++) {
         MOVElst *e = &sc->elst_data[i];
 
         if (version == 1) {
             e->duration = avio_rb64(pb);
             e->time     = avio_rb64(pb);
+            atom.size -= 16;
         } else {
             e->duration = avio_rb32(pb); /* segment duration */
             e->time     = (int32_t)avio_rb32(pb); /* media time */
+            atom.size -= 8;
         }
         e->rate = avio_rb32(pb) / 65536.0;
+        atom.size -= 4;
         av_log(c->fc, AV_LOG_TRACE, "duration=%"PRId64" time=%"PRId64" rate=%f\n",
                e->duration, e->time, e->rate);
 
@@ -6918,10 +6901,12 @@ static int mov_seek_fragment(AVFormatContext *s, AVStream *st, int64_t timestamp
 static int mov_seek_stream(AVFormatContext *s, AVStream *st, int64_t timestamp, int flags)
 {
     MOVStreamContext *sc = st->priv_data;
-    int sample, time_sample;
+    int sample, time_sample, ret;
     unsigned int i;
 
-    int ret = mov_seek_fragment(s, st, timestamp);
+    timestamp -= sc->time_offset;
+
+    ret = mov_seek_fragment(s, st, timestamp);
     if (ret < 0)
         return ret;
 
