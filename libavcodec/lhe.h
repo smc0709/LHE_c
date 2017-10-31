@@ -24,11 +24,6 @@
 #include <omp.h>
 #endif
 
-//LHE types
-#define LHE_ADVANCED 0
-#define LHE_BASIC 1
-#define MLHE 2
-
 //LHE Pixel Format
 #define LHE_YUV420 0
 #define LHE_YUV422 1
@@ -42,10 +37,9 @@ static const uint8_t mlhe_sig[4] = "MLHE";
 #define MLHE_IMAGE_SEPARATOR         0x2c
 
 //Configuration 
-#define SEQUENTIAL_BASIC_LHE 0
-#define PARAREL_BASIC_LHE 1
-#define ADVANCED_LHE 2
-#define DELTA_MLHE 3
+#define BASIC_LHE 0
+#define ADVANCED_LHE 1
+#define DELTA_MLHE 2
 #define MIDDLE_VALUE false
 #define LUMINANCE_FACTOR 1
 #define BLOCK_WIDTH_Y 64
@@ -158,8 +152,8 @@ static const uint8_t mlhe_sig[4] = "MLHE";
 #define PR_MESH_BITS 2*PR_INTERVAL_BITS
 
 //Compression
-#define LHE_MODE_SIZE_BITS 8
-#define PIXEL_FMT_SIZE_BITS 8
+#define LHE_MODE_SIZE_BITS 2
+#define PIXEL_FMT_SIZE_BITS 2
 #define FIRST_COLOR_SIZE_BITS 8
 #define WIDTH_SIZE_BITS 32
 #define HEIGHT_SIZE_BITS 32
@@ -221,6 +215,9 @@ typedef struct AdvancedLheBlock {
     float ppp_x[CORNERS];
     float ppp_y[CORNERS];
     uint64_t hop_counter[9];
+    bool empty_flagY;
+    bool empty_flagU;
+    bool empty_flagV;
 } AdvancedLheBlock;
 
 typedef struct LheProcessing {
@@ -237,7 +234,9 @@ typedef struct LheProcessing {
     uint32_t theoretical_block_width;
     uint32_t theoretical_block_height;
     uint64_t pr_quanta_counter[5];
-    uint32_t num_hops;
+    uint32_t num_hopsY;
+    uint32_t num_hopsU;
+    uint32_t num_hopsV;
 } LheProcessing;
 
 typedef struct LheImage {

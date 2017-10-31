@@ -261,6 +261,10 @@ static int lhe_alloc_tables(AVCodecContext *ctx, LheContext *s)
 
     if (strcmp((ctx->codec)->name, "lhe") == 0) {
 
+        FF_ALLOC_ARRAY_OR_GOTO(s, (&s->lheY)->component_prediction, image_size_Y, sizeof(uint8_t), fail);
+        FF_ALLOC_ARRAY_OR_GOTO(s, (&s->lheU)->component_prediction, image_size_UV, sizeof(uint8_t), fail);
+        FF_ALLOC_ARRAY_OR_GOTO(s, (&s->lheV)->component_prediction, image_size_UV, sizeof(uint8_t), fail); 
+
         if (s->basic_lhe == 0) {
 
             FF_ALLOC_ARRAY_OR_GOTO(s, intermediate_downsample_Y, image_size_Y, sizeof(uint8_t), fail);
@@ -299,10 +303,6 @@ static int lhe_alloc_tables(AVCodecContext *ctx, LheContext *s)
             FF_ALLOC_ARRAY_OR_GOTO(s, (&s->lheY)->downsampled_image, image_size_Y, sizeof(uint8_t), fail); 
             FF_ALLOC_ARRAY_OR_GOTO(s, (&s->lheU)->downsampled_image, image_size_UV, sizeof(uint8_t), fail); 
             FF_ALLOC_ARRAY_OR_GOTO(s, (&s->lheV)->downsampled_image, image_size_UV, sizeof(uint8_t), fail);
-
-            FF_ALLOC_ARRAY_OR_GOTO(s, (&s->lheY)->component_prediction, image_size_Y, sizeof(uint8_t), fail);
-            FF_ALLOC_ARRAY_OR_GOTO(s, (&s->lheU)->component_prediction, image_size_UV, sizeof(uint8_t), fail);
-            FF_ALLOC_ARRAY_OR_GOTO(s, (&s->lheV)->component_prediction, image_size_UV, sizeof(uint8_t), fail); 
 
         }
 
@@ -607,7 +607,7 @@ static void lhe_compute_error_for_psnr (AVCodecContext *avctx, const AVFrame *fr
     lheU = &s->lheU;
     lheV = &s->lheV;
 
-    if (mode != LHE_BASIC){
+    if (mode != BASIC_LHE){
 
         uint32_t image_size_Y, image_size_UV;
         int total_blocks_height, total_blocks_width, pixels_block;
@@ -874,7 +874,7 @@ static uint64_t lhe_basic_gen_huffman (LheHuffEntry *he_Y, LheHuffEntry *he_UV,
     
 }
 
-static void entropic_enc(LheProcessing *proc, LheContext *s, uint8_t *hops, uint16_t block_y_ini, uint16_t block_y_fin) {
+static void entropic_enc(LheProcessing *proc, LheContext *s, uint8_t *hops, uint16_t block_y_ini, uint16_t block_y_fin, int channel) {
 
     int xini, yini, xfin_downsampled, yfin_downsampled, pix, dif_pix;
 
@@ -893,6 +893,15 @@ static void entropic_enc(LheProcessing *proc, LheContext *s, uint8_t *hops, uint
     for (int block_y = block_y_ini; block_y < block_y_fin; block_y++) {
         for (int i = 0; i < HORIZONTAL_BLOCKS; i++) {
 
+
+            if (channel == 0){
+                if ((&s->procY)->advanced_block[block_y][block_x].empty_flagY) { block_x += inc_x; continue; }
+            } else if (channel == 1){
+                if ((&s->procY)->advanced_block[block_y][block_x].empty_flagU) { block_x += inc_x; continue; }
+            } else if (channel == 2){
+                if ((&s->procY)->advanced_block[block_y][block_x].empty_flagV) { block_x += inc_x; continue; }
+            }
+
             xini = proc->basic_block[block_y][block_x].x_ini;
             yini = proc->basic_block[block_y][block_x].y_ini;
             
@@ -903,8 +912,8 @@ static void entropic_enc(LheProcessing *proc, LheContext *s, uint8_t *hops, uint
             dif_pix = proc->width-xfin_downsampled+xini;
 
 
+
             /*
-            
 
             empty_block = true;
             for (int y = yini; y < yfin_downsampled; y++) {
@@ -971,6 +980,7 @@ static void entropic_enc(LheProcessing *proc, LheContext *s, uint8_t *hops, uint
                 pix+=dif_pix;
             }
 
+            Next_block:
             block_x += inc_x;
         }
         //block_x -= inc_x;
@@ -982,6 +992,69 @@ static void entropic_enc(LheProcessing *proc, LheContext *s, uint8_t *hops, uint
 
 }
 
+static void entropic_enc_basic(LheProcessing *proc, LheContext *s, uint8_t *hops) {
+
+    int pix, dif_pix;
+
+    int mode = HUFFMAN, h0_counter = 0, hops_counter = 0;
+    int condition_length = 7;
+    int rlc_length = 4;
+
+    uint8_t hop = 0;
+    uint8_t number[9] = { 0,1,1,1,1,1,1,1,1 };
+    uint8_t longi[9] = { 8,7,5,3,1,2,4,6,8 };
+
+    pix = 0;
+
+    for (int y = 0; y < proc->height; y++) {
+        for (int x = 0; x < proc->width; x++) {
+
+            hop = hops[pix];
+            if (hop == 4) h0_counter++;
+
+            switch(mode){
+                case HUFFMAN:
+                    put_bits(&s->pb, longi[hop], number[hop]);
+                    if(hop != 4) h0_counter = 0;
+                    if (h0_counter == condition_length) {
+                        mode = RLC1;
+                        h0_counter = 0;
+                    }
+                break;
+                case RLC1:
+                    if (hop == 4 && h0_counter == 15) {
+                        put_bits(&s->pb, 1, 1);
+                        mode = RLC2;
+                        rlc_length++;
+                        h0_counter = 0;
+                    } else if (hop != 4) {
+                        put_bits(&s->pb, rlc_length+1, h0_counter);
+                        put_bits(&s->pb, longi[hop]-1, number[hop]);
+                        h0_counter = 0;
+                        mode = HUFFMAN;
+                    }
+                break;
+                case RLC2:
+                    if (hop == 4 && h0_counter == 31) {
+                        put_bits(&s->pb, 1, 1);
+                        h0_counter = 0;
+                    } else if (hop != 4) {
+                        put_bits(&s->pb, rlc_length+1, h0_counter);
+                        put_bits(&s->pb, longi[hop]-1, number[hop]);
+                        rlc_length = 4;
+                        h0_counter = 0;
+                        mode = HUFFMAN;
+                    }
+                break;
+            }
+
+            pix++;
+        }
+    }
+
+    if (h0_counter != 0 && mode != HUFFMAN) put_bits(&s->pb, rlc_length+1, h0_counter);
+
+}
 
 
 
@@ -997,6 +1070,7 @@ static void entropic_enc(LheProcessing *proc, LheContext *s, uint8_t *hops, uint
  * @param total_blocks_width Number of blocks widthwise
  * @param total_blocks_height Number of blocks heightwise
  */
+/*
 static int lhe_basic_write_file(AVCodecContext *avctx, AVPacket *pkt, 
                                 int image_size_Y, int image_size_UV,
                                 uint8_t total_blocks_width, uint8_t total_blocks_height) {
@@ -1137,7 +1211,75 @@ static int lhe_basic_write_file(AVCodecContext *avctx, AVPacket *pkt,
     
     return n_bytes;
 }
+*/
 
+static int lhe_basic_write_file2(AVCodecContext *avctx, AVPacket *pkt, 
+                                int image_size_Y, int image_size_UV) {
+  
+    uint8_t *buf;
+    uint8_t pixel_format;
+    uint64_t n_bytes;
+    
+    int i, ret;
+        
+    LheContext *s;
+    LheProcessing *procY, *procUV;
+    LheImage *lheY;
+    LheImage *lheU;
+    LheImage *lheV;
+    
+    //struct timeval before , after;
+    
+    s = avctx->priv_data;
+    procY = &s->procY;
+    procUV = &s->procUV;
+    lheY = &s->lheY;
+    lheU = &s->lheU;
+    lheV = &s->lheV;
+    
+    //gettimeofday(&before , NULL);
+    
+    put_bits(&s->pb, LHE_MODE_SIZE_BITS, BASIC_LHE);
+    
+    //Pixel format byte
+    if (avctx->pix_fmt == AV_PIX_FMT_YUV420P)
+    {
+        pixel_format = LHE_YUV420;
+    } else if (avctx->pix_fmt == AV_PIX_FMT_YUV422P) 
+    {
+        pixel_format = LHE_YUV422;
+    } else if (avctx->pix_fmt == AV_PIX_FMT_YUV444P) 
+    {
+        pixel_format = LHE_YUV444;
+    }
+    
+    put_bits(&s->pb, PIXEL_FMT_SIZE_BITS, pixel_format);
+   
+    //save width and height
+    put_bits32(&s->pb, procY->width);
+    put_bits32(&s->pb, procY->height);
+
+    //Save first component of each signal 
+    put_bits(&s->pb, FIRST_COLOR_SIZE_BITS, lheY->first_color_block[0]);
+    put_bits(&s->pb, FIRST_COLOR_SIZE_BITS, lheU->first_color_block[0]);
+    put_bits(&s->pb, FIRST_COLOR_SIZE_BITS, lheV->first_color_block[0]);
+
+    entropic_enc_basic(procY, s, lheY->hops);
+    entropic_enc_basic(procUV, s, lheU->hops);
+    entropic_enc_basic(procUV, s, lheV->hops);
+
+    n_bytes = (put_bits_count(&s->pb)/8)+1;
+
+    pkt->size = n_bytes;
+    
+    flush_put_bits(&s->pb);
+
+    //gettimeofday(&after , NULL);
+
+    //av_log(NULL, AV_LOG_INFO, "LHE WriteTime %.0lf ", time_diff(before , after));
+    
+    return n_bytes;
+}
 
 
 //==================================================================
@@ -1512,7 +1654,23 @@ static int lhe_advanced_write_file2(AVCodecContext *avctx, AVPacket *pkt,
     }
     
     //Advanced LHE quality level
-    put_bits(&s->pb, QL_SIZE_BITS, s->ql);    
+    put_bits(&s->pb, QL_SIZE_BITS, s->ql); 
+
+    for (int block_y=0; block_y<total_blocks_height; block_y++) 
+    {
+        for (int block_x=0; block_x<total_blocks_width; block_x++) 
+        { 
+            if ((&s->procY)->advanced_block[block_y][block_x].empty_flagY == true) {
+                put_bits(&s->pb, 1, 1);
+            } else { put_bits(&s->pb, 1, 0); }
+            if ((&s->procY)->advanced_block[block_y][block_x].empty_flagU == true) {
+                put_bits(&s->pb, 1, 1);
+            } else { put_bits(&s->pb, 1, 0); }
+            if ((&s->procY)->advanced_block[block_y][block_x].empty_flagV == true) {
+                put_bits(&s->pb, 1, 1);
+            } else { put_bits(&s->pb, 1, 0); }
+        }
+    }   
     
     //Write mesh. First PRX, then PRY because it eases the decoding task
     //Perceptual Relevance x intervals
@@ -1536,9 +1694,9 @@ static int lhe_advanced_write_file2(AVCodecContext *avctx, AVPacket *pkt,
         }
     }
 
-    entropic_enc(procY, s, lheY->hops, 0, total_blocks_height);
-    entropic_enc(procUV, s, lheU->hops, 0, total_blocks_height);
-    entropic_enc(procUV, s, lheV->hops, 0, total_blocks_height);
+    entropic_enc(procY, s, lheY->hops, 0, total_blocks_height, 0);
+    entropic_enc(procUV, s, lheU->hops, 0, total_blocks_height, 1);
+    entropic_enc(procUV, s, lheV->hops, 0, total_blocks_height, 2);
 
     n_bytes = (put_bits_count(&s->pb)/8)+1;
 
@@ -1767,7 +1925,7 @@ static int lhe_advanced_write_file(AVCodecContext *avctx, AVPacket *pkt,
 //==================================================================
 // BASIC LHE FUNCTIONS
 //==================================================================
-static void lhe_advanced_encode_block2 (LheBasicPrec *prec, LheProcessing *proc, LheImage *lhe, uint8_t *original_data,
+static bool lhe_advanced_encode_block2 (LheBasicPrec *prec, LheProcessing *proc, LheImage *lhe, uint8_t *original_data,
                                        int total_blocks_width, int block_x, int block_y, int lhe_type, int linesize)
 {
 
@@ -1784,10 +1942,11 @@ static void lhe_advanced_encode_block2 (LheBasicPrec *prec, LheProcessing *proc,
     //gettimeofday(&before , NULL);
     //for (int i = 0; i < 5000; i++){
 
+    empty = true;
     xini = proc->basic_block[block_y][block_x].x_ini;
     yini = proc->basic_block[block_y][block_x].y_ini;
 
-    if (lhe_type == MLHE) {
+    if (lhe_type == DELTA_MLHE) {
         xfin = proc->advanced_block[block_y][block_x].x_fin_downsampled;    
         yfin = proc->advanced_block[block_y][block_x].y_fin_downsampled;
         component_original_data = lhe->delta;
@@ -1795,7 +1954,7 @@ static void lhe_advanced_encode_block2 (LheBasicPrec *prec, LheProcessing *proc,
         dif_pix = dif_line;
         pix_original_data = yini*proc->width + xini;
         pix = yini*proc->width + xini;
-    } else if (lhe_type == LHE_ADVANCED) {        
+    } else if (lhe_type == ADVANCED_LHE) {        
         xfin = proc->advanced_block[block_y][block_x].x_fin_downsampled;    
         yfin = proc->advanced_block[block_y][block_x].y_fin_downsampled;
         component_original_data = lhe->downsampled_image;
@@ -1810,7 +1969,7 @@ static void lhe_advanced_encode_block2 (LheBasicPrec *prec, LheProcessing *proc,
         dif_line = linesize - xfin + xini;
         dif_pix = proc->width - xfin + xini;
         pix_original_data = yini*linesize + xini;
-        pix = yini*linesize + xini;
+        pix = yini*proc->width + xini;
     }
 
     component_prediction = lhe->component_prediction;
@@ -1846,7 +2005,6 @@ static void lhe_advanced_encode_block2 (LheBasicPrec *prec, LheProcessing *proc,
             } else{ //y=0
                 hop0=prev_color;
             }
-
             //-------------------------PHASE 2: HOPS COMPUTATION-------------------------------
             hop_number = 4;// prediction corresponds with hop_number=4
             quantum = hop0;//this is the initial predicted quantum, the value of prediction
@@ -1915,9 +2073,7 @@ static void lhe_advanced_encode_block2 (LheBasicPrec *prec, LheProcessing *proc,
             component_prediction[pix]=quantum;
             prev_color=quantum;
             hops[pix]=hop_number;
-            (&proc->advanced_block[block_y][block_x])->hop_counter[hop_number]++;
-
-            //if (hop_number != 4) nulos = false;
+            if (empty == true && hop_number != 4) empty = false;
 
             //------------- PHASE 4: h1 logic  --------------------------
             if (hop_number>5 || hop_number<3) small_hop=false; //true by default
@@ -1944,6 +2100,7 @@ static void lhe_advanced_encode_block2 (LheBasicPrec *prec, LheProcessing *proc,
     gettimeofday(&after , NULL);
     microsec += (time_diff(before , after))/5000;
     */
+    return empty;
 }
 
 /**
@@ -1952,18 +2109,18 @@ static void lhe_advanced_encode_block2 (LheBasicPrec *prec, LheProcessing *proc,
 static void lhe_basic_encode_frame_sequential (LheContext *s, const AVFrame *frame, 
                                                uint8_t *component_original_data_Y, uint8_t *component_original_data_U, uint8_t *component_original_data_V)
 {
-    
+
     //Calculate the coordinates for 1 block
     lhe_calculate_block_coordinates (&s->procY, &s->procUV, 1, 1, 0, 0);
     
     //Luminance
-    lhe_advanced_encode_block2 (&s->prec, &s->procY, &s->lheY, component_original_data_Y, 1, 0,  0, LHE_BASIC, frame->linesize[0]); 
+    lhe_advanced_encode_block2 (&s->prec, &s->procY, &s->lheY, component_original_data_Y, 1, 0,  0, BASIC_LHE, frame->linesize[0]); 
 
     //Crominance U
-    lhe_advanced_encode_block2 (&s->prec, &s->procUV, &s->lheU, component_original_data_U, 1, 0,  0, LHE_BASIC, frame->linesize[1]); 
+    lhe_advanced_encode_block2 (&s->prec, &s->procUV, &s->lheU, component_original_data_U, 1, 0,  0, BASIC_LHE, frame->linesize[1]); 
 
     //Crominance V
-    lhe_advanced_encode_block2 (&s->prec, &s->procUV, &s->lheV, component_original_data_V, 1, 0,  0, LHE_BASIC, frame->linesize[2]); 
+    lhe_advanced_encode_block2 (&s->prec, &s->procUV, &s->lheV, component_original_data_V, 1, 0,  0, BASIC_LHE, frame->linesize[2]); 
   
 }
 
@@ -2635,7 +2792,11 @@ static float lhe_advanced_encode (LheContext *s, const AVFrame *frame,
     for (int block_y=0; block_y<total_blocks_height; block_y++) 
     {
         for (int block_x=0; block_x<total_blocks_width; block_x++) 
-        {              
+        {        
+
+            (&s->procY)->advanced_block[block_y][block_x].empty_flagY = false;
+            (&s->procY)->advanced_block[block_y][block_x].empty_flagU = false;      
+            (&s->procY)->advanced_block[block_y][block_x].empty_flagV = false;
 
             lhe_advanced_perceptual_relevance_to_ppp(&s->procY, &s->procUV, compression_factor, ppp_max_theoric, block_x, block_y);
             
@@ -2699,23 +2860,28 @@ static float lhe_advanced_encode (LheContext *s, const AVFrame *frame,
                                   
             }
 
+/*
             for (int i = 0; i < 9; i++){
                 (&s->procY)->advanced_block[block_y][block_x].hop_counter[i] = 0;
                 (&s->procUV)->advanced_block[block_y][block_x].hop_counter[i] = 0;
             }
+*/
 
-
-            //bool nulo;
+            bool nulo;
             //LUMINANCE
-            lhe_advanced_encode_block2 (&s->prec, &s->procY, &s->lheY, NULL, total_blocks_width, block_x,  block_y, LHE_ADVANCED, 0); 
+            nulo = lhe_advanced_encode_block2 (&s->prec, &s->procY, &s->lheY, NULL, total_blocks_width, block_x,  block_y, ADVANCED_LHE, 0); 
 
-            //if (nulo) num_bloques_nulos++;
+            if (nulo) (&s->procY)->advanced_block[block_y][block_x].empty_flagY = true; //av_log(NULL, AV_LOG_PANIC, "Bloque nulo\n"); }
 
             //CHROMINANCE U 
-            lhe_advanced_encode_block2 (&s->prec, &s->procUV, &s->lheU, NULL, total_blocks_width, block_x,  block_y, LHE_ADVANCED, 0);
+            nulo = lhe_advanced_encode_block2 (&s->prec, &s->procUV, &s->lheU, NULL, total_blocks_width, block_x,  block_y, ADVANCED_LHE, 0);
+
+            if (nulo) (&s->procY)->advanced_block[block_y][block_x].empty_flagU = true; //av_log(NULL, AV_LOG_PANIC, "Bloque nulo\n"); }
 
             //CHROMINANCE V
-            lhe_advanced_encode_block2 (&s->prec, &s->procUV, &s->lheV, NULL, total_blocks_width, block_x,  block_y, LHE_ADVANCED, 0);
+            nulo = lhe_advanced_encode_block2 (&s->prec, &s->procUV, &s->lheV, NULL, total_blocks_width, block_x,  block_y, ADVANCED_LHE, 0);
+
+            if (nulo) (&s->procY)->advanced_block[block_y][block_x].empty_flagV = true; //av_log(NULL, AV_LOG_PANIC, "Bloque nulo\n"); }
             
         }
     }
@@ -2844,6 +3010,10 @@ static void mlhe_delta_frame_encode (LheContext *s, const AVFrame *frame,
         for (int block_x=0; block_x<total_blocks_width; block_x++) 
         {
 
+            (&s->procY)->advanced_block[block_y][block_x].empty_flagY = false;
+            (&s->procY)->advanced_block[block_y][block_x].empty_flagU = false;      
+            (&s->procY)->advanced_block[block_y][block_x].empty_flagV = false;
+
             lhe_advanced_perceptual_relevance_to_ppp(&s->procY, &s->procUV,
                                                      compression_factor, ppp_max_theoric, 
                                                      block_x, block_y);
@@ -2854,10 +3024,12 @@ static void mlhe_delta_frame_encode (LheContext *s, const AVFrame *frame,
             lhe_advanced_ppp_side_to_rectangle_shape (&s->procUV, ppp_max_theoric, 
                                                       block_x, block_y);
             
+            /*
             for (int i = 0; i < 9; i++){
                 (&s->procY)->advanced_block[block_y][block_x].hop_counter[i] = 0;
                 (&s->procUV)->advanced_block[block_y][block_x].hop_counter[i] = 0;
             }
+            */
 
             //LUMINANCE
             lhe_advanced_downsample_sps (&s->procY, &s->lheY, component_original_data_Y, frame->linesize[0], block_x, block_y);
@@ -2867,10 +3039,10 @@ static void mlhe_delta_frame_encode (LheContext *s, const AVFrame *frame,
 
             mlhe_oneshot_adaptres_and_compute_delta (&s->procY, &s->lheY, block_x, block_y);
             
-            //bool nulo;
-            lhe_advanced_encode_block2 (&s->prec, &s->procY, &s->lheY, NULL, total_blocks_width, block_x, block_y, MLHE, 0);
+            bool nulo;
+            nulo = lhe_advanced_encode_block2 (&s->prec, &s->procY, &s->lheY, NULL, total_blocks_width, block_x, block_y, DELTA_MLHE, 0);
 
-            //if (nulo) num_bloques_nulos++;
+            if (nulo) (&s->procY)->advanced_block[block_y][block_x].empty_flagY = true;
 
             mlhe_oneshot_calculate_player_image (&s->procY, &s->lheY, block_x, block_y);
             
@@ -2883,7 +3055,9 @@ static void mlhe_delta_frame_encode (LheContext *s, const AVFrame *frame,
             
             mlhe_oneshot_adaptres_and_compute_delta (&s->procUV, &s->lheU, block_x, block_y);
         
-            lhe_advanced_encode_block2 (&s->prec, &s->procUV, &s->lheU, NULL, total_blocks_width, block_x, block_y, MLHE, 0);
+            nulo = lhe_advanced_encode_block2 (&s->prec, &s->procUV, &s->lheU, NULL, total_blocks_width, block_x, block_y, DELTA_MLHE, 0);
+
+            if (nulo) (&s->procY)->advanced_block[block_y][block_x].empty_flagU = true;
             
             mlhe_oneshot_calculate_player_image (&s->procUV, &s->lheU, block_x, block_y);
             
@@ -2896,7 +3070,9 @@ static void mlhe_delta_frame_encode (LheContext *s, const AVFrame *frame,
 
             mlhe_oneshot_adaptres_and_compute_delta (&s->procUV, &s->lheV, block_x, block_y);
 
-            lhe_advanced_encode_block2 (&s->prec, &s->procUV, &s->lheV, NULL, total_blocks_width, block_x, block_y, MLHE, 0);
+            nulo = lhe_advanced_encode_block2 (&s->prec, &s->procUV, &s->lheV, NULL, total_blocks_width, block_x, block_y, DELTA_MLHE, 0);
+
+            if (nulo) (&s->procY)->advanced_block[block_y][block_x].empty_flagV = true;
                                                                                      
             mlhe_oneshot_calculate_player_image (&s->procUV, &s->lheV, block_x, block_y);
                                        
@@ -2993,6 +3169,22 @@ static int mlhe_advanced_write_delta_frame2(AVCodecContext *avctx, AVPacket *pkt
         put_bits(&s->pb, LHE_HUFFMAN_NODE_BITS_MESH, he_mesh[i].len);
     }
     
+    for (int block_y=0; block_y<total_blocks_height; block_y++) 
+    {
+        for (int block_x=0; block_x<total_blocks_width; block_x++) 
+        { 
+            if ((&s->procY)->advanced_block[block_y][block_x].empty_flagY == true) {
+                put_bits(&s->pb, 1, 1);
+            } else { put_bits(&s->pb, 1, 0); }
+            if ((&s->procY)->advanced_block[block_y][block_x].empty_flagU == true) {
+                put_bits(&s->pb, 1, 1);
+            } else { put_bits(&s->pb, 1, 0); }
+            if ((&s->procY)->advanced_block[block_y][block_x].empty_flagV == true) {
+                put_bits(&s->pb, 1, 1);
+            } else { put_bits(&s->pb, 1, 0); }
+        }
+    }
+
     //Write mesh. First PRX, then PRY because it eases the decoding task
     //Perceptual Relevance x intervals
     for (int block_y=0; block_y<total_blocks_height+1; block_y++) 
@@ -3016,9 +3208,9 @@ static int mlhe_advanced_write_delta_frame2(AVCodecContext *avctx, AVPacket *pkt
     }
     
     //Write hops
-    entropic_enc(procY, s, lheY->hops, 0, total_blocks_height);
-    entropic_enc(procUV, s, lheU->hops, 0, total_blocks_height);
-    entropic_enc(procUV, s, lheV->hops, 0, total_blocks_height);
+    entropic_enc(procY, s, lheY->hops, 0, total_blocks_height, 0);
+    entropic_enc(procUV, s, lheU->hops, 0, total_blocks_height, 1);
+    entropic_enc(procUV, s, lheV->hops, 0, total_blocks_height, 2);
 
 
     n_bytes = (put_bits_count(&s->pb)/8) + 1;
@@ -3320,13 +3512,13 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     if (s->basic_lhe) 
     {  
         //BASIC LHE        
-        mode = LHE_BASIC;
+        mode = BASIC_LHE;
         total_blocks_height = 1;
         total_blocks_width = 1;
-            
+
         lhe_basic_encode_frame_sequential (s, frame, component_original_data_Y, component_original_data_U, component_original_data_V);
-        
-        lhe_basic_write_file(avctx, pkt,image_size_Y, image_size_UV, total_blocks_width, total_blocks_height);
+
+        lhe_basic_write_file2(avctx, pkt,image_size_Y, image_size_UV);
     } 
     else 
     {   

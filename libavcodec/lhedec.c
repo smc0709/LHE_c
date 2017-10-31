@@ -356,7 +356,7 @@ static void add_hop0(LheProcessing *proc, uint8_t *symbols, int *pix, int count)
 }
 
 
-static void lhe_advanced_read_file_symbols2 (LheState *s, LheProcessing *proc, uint8_t *symbols, int block_y_ini, int block_y_fin) {
+static void lhe_advanced_read_file_symbols2 (LheState *s, LheProcessing *proc, uint8_t *symbols, int block_y_ini, int block_y_fin, int horizontal_blocks, int lhe_mode, int channel) {
 
     int xini, yini, xfin_downsampled, yfin_downsampled, pix, dif_pix;
 
@@ -364,17 +364,22 @@ static void lhe_advanced_read_file_symbols2 (LheState *s, LheProcessing *proc, u
     int condition_length = 7;
     int rlc_length = 4;
     int last_mode = HUFFMAN;
+    uint32_t num_hops;
 
-    int block_x = block_y_ini*HORIZONTAL_BLOCKS;
+    int block_x = block_y_ini*horizontal_blocks;
     int inc_x = 1;
 
     uint8_t hopl[9]={ 4,5,3,6,2,7,1,8,0 };
 
     uint8_t *hops = av_calloc(proc->width*proc->height, sizeof(uint8_t));
 
+    if (channel == 0) {num_hops = proc->num_hopsY;}
+    else if (channel == 1) {num_hops = proc->num_hopsU;}
+    else if (channel == 2) {num_hops = proc->num_hopsV;}
 
     while (true){
-        if (hops_counter == proc->num_hops) break;
+        //av_log(NULL, AV_LOG_INFO, "hops_counter: %d\n", hops_counter);
+        if (hops_counter == num_hops) break;
         data = get_bits(&s->gb, 1);
         switch (mode){
             case HUFFMAN:
@@ -421,36 +426,56 @@ static void lhe_advanced_read_file_symbols2 (LheState *s, LheProcessing *proc, u
     }
 
     int a = 0;
+    bool empty = 0;
 
     for (int block_y = block_y_ini; block_y < block_y_fin; block_y++) {
-        for (int i = 0; i < HORIZONTAL_BLOCKS; i++) {
+        for (int i = 0; i < horizontal_blocks; i++) {
+
+            if (channel == 0) empty = (&s->procY)->advanced_block[block_y][block_x].empty_flagY;
+            else if (channel == 1) empty = (&s->procY)->advanced_block[block_y][block_x].empty_flagU;
+            else if (channel == 2) empty = (&s->procY)->advanced_block[block_y][block_x].empty_flagV;
 
             xini = proc->basic_block[block_y][block_x].x_ini;
             yini = proc->basic_block[block_y][block_x].y_ini;
             
-            xfin_downsampled = proc->advanced_block[block_y][block_x].x_fin_downsampled;          
-            yfin_downsampled = proc->advanced_block[block_y][block_x].y_fin_downsampled;
+            if (lhe_mode != BASIC_LHE) {
+                xfin_downsampled = proc->advanced_block[block_y][block_x].x_fin_downsampled;          
+                yfin_downsampled = proc->advanced_block[block_y][block_x].y_fin_downsampled;
 
-            pix = yini*proc->width+xini;
-            dif_pix = proc->width-xfin_downsampled+xini;
+                pix = yini*proc->width+xini;
+                dif_pix = proc->width-xfin_downsampled+xini;
+            } else {
+                xfin_downsampled = proc->width;          
+                yfin_downsampled = proc->height;
 
-            for (int y = yini; y < yfin_downsampled; y++) {
-                for (int x = xini; x < xfin_downsampled; x++) {
-
-                    symbols[pix] = hops[a];
-                    a++;
-                    pix++;
-                }
-                pix+=dif_pix;
+                pix = 0;
+                dif_pix = 0;
             }
 
+            if (empty == 1){
+                for (int y = yini; y < yfin_downsampled; y++) {
+                    for (int x = xini; x < xfin_downsampled; x++) {
+                        symbols[pix] = 4;
+                        pix++;
+                    }
+                    pix+=dif_pix;
+                }
+            } else {
+                for (int y = yini; y < yfin_downsampled; y++) {
+                    for (int x = xini; x < xfin_downsampled; x++) {
+                        symbols[pix] = hops[a];
+                        a++;
+                        pix++;
+                    }
+                    pix+=dif_pix;
+                }
+            }
             block_x += inc_x;
         }
         block_x=0;
         //block_x -= inc_x;
         //inc_x = -inc_x;
     }
-
 }
 
 
@@ -480,9 +505,9 @@ static void lhe_advanced_read_all_file_symbols (LheState *s, LheHuffEntry *he_Y,
     lheU = &s->lheU;
     lheV = &s->lheV;
     
-    lhe_advanced_read_file_symbols2 (s, procY, lheY->hops, 0, s->total_blocks_height);   
-    lhe_advanced_read_file_symbols2 (s, procUV, lheU->hops, 0, s->total_blocks_height);            
-    lhe_advanced_read_file_symbols2 (s, procUV, lheV->hops, 0, s->total_blocks_height);
+    lhe_advanced_read_file_symbols2 (s, procY, lheY->hops, 0, s->total_blocks_height, HORIZONTAL_BLOCKS, ADVANCED_LHE, 0);   
+    lhe_advanced_read_file_symbols2 (s, procUV, lheU->hops, 0, s->total_blocks_height, HORIZONTAL_BLOCKS, ADVANCED_LHE, 1);            
+    lhe_advanced_read_file_symbols2 (s, procUV, lheV->hops, 0, s->total_blocks_height, HORIZONTAL_BLOCKS, ADVANCED_LHE, 2);
 
 /*
     for (int block_y=0; block_y<s->total_blocks_height; block_y++)
@@ -587,12 +612,14 @@ static void lhe_advanced_read_perceptual_relevance_interval (LheState *s, LheHuf
  */
 static void lhe_advanced_read_mesh (LheState *s, LheHuffEntry *he_mesh, float ppp_max_theoric, float compression_factor) 
 {
-    LheProcessing *procY, *procUV;    
+    LheProcessing *procY, *procUV;   
+    int num_hopsUV = 0;
     procY = &s->procY;
     procUV = &s->procUV;
 
-    procY->num_hops = 0;
-    procUV->num_hops = 0;
+    procY->num_hopsY = 0;
+    procUV->num_hopsU = 0;
+    procUV->num_hopsV = 0;
 
     lhe_advanced_read_perceptual_relevance_interval (s, he_mesh, procY->perceptual_relevance_x);
     
@@ -609,9 +636,21 @@ static void lhe_advanced_read_mesh (LheState *s, LheHuffEntry *he_mesh, float pp
             lhe_advanced_perceptual_relevance_to_ppp(procY, procUV, compression_factor, ppp_max_theoric, block_x, block_y);
             
             //Adjusts luminance ppp to rectangle shape 
-            procY->num_hops += lhe_advanced_ppp_side_to_rectangle_shape (procY, ppp_max_theoric, block_x, block_y);  
+            //lhe_advanced_ppp_side_to_rectangle_shape (procY, ppp_max_theoric, block_x, block_y);  
+            if (!(&s->procY)->advanced_block[block_y][block_x].empty_flagY) {
+                procY->num_hopsY += lhe_advanced_ppp_side_to_rectangle_shape (procY, ppp_max_theoric, block_x, block_y);  
+            } else {
+                lhe_advanced_ppp_side_to_rectangle_shape (procY, ppp_max_theoric, block_x, block_y);
+            }
             //Adjusts chrominance ppp to rectangle shape
-            procUV->num_hops += lhe_advanced_ppp_side_to_rectangle_shape (procUV, ppp_max_theoric, block_x, block_y);   
+            num_hopsUV = lhe_advanced_ppp_side_to_rectangle_shape (procUV, ppp_max_theoric, block_x, block_y);  
+            if (!(&s->procY)->advanced_block[block_y][block_x].empty_flagU) { 
+                procUV->num_hopsU += num_hopsUV;
+            }
+            if (!(&s->procY)->advanced_block[block_y][block_x].empty_flagV) { 
+                procUV->num_hopsV += num_hopsUV;
+            }
+
         }
     }
 }
@@ -722,7 +761,7 @@ static void lhe_basic_decode_one_hop_per_pixel (LheBasicPrec *prec, LheProcessin
     //Hops computation.
     bool small_hop, last_small_hop;
     uint8_t hop, predicted_luminance, hop_1, r_max; 
-    int pix, pix_original_data, dif_pix;
+    int pix, pix_original_data, dif_pix, dato;
     
     small_hop           = false;
     last_small_hop      = false;        // indicates if last hop is small
@@ -762,8 +801,22 @@ static void lhe_basic_decode_one_hop_per_pixel (LheBasicPrec *prec, LheProcessin
                 predicted_luminance=(lhe->component_prediction[pix-1]+lhe->component_prediction[pix+1-linesize])>>1;     
             }
     
+            if (hop == 4){
+                dato = predicted_luminance;
+            } else if (hop == 5) {
+                dato = predicted_luminance + hop_1;
+            } else if (hop == 3) {
+                dato = predicted_luminance - hop_1;
+            } else {
+                if (hop > 5) {
+                    dato = 255 - prec->cache_hops[255-predicted_luminance][hop_1-4][8 - hop];
+                } else {
+                    dato = prec->cache_hops[predicted_luminance][hop_1-4][hop];
+                }
+            }
+
             //assignment of component_prediction
-            lhe->component_prediction[pix]= prec -> prec_luminance[predicted_luminance][r_max][hop_1][hop];
+            lhe->component_prediction[pix]= dato;//prec -> prec_luminance[predicted_luminance][r_max][hop_1][hop];
             
             //tunning hop1 for the next hop ( "h1 adaptation")
             //------------------------------------------------
@@ -1530,6 +1583,7 @@ static void lhe_advanced_free(LheState *s, uint32_t total_blocks_width, uint32_t
  */ 
 static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, AVPacket *avpkt)
 {    
+
     uint32_t total_blocks, pixels_block, image_size_Y, image_size_UV;
     int ret;
     
@@ -1570,7 +1624,7 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
     if ((ret = ff_get_buffer(avctx, s->frame, 0)) < 0)
         return ret;
  
-    if (s->lhe_mode == SEQUENTIAL_BASIC_LHE) 
+    if (s->lhe_mode == BASIC_LHE) 
     {
         s->total_blocks_width = 1;
         s->total_blocks_height = 1;
@@ -1689,31 +1743,42 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
         if (ppp_max_theoric > PPP_MAX) ppp_max_theoric = PPP_MAX;
         compression_factor = (&s->prec)->compression_factor[ppp_max_theoric][s->quality_level];        
        
-        lhe_advanced_read_mesh(s, he_mesh, ppp_max_theoric, compression_factor) ; 
+        for (int block_y=0; block_y<s->total_blocks_height; block_y++) 
+        {
+            for (int block_x=0; block_x<s->total_blocks_width; block_x++) 
+            { 
+                (&s->procY)->advanced_block[block_y][block_x].empty_flagY = get_bits(&s->gb, 1);
+                
+                (&s->procY)->advanced_block[block_y][block_x].empty_flagU = get_bits(&s->gb, 1);
+                
+                (&s->procY)->advanced_block[block_y][block_x].empty_flagV = get_bits(&s->gb, 1);
+            }
+        }
+
+        lhe_advanced_read_mesh(s, he_mesh, ppp_max_theoric, compression_factor);
 
         lhe_advanced_read_all_file_symbols (s, he_Y, he_UV);
               
         lhe_advanced_decode_symbols (s, he_Y, he_UV, image_size_Y, image_size_UV);     
         
     }
+
     else /*BASIC LHE*/       
     {
-        lhe_basic_read_file_symbols(s, he_Y, image_size_Y, (&s->lheY)->hops);     
-        lhe_basic_read_file_symbols(s, he_UV, image_size_UV, (&s->lheU)->hops);      
-        lhe_basic_read_file_symbols(s, he_UV, image_size_UV, (&s->lheV)->hops);      
- 
-        if (total_blocks > 1 && OPENMP_FLAGS == CONFIG_OPENMP) 
-        {
-            (&s->procY)->theoretical_block_width = (&s->procY)->width / s->total_blocks_width;
-            (&s->procY)->theoretical_block_height = (&s->procY)->height / s->total_blocks_height;
-            (&s->procUV)->theoretical_block_width = (&s->procUV)->width /s->total_blocks_width;
-            (&s->procUV)->theoretical_block_height = (&s->procUV)->height /s->total_blocks_height;
+        (&s->procY)->num_hopsY = image_size_Y;
+        (&s->procUV)->num_hopsU = image_size_UV;
+        (&s->procUV)->num_hopsV = image_size_UV;
+        lhe_advanced_read_file_symbols2 (s, &s->procY, (&s->lheY)->hops, 0, s->total_blocks_height, 1, BASIC_LHE, 0);
+        lhe_advanced_read_file_symbols2 (s, &s->procUV, (&s->lheU)->hops, 0, s->total_blocks_height, 1, BASIC_LHE, 1);            
+        lhe_advanced_read_file_symbols2 (s, &s->procUV, (&s->lheV)->hops, 0, s->total_blocks_height, 1, BASIC_LHE, 2);
 
-            lhe_basic_decode_frame_pararell (s);                            
-        } else 
-        {     
-            lhe_basic_decode_frame_sequential (s);    
-        }
+
+
+        //(s, he_Y, image_size_Y, (&s->lheY)->hops);     
+        //lhe_basic_read_file_symbols(s, he_UV, image_size_UV, (&s->lheU)->hops);      
+        //lhe_basic_read_file_symbols(s, he_UV, image_size_UV, (&s->lheV)->hops);      
+        
+        lhe_basic_decode_frame_sequential (s);    
         
         //lhe_basic_free(s, s->total_blocks_width, s->total_blocks_height);
     }
@@ -1722,7 +1787,8 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
         return ret;
     *got_frame = 1;
 
-    return 0;
+
+    return avpkt->size;//Hay que devolver el numero de bytes leidos (puede ser la solución a la doble ejecución del decoder).
 }
 
 //==================================================================
@@ -1808,7 +1874,19 @@ static int mlhe_decode_video(AVCodecContext *avctx, void *data, int *got_frame, 
         if (ppp_max_theoric > PPP_MAX) ppp_max_theoric = PPP_MAX;
         compression_factor = (&s->prec)->compression_factor[ppp_max_theoric][s->quality_level];        
        
-        lhe_advanced_read_mesh(s, he_mesh, ppp_max_theoric, compression_factor) ; 
+        for (int block_y=0; block_y<s->total_blocks_height; block_y++) 
+        {
+            for (int block_x=0; block_x<s->total_blocks_width; block_x++) 
+            { 
+                (&s->procY)->advanced_block[block_y][block_x].empty_flagY = get_bits(&s->gb, 1);
+                
+                (&s->procY)->advanced_block[block_y][block_x].empty_flagU = get_bits(&s->gb, 1);
+                
+                (&s->procY)->advanced_block[block_y][block_x].empty_flagV = get_bits(&s->gb, 1);
+            }
+        }
+       
+        lhe_advanced_read_mesh(s, he_mesh, ppp_max_theoric, compression_factor);
         
         lhe_advanced_read_all_file_symbols (s, he_Y, he_UV);
         
@@ -1948,7 +2026,19 @@ static int mlhe_decode_video(AVCodecContext *avctx, void *data, int *got_frame, 
         if (ppp_max_theoric > PPP_MAX) ppp_max_theoric = PPP_MAX;
         compression_factor = (&s->prec)->compression_factor[ppp_max_theoric][s->quality_level];        
         
-        lhe_advanced_read_mesh(s, he_mesh, ppp_max_theoric, compression_factor) ; 
+        for (int block_y=0; block_y<s->total_blocks_height; block_y++) 
+        {
+            for (int block_x=0; block_x<s->total_blocks_width; block_x++) 
+            { 
+                (&s->procY)->advanced_block[block_y][block_x].empty_flagY = get_bits(&s->gb, 1);
+                
+                (&s->procY)->advanced_block[block_y][block_x].empty_flagU = get_bits(&s->gb, 1);
+                
+                (&s->procY)->advanced_block[block_y][block_x].empty_flagV = get_bits(&s->gb, 1);
+            }
+        }
+
+        lhe_advanced_read_mesh(s, he_mesh, ppp_max_theoric, compression_factor);
         
         lhe_advanced_read_all_file_symbols (s, he_Y, he_UV);
                 
