@@ -8,6 +8,7 @@
 #include "lhe.h"
 #include "unistd.h"
 
+
 #define H1_ADAPTATION                                   \
 if (hop<=HOP_POS_1 && hop>=HOP_NEG_1)                   \
     {                                                   \
@@ -54,12 +55,255 @@ uint8_t *delta_prediction_Y_dec, *delta_prediction_U_dec, *delta_prediction_V_de
 uint8_t *intermediate_adapted_downsampled_data_Y_dec, *intermediate_adapted_downsampled_data_U_dec, *intermediate_adapted_downsampled_data_V_dec;
 uint8_t *adapted_downsampled_image_Y, *adapted_downsampled_image_U, *adapted_downsampled_image_V;
 
-bool lhe_advanced_decode_symbols_alloc_mem = false;
-bool mlhe_decode_delta_frame_alloc_mem = false;
+static void lhe_init_pixel_format (AVCodecContext *avctx, LheState *s)
+{
+
+    av_log(NULL, AV_LOG_INFO, "entra en init pixel format\n");
+    if (avctx->pix_fmt == AV_PIX_FMT_YUV420P)
+    {
+        av_log(NULL, AV_LOG_INFO, "Pix fmt 420\n");
+        s->chroma_factor_width = 2;
+        s->chroma_factor_height = 2;
+    } else if (avctx->pix_fmt == AV_PIX_FMT_YUV422P) 
+    {
+        av_log(NULL, AV_LOG_INFO, "Pix fmt 422\n");
+        s->chroma_factor_width = 2;
+        s->chroma_factor_height = 1;
+    } else if (avctx->pix_fmt == AV_PIX_FMT_YUV444P) 
+    {
+        av_log(NULL, AV_LOG_INFO, "Pix fmt 444\n");
+        s->chroma_factor_width = 1;
+        s->chroma_factor_height = 1;
+    } else
+    {
+        avctx->pix_fmt = AV_PIX_FMT_YUV420P;
+        avctx->width = 1280;
+        avctx->height = 720;
+        av_log(NULL, AV_LOG_INFO, "Pix fmt 420 con el else\n");
+        s->chroma_factor_width = 2;
+        s->chroma_factor_height = 2;
+    }
+}
+
+static int lhedec_free_tables(LheState *s)
+{
+
+    av_free(intermediate_interpolated_Y); 
+    av_free(intermediate_interpolated_U); 
+    av_free(intermediate_interpolated_V);
+
+    av_free(delta_prediction_Y_dec);
+    av_free(delta_prediction_U_dec);
+    av_free(delta_prediction_V_dec);
+    
+    av_free(intermediate_adapted_downsampled_data_Y_dec);
+    av_free(intermediate_adapted_downsampled_data_U_dec);
+    av_free(intermediate_adapted_downsampled_data_V_dec);
+    
+    av_free(adapted_downsampled_image_Y);
+    av_free(adapted_downsampled_image_U);
+    av_free(adapted_downsampled_image_V);
+
+    av_free((&s->lheY)->first_color_block);
+    av_free((&s->lheU)->first_color_block);
+    av_free((&s->lheV)->first_color_block);
+
+    for (int i=0; i < s->total_blocks_height; i++)
+    {
+        av_free((&s->procY)->last_advanced_block[i]);
+    }   
+
+    av_free((&s->procY)->last_advanced_block);
+        
+    for (int i=0; i < s->total_blocks_height; i++)
+    {
+        av_free((&s->procUV)->last_advanced_block[i]);
+    }
+    
+    av_free((&s->procUV)->last_advanced_block);
+    
+    av_free((&s->lheY)->last_downsampled_image);
+    av_free((&s->lheU)->last_downsampled_image);
+    av_free((&s->lheV)->last_downsampled_image);
+
+    av_free((&s->lheY)->hops);
+    av_free((&s->lheU)->hops);
+    av_free((&s->lheV)->hops);
+        
+    for (int i=0; i < s->total_blocks_height; i++)
+    {
+        av_free((&s->procY)->basic_block[i]);
+    }
+    av_free((&s->procY)->basic_block);
+    
+    for (int i=0; i < s->total_blocks_height; i++)
+    {
+        av_free((&s->procUV)->basic_block[i]);
+    }
+    av_free((&s->procUV)->basic_block);
+
+    for (int i=0; i<s->total_blocks_height+1; i++) 
+    {
+        av_free((&s->procY)->perceptual_relevance_x[i]);
+    }
+    av_free((&s->procY)->perceptual_relevance_x);
+    
+    for (int i=0; i<s->total_blocks_height+1; i++) 
+    {
+        av_free((&s->procY)->perceptual_relevance_y[i]);
+    }  
+    av_free((&s->procY)->perceptual_relevance_y);
+    
+    for (int i=0; i < s->total_blocks_height; i++)
+    {
+        av_free((&s->procY)->advanced_block[i]);
+    }
+    av_free((&s->procY)->advanced_block);
+    
+    for (int i=0; i < s->total_blocks_height; i++)
+    {
+        av_free((&s->procUV)->advanced_block[i]);
+    }
+    av_free((&s->procUV)->advanced_block);
+
+    return 0;
+}
+
+static int lhedec_alloc_tables(AVCodecContext *ctx, LheState *s)
+{
+    
+    uint32_t total_blocks, pixels_block, image_size_Y, image_size_UV;
+    
+    image_size_Y = (&s->procY)->width * (&s->procY)->height;        
+    image_size_UV = (&s->procUV)->width * (&s->procUV)->height;
+
+    s->total_blocks_width = HORIZONTAL_BLOCKS;
+    pixels_block = (&s->procY)->width / HORIZONTAL_BLOCKS;
+    s->total_blocks_height = (&s->procY)->height / pixels_block;
+
+    av_log(NULL, AV_LOG_INFO, "Empieza el alloc tables\n");
+    /*
+    FF_ALLOC_ARRAY_OR_GOTO(s, (&s->procUV)->buffer1_advanced_block, total_blocks_height, sizeof(AdvancedLheBlock *), fail); 
+        
+    for (int i=0; i < total_blocks_height; i++)
+    {
+        FF_ALLOC_ARRAY_OR_GOTO(s, (&s->procUV)->buffer1_advanced_block[i], total_blocks_width, sizeof(AdvancedLheBlock), fail); 
+    } */
+
+    FF_ALLOC_ARRAY_OR_GOTO(s, intermediate_interpolated_Y, image_size_Y, sizeof(uint8_t), fail); 
+    FF_ALLOC_ARRAY_OR_GOTO(s, intermediate_interpolated_U, image_size_UV, sizeof(uint8_t), fail); 
+    FF_ALLOC_ARRAY_OR_GOTO(s, intermediate_interpolated_V, image_size_UV, sizeof(uint8_t), fail);
+
+        
+
+    delta_prediction_Y_dec = av_calloc (image_size_Y, sizeof(uint8_t));
+    delta_prediction_U_dec = av_calloc (image_size_UV, sizeof(uint8_t));
+    delta_prediction_V_dec = av_calloc (image_size_UV, sizeof(uint8_t));
+    
+    intermediate_adapted_downsampled_data_Y_dec = av_calloc(image_size_Y, sizeof(uint8_t));  
+    intermediate_adapted_downsampled_data_U_dec = av_calloc(image_size_UV, sizeof(uint8_t)); 
+    intermediate_adapted_downsampled_data_V_dec = av_calloc(image_size_UV, sizeof(uint8_t)); 
+    
+    adapted_downsampled_image_Y = av_calloc(image_size_Y, sizeof(uint8_t));  
+    adapted_downsampled_image_U = av_calloc(image_size_UV, sizeof(uint8_t)); 
+    adapted_downsampled_image_V = av_calloc(image_size_UV, sizeof(uint8_t));  
+
+    (&s->lheY)->first_color_block = av_calloc(image_size_Y, sizeof(uint8_t));
+    (&s->lheU)->first_color_block = av_calloc(image_size_UV, sizeof(uint8_t));
+    (&s->lheV)->first_color_block = av_calloc(image_size_UV, sizeof(uint8_t));
+
+    (&s->procY)->last_advanced_block = av_calloc(s->total_blocks_height, sizeof(AdvancedLheBlock *));
+    
+    for (int i=0; i < s->total_blocks_height; i++)
+    {
+        (&s->procY)->last_advanced_block[i] = av_calloc (s->total_blocks_width, sizeof(AdvancedLheBlock));
+    }      
+
+    (&s->procUV)->last_advanced_block = av_calloc(s->total_blocks_height, sizeof(AdvancedLheBlock *));
+    
+    for (int i=0; i < s->total_blocks_height; i++)
+    {
+        (&s->procUV)->last_advanced_block[i] = av_calloc (s->total_blocks_width, sizeof(AdvancedLheBlock));
+    }
+
+    (&s->lheY)->last_downsampled_image = av_calloc(image_size_Y, sizeof(uint8_t));  
+    (&s->lheU)->last_downsampled_image = av_calloc(image_size_UV, sizeof(uint8_t)); 
+    (&s->lheV)->last_downsampled_image = av_calloc(image_size_UV, sizeof(uint8_t));  
+
+    (&s->lheY)->hops = av_calloc(image_size_Y, sizeof(uint8_t));
+    (&s->lheU)->hops = av_calloc(image_size_UV, sizeof(uint8_t));
+    (&s->lheV)->hops = av_calloc(image_size_UV, sizeof(uint8_t)); 
+        
+    (&s->procY)->basic_block = av_calloc(s->total_blocks_height, sizeof(BasicLheBlock *));
+        
+    for (int i=0; i < s->total_blocks_height; i++)
+    {
+        (&s->procY)->basic_block[i] = av_calloc (s->total_blocks_width, sizeof(BasicLheBlock));
+    }
+    
+    (&s->procUV)->basic_block = av_calloc(s->total_blocks_height, sizeof(BasicLheBlock *));
+    
+    for (int i=0; i < s->total_blocks_height; i++)
+    {
+        (&s->procUV)->basic_block[i] = av_calloc (s->total_blocks_width, sizeof(BasicLheBlock));
+    }
+
+    (&s->procY)->perceptual_relevance_x = av_calloc(s->total_blocks_height+1, sizeof(float*));  
+    
+    for (int i=0; i<s->total_blocks_height+1; i++) 
+    {
+        (&s->procY)->perceptual_relevance_x[i] = av_calloc(s->total_blocks_width+1, sizeof(float));
+    }
+    
+    (&s->procY)->perceptual_relevance_y = av_calloc(s->total_blocks_height+1, sizeof(float*)); 
+    
+    for (int i=0; i<s->total_blocks_height+1; i++) 
+    {
+        (&s->procY)->perceptual_relevance_y[i] = av_calloc(s->total_blocks_width+1, sizeof(float));
+    }   
+
+    (&s->procY)->advanced_block = av_calloc(s->total_blocks_height, sizeof(AdvancedLheBlock *));
+    
+    for (int i=0; i < s->total_blocks_height; i++)
+    {
+        (&s->procY)->advanced_block[i] = av_calloc (s->total_blocks_width, sizeof(AdvancedLheBlock));
+    }
+    
+    (&s->procUV)->advanced_block = av_calloc(s->total_blocks_height, sizeof(AdvancedLheBlock *));
+    
+    for (int i=0; i < s->total_blocks_height; i++)
+    {
+        (&s->procUV)->advanced_block[i] = av_calloc (s->total_blocks_width, sizeof(AdvancedLheBlock));
+    }
+        
+            (&s->lheY)-> downsampled_image = av_calloc (image_size_Y, sizeof(uint8_t));
+            (&s->lheU)-> downsampled_image = av_calloc (image_size_UV, sizeof(uint8_t));
+            (&s->lheV)-> downsampled_image = av_calloc (image_size_UV, sizeof(uint8_t));
+        
+
+        av_log(NULL, AV_LOG_INFO, "Termina el alloc\n");
+    return 0;
+
+    fail:
+        lhedec_free_tables(ctx);
+        return AVERROR(ENOMEM);
+
+}
 
 static av_cold int lhe_decode_init(AVCodecContext *avctx)
 {
+
     LheState *s = avctx->priv_data;
+
+    lhe_init_pixel_format (avctx, s);
+
+    //Initialize sizes of images
+    (&s->procY)->width  = avctx->width;
+    (&s->procY)->height = avctx->height;
+    (&s->procUV)->width = ((&s->procY)->width - 1)/s->chroma_factor_width + 1;
+    (&s->procUV)->height = ((&s->procY)->height - 1)/s->chroma_factor_height + 1;
+
+    lhedec_alloc_tables(avctx, s);
 
     s->frame = av_frame_alloc();
     if (!s->frame)
@@ -430,11 +674,11 @@ static void lhe_advanced_read_file_symbols2 (LheState *s, LheProcessing *proc, u
 
     for (int block_y = block_y_ini; block_y < block_y_fin; block_y++) {
         for (int i = 0; i < horizontal_blocks; i++) {
-
+/*
             if (channel == 0) empty = (&s->procY)->advanced_block[block_y][block_x].empty_flagY;
             else if (channel == 1) empty = (&s->procY)->advanced_block[block_y][block_x].empty_flagU;
             else if (channel == 2) empty = (&s->procY)->advanced_block[block_y][block_x].empty_flagV;
-
+*/
             xini = proc->basic_block[block_y][block_x].x_ini;
             yini = proc->basic_block[block_y][block_x].y_ini;
             
@@ -476,6 +720,8 @@ static void lhe_advanced_read_file_symbols2 (LheState *s, LheProcessing *proc, u
         //block_x -= inc_x;
         //inc_x = -inc_x;
     }
+
+    av_free(hops);
 }
 
 
@@ -637,19 +883,20 @@ static void lhe_advanced_read_mesh (LheState *s, LheHuffEntry *he_mesh, float pp
             
             //Adjusts luminance ppp to rectangle shape 
             //lhe_advanced_ppp_side_to_rectangle_shape (procY, ppp_max_theoric, block_x, block_y);  
-            if (!(&s->procY)->advanced_block[block_y][block_x].empty_flagY) {
+            //if (!(&s->procY)->advanced_block[block_y][block_x].empty_flagY) {
                 procY->num_hopsY += lhe_advanced_ppp_side_to_rectangle_shape (procY, ppp_max_theoric, block_x, block_y);  
-            } else {
-                lhe_advanced_ppp_side_to_rectangle_shape (procY, ppp_max_theoric, block_x, block_y);
-            }
+            //} else {
+                //lhe_advanced_ppp_side_to_rectangle_shape (procY, ppp_max_theoric, block_x, block_y);
+            //}
             //Adjusts chrominance ppp to rectangle shape
-            num_hopsUV = lhe_advanced_ppp_side_to_rectangle_shape (procUV, ppp_max_theoric, block_x, block_y);  
-            if (!(&s->procY)->advanced_block[block_y][block_x].empty_flagU) { 
+            procUV->num_hopsU += lhe_advanced_ppp_side_to_rectangle_shape (procUV, ppp_max_theoric, block_x, block_y);
+            procUV->num_hopsV = procUV->num_hopsU;
+            /*if (!(&s->procY)->advanced_block[block_y][block_x].empty_flagU) { 
                 procUV->num_hopsU += num_hopsUV;
             }
             if (!(&s->procY)->advanced_block[block_y][block_x].empty_flagV) { 
                 procUV->num_hopsV += num_hopsUV;
-            }
+            }*/
 
         }
     }
@@ -759,20 +1006,25 @@ static void lhe_basic_decode_one_hop_per_pixel_block (LheBasicPrec *prec, LhePro
 static void lhe_basic_decode_one_hop_per_pixel (LheBasicPrec *prec, LheProcessing *proc, LheImage *lhe, int linesize) {
        
     //Hops computation.
-    bool small_hop, last_small_hop;
+    bool small_hop, last_small_hop, soft_mode;
     uint8_t hop, predicted_luminance, hop_1, r_max; 
     int pix, pix_original_data, dif_pix, dato;
+    int soft_counter, soft_threshold;
+
+    soft_counter = 0;
+    soft_threshold = 8;
+    soft_mode = true;
     
     small_hop           = false;
     last_small_hop      = false;        // indicates if last hop is small
     predicted_luminance = 0;            // predicted signal
-    hop_1               = START_HOP_1;
+    hop_1               = 2;//START_HOP_1;
     pix                 = 0;            // pixel possition, from 0 to image size       
     pix_original_data   = 0;
     r_max               = PARAM_R;        
     
     dif_pix = linesize - proc->width;
- 
+
     for (int y=0; y < proc->height; y++)  {
         for (int x=0; x < proc->width; x++)     {
             
@@ -790,7 +1042,9 @@ static void lhe_basic_decode_one_hop_per_pixel (LheBasicPrec *prec, LheProcessin
             {
                 predicted_luminance=lhe->component_prediction[pix-linesize];
                 last_small_hop=false;
-                hop_1=START_HOP_1;
+                hop_1=2;//START_HOP_1;
+                soft_counter = 0;
+                soft_mode = true;
             } 
             else if (x == proc->width -1)
             {
@@ -800,14 +1054,22 @@ static void lhe_basic_decode_one_hop_per_pixel (LheBasicPrec *prec, LheProcessin
             {
                 predicted_luminance=(lhe->component_prediction[pix-1]+lhe->component_prediction[pix+1-linesize])>>1;     
             }
-    
+            
             if (hop == 4){
                 dato = predicted_luminance;
+                small_hop = true;
             } else if (hop == 5) {
                 dato = predicted_luminance + hop_1;
+                small_hop = true;
             } else if (hop == 3) {
                 dato = predicted_luminance - hop_1;
+                small_hop = true;
             } else {
+                if (soft_mode) {
+                    hop_1 = MIN_HOP_1;
+                    //soft_mode = false;
+                }
+                small_hop = false;
                 if (hop > 5) {
                     dato = 255 - prec->cache_hops[255-predicted_luminance][hop_1-4][8 - hop];
                 } else {
@@ -820,7 +1082,33 @@ static void lhe_basic_decode_one_hop_per_pixel (LheBasicPrec *prec, LheProcessin
             
             //tunning hop1 for the next hop ( "h1 adaptation")
             //------------------------------------------------
-            H1_ADAPTATION;
+            if (hop>5 || hop<3) small_hop=false; //true by default
+            if(!soft_mode){
+                if (small_hop==true && last_small_hop==true) {
+                    if (hop_1>MIN_HOP_1) hop_1--;
+                } else {
+                    hop_1=MAX_HOP_1;
+                }
+            }
+            
+            last_small_hop=small_hop;
+
+            if (soft_mode && !small_hop) {
+                soft_counter = 0;
+                soft_mode = false;
+                hop_1 = MAX_HOP_1;
+            } else if (!soft_mode) {
+                if (small_hop) {
+                    soft_counter++;
+                    if (soft_counter == soft_threshold) {
+                        soft_mode = true;
+                        hop_1 = 2;
+                    }
+                } else {
+                    soft_counter = 0;
+                }
+            }
+
             //lets go for the next pixel
             //--------------------------
             pix++;
@@ -913,10 +1201,11 @@ static void lhe_advanced_decode_one_hop_per_pixel_block (LheBasicPrec *prec, Lhe
 {
        
     //Hops computation.
-    uint32_t xini, xfin_downsampled, yini, yfin_downsampled;
-    bool small_hop, last_small_hop;
-    uint8_t hop, predicted_luminance, hop_1, r_max; 
-    uint32_t pix, dif_pix, num_block, dato;
+    int xini, xfin_downsampled, yini, yfin_downsampled;
+    bool small_hop, last_small_hop, soft_mode;
+    int hop, predicted_luminance, hop_1, r_max; 
+    int pix, dif_pix, num_block, dato;
+    int soft_counter, soft_threshold;
     
     num_block = block_y * total_blocks_width + block_x;
     
@@ -929,62 +1218,116 @@ static void lhe_advanced_decode_one_hop_per_pixel_block (LheBasicPrec *prec, Lhe
     small_hop           = false;
     last_small_hop      = false;        // indicates if last hop is small
     predicted_luminance = 0;            // predicted signal
-    hop_1               = START_HOP_1;
+    hop_1               = 2;//START_HOP_1;
     pix                 = 0;            // pixel possition, from 0 to image size        
-    r_max               = PARAM_R;        
+    soft_counter = 0;
+    soft_threshold = 8;
+    soft_mode = true;
     
- 
     pix = yini*proc->width + xini; 
     dif_pix = proc->width - xfin_downsampled + xini;
-    
+
+    int ratioY = 1;
+    if (block_x > 0){
+        ratioY = 1000*(proc->advanced_block[block_y][block_x-1].y_fin_downsampled - proc->basic_block[block_y][block_x-1].y_ini)/(yfin_downsampled - yini);
+    }
+
+    int ratioX = 1;
+    if (block_y > 0){
+        ratioX = 1000*(proc->advanced_block[block_y-1][block_x].x_fin_downsampled - proc->basic_block[block_y-1][block_x].x_ini)/(xfin_downsampled - xini);
+    }
+
+    //av_log(NULL,AV_LOG_INFO, "num_block: %d, first_color_block: %d\n", num_block, lhe->first_color_block[num_block]);
+
     for (int y=yini; y < yfin_downsampled; y++)  {
+        int y_prev = ((y-yini)*ratioY/1000)+yini;
         for (int x=xini; x < xfin_downsampled; x++)     {
+            int x_prev = ((x-xini)*ratioX/1000)+xini;
             
             hop = lhe->hops[pix];          
   
-            if (x == xini && y==yini) 
+            if (x == xini && y==yini) //Primer pixel
             {
                 predicted_luminance=lhe->first_color_block[num_block];//first pixel always is perfectly predicted! :-)  
+                //av_log(NULL, AV_LOG_INFO, "first_color_block %d\n",lhe->first_color_block[num_block]);
             } 
-            else if (y == yini) 
+            else if (y == yini) //Lado superior
             {
-                predicted_luminance=lhe->downsampled_image[pix-1];
+                if (y >0) predicted_luminance=(lhe->downsampled_image[pix-1]+lhe->downsampled_image[(proc->advanced_block[block_y-1][block_x].y_fin_downsampled-1)*proc->width+x_prev])/2;
+                else predicted_luminance=lhe->downsampled_image[pix-1];
             } 
-            else if (x == xini) 
+            else if (x == xini) //Lado izquierdo
             {
-                predicted_luminance=lhe->downsampled_image[pix-proc->width];
+                //predicted_luminance=lhe->downsampled_image[pix-proc->width];
+                if (block_x > 0) predicted_luminance=(lhe->downsampled_image[y_prev*proc->width+proc->advanced_block[block_y][block_x-1].x_fin_downsampled-1]+lhe->downsampled_image[pix-proc->width+1])/2;
+                else predicted_luminance=lhe->downsampled_image[pix-proc->width];
                 last_small_hop=false;
-                hop_1=START_HOP_1;
-            } else if (x == xfin_downsampled -1) 
+                hop_1=2;//START_HOP_1;
+                soft_counter = 0;
+                soft_mode = true;
+            } else if (x == xfin_downsampled -1) //Lado derecho
             {
                 predicted_luminance=(lhe->downsampled_image[pix-1]+lhe->downsampled_image[pix-proc->width])>>1;                                                             
             } 
-            else 
+            else //Interior del bloque
             {
                 predicted_luminance=(lhe->downsampled_image[pix-1]+lhe->downsampled_image[pix+1-proc->width])>>1;     
             }
             
             if (hop == 4){
                 dato = predicted_luminance;
+                small_hop = true;
             } else if (hop == 5) {
                 dato = predicted_luminance + hop_1;
+                small_hop = true;
             } else if (hop == 3) {
                 dato = predicted_luminance - hop_1;
+                small_hop = true;
             } else {
+                if (soft_mode) {
+                    hop_1 = MIN_HOP_1;
+                    //soft_mode = false;
+                }
+                small_hop = false;
                 if (hop > 5) {
                     dato = 255 - prec->cache_hops[255-predicted_luminance][hop_1-4][8 - hop];
                 } else {
                     dato = prec->cache_hops[predicted_luminance][hop_1-4][hop];
                 }
             }
-          
+
             //assignment of component_prediction
             //This is the uncompressed image
-            lhe->downsampled_image[pix]= dato;//prec -> prec_luminance[predicted_luminance][r_max][hop_1][hop];
+            lhe->downsampled_image[pix]=dato;//lhe->first_color_block[num_block];// dato;//prec -> prec_luminance[predicted_luminance][r_max][hop_1][hop];
             
             //tunning hop1 for the next hop ( "h1 adaptation")
             //------------------------------------------------
-            H1_ADAPTATION;
+            if (hop>5 || hop<3) small_hop=false; //true by default
+            if(!soft_mode){
+                if (small_hop==true && last_small_hop==true) {
+                    if (hop_1>MIN_HOP_1) hop_1--;
+                } else {
+                    hop_1=MAX_HOP_1;
+                }
+            }
+            
+            last_small_hop=small_hop;
+
+            if (soft_mode && !small_hop) {
+                soft_counter = 0;
+                soft_mode = false;
+                hop_1 = MAX_HOP_1;
+            } else if (!soft_mode) {
+                if (small_hop) {
+                    soft_counter++;
+                    if (soft_counter == soft_threshold) {
+                        soft_mode = true;
+                        hop_1 = 2;
+                    }
+                } else {
+                    soft_counter = 0;
+                }
+            }
 
             //lets go for the next pixel
             //--------------------------
@@ -1178,12 +1521,6 @@ static void lhe_advanced_filter (LheProcessing *proc, LheImage *lhe, int linesiz
 static void lhe_advanced_decode_symbols (LheState *s, LheHuffEntry *he_Y, LheHuffEntry *he_UV,
                                          uint32_t image_size_Y, uint32_t image_size_UV) 
 {
-    if (lhe_advanced_decode_symbols_alloc_mem == false) {
-        intermediate_interpolated_Y = av_calloc(image_size_Y, sizeof(uint8_t));
-        intermediate_interpolated_U = av_calloc(image_size_UV, sizeof(uint8_t));
-        intermediate_interpolated_V = av_calloc(image_size_UV, sizeof(uint8_t));
-        lhe_advanced_decode_symbols_alloc_mem = true;
-    }
     
     //#pragma omp parallel for
     for (int block_y=0; block_y<s->total_blocks_height; block_y++)
@@ -1249,11 +1586,11 @@ static void mlhe_decode_delta (LheBasicPrec *prec, LheProcessing *proc, LheImage
 {
        
     //Hops computation.
-    uint32_t xini, xfin_downsampled, yini, yfin_downsampled;
-    bool small_hop, last_small_hop;
-    uint8_t hop, predicted_luminance, hop_1, r_max; 
-    uint32_t pix, dif_pix, num_block;
-    int delta, image;
+    int xini, xfin_downsampled, yini, yfin_downsampled;
+    bool small_hop, last_small_hop, soft_mode;
+    int hop, predicted_luminance, hop_1, r_max; 
+    int pix, dif_pix, num_block;
+    int delta, image, soft_counter, soft_threshold;;
 /////////////////////////////////////////
     int tramo1, tramo2, signo;
 
@@ -1271,37 +1608,58 @@ static void mlhe_decode_delta (LheBasicPrec *prec, LheProcessing *proc, LheImage
     small_hop           = false;
     last_small_hop      = false;        // indicates if last hop is small
     predicted_luminance = 0;            // predicted signal
-    hop_1               = START_HOP_1;
+    hop_1               = 2;//START_HOP_1;
     pix                 = 0;            // pixel possition, from 0 to image size        
     r_max               = PARAM_R;        
-    
+    soft_counter = 0;
+    soft_threshold = 8;
+    soft_mode = true;    
  
     pix = yini*proc->width + xini; 
     dif_pix = proc->width - xfin_downsampled + xini;
     
+    int ratioY = 1;
+    if (block_x > 0){
+        ratioY = 1000*(proc->advanced_block[block_y][block_x-1].y_fin_downsampled - proc->basic_block[block_y][block_x-1].y_ini)/(yfin_downsampled - yini);
+    }
+
+    int ratioX = 1;
+    if (block_y > 0){
+        ratioX = 1000*(proc->advanced_block[block_y-1][block_x].x_fin_downsampled - proc->basic_block[block_y-1][block_x].x_ini)/(xfin_downsampled - xini);
+    }
+
     for (int y=yini; y < yfin_downsampled; y++)  {
+        int y_prev = ((y-yini)*ratioY/1000)+yini;
         for (int x=xini; x < xfin_downsampled; x++)     {
-            
+            int x_prev = ((x-xini)*ratioX/1000)+xini;
             hop = lhe->hops[pix];          
   
-            if (x == xini && y==yini) 
+            if (x == xini && y==yini)  //Primer pixel
             {
                 predicted_luminance=lhe->first_color_block[num_block];//first pixel always is perfectly predicted! :-)  
             } 
-            else if (y == yini) 
+            else if (y == yini) //Lado superior
             {
-                predicted_luminance=delta_prediction[pix-1];
+                //predicted_luminance=delta_prediction[pix-1];
+                if (y >0) predicted_luminance=(delta_prediction[pix-1]+delta_prediction[(proc->advanced_block[block_y-1][block_x].y_fin_downsampled-1)*proc->width+x_prev])/2;
+                else predicted_luminance=delta_prediction[pix-1];
             } 
-            else if (x == xini) 
+            else if (x == xini) //Lado izquierdo
             {
-                predicted_luminance=delta_prediction[pix-proc->width];
+                //predicted_luminance=delta_prediction[pix-proc->width];
+                //last_small_hop=false;
+                //hop_1=START_HOP_1;
+                if (x > 0) predicted_luminance=(delta_prediction[y_prev*proc->width+proc->advanced_block[block_y][block_x-1].x_fin_downsampled-1]+delta_prediction[pix-proc->width+1])/2;
+                else predicted_luminance=delta_prediction[pix-proc->width];
                 last_small_hop=false;
-                hop_1=START_HOP_1;
-            } else if (x == xfin_downsampled -1) 
+                hop_1=2;//START_HOP_1;
+                soft_counter = 0;
+                soft_mode = true;
+            } else if (x == xfin_downsampled -1) //Lado derecho
             {
                 predicted_luminance=(delta_prediction[pix-1]+delta_prediction[pix-proc->width])>>1;                                                             
             } 
-            else 
+            else //Interior del bloque
             {
                 predicted_luminance=(delta_prediction[pix-1]+delta_prediction[pix+1-proc->width])>>1;     
             }
@@ -1314,11 +1672,19 @@ static void mlhe_decode_delta (LheBasicPrec *prec, LheProcessing *proc, LheImage
 
             if (hop == 4){
                 delta = predicted_luminance;
+                small_hop = true;
             } else if (hop == 5) {
                 delta = predicted_luminance + hop_1;
+                small_hop = true;
             } else if (hop == 3) {
                 delta = predicted_luminance - hop_1;
+                small_hop = true;
             } else {
+                if (soft_mode) {
+                    hop_1 = MIN_HOP_1;
+                    //soft_mode = false;
+                }
+                small_hop = false;
                 if (hop > 5) {
                     delta = 255 - prec->cache_hops[255-predicted_luminance][hop_1-4][8 - hop];
                 } else {
@@ -1330,15 +1696,40 @@ static void mlhe_decode_delta (LheBasicPrec *prec, LheProcessing *proc, LheImage
             
             delta_prediction[pix] = delta;
             //if (delta >= 98 && delta <= 158) delta = 128;
-         
+        
+            //tunning hop1 for the next hop ( "h1 adaptation")
+            //------------------------------------------------
+            if (hop>5 || hop<3) small_hop=false; //true by default
+            if(!soft_mode){
+                if (small_hop==true && last_small_hop==true) {
+                    if (hop_1>MIN_HOP_1) hop_1--;
+                } else {
+                    hop_1=MAX_HOP_1;
+                }
+            }
             
+            last_small_hop=small_hop;
+
+            if (soft_mode && !small_hop) {
+                soft_counter = 0;
+                soft_mode = false;
+                hop_1 = MAX_HOP_1;
+            } else if (!soft_mode) {
+                if (small_hop) {
+                    soft_counter++;
+                    if (soft_counter == soft_threshold) {
+                        soft_mode = true;
+                        hop_1 = 2;
+                    }
+                } else {
+                    soft_counter = 0;
+                }
+            }    
 
             //delta = 128;
 
             //delta = (delta - 128) * 4;
             //image = adapted_downsampled_image[pix] + delta;
-
-
 
             delta = delta-128;
             signo = 0;
@@ -1374,10 +1765,6 @@ static void mlhe_decode_delta (LheBasicPrec *prec, LheProcessing *proc, LheImage
             }
             
             lhe->downsampled_image[pix] = image;
-            
-            //tunning hop1 for the next hop ( "h1 adaptation")
-            //------------------------------------------------
-            H1_ADAPTATION;
 
             //lets go for the next pixel
             //--------------------------
@@ -1398,26 +1785,7 @@ static void mlhe_decode_delta (LheBasicPrec *prec, LheProcessing *proc, LheImage
  */
 static void mlhe_decode_delta_frame (LheState *s, LheHuffEntry *he_Y, LheHuffEntry *he_UV, uint32_t image_size_Y, uint32_t image_size_UV) 
 {
-    
-    if (mlhe_decode_delta_frame_alloc_mem == false) {
-        delta_prediction_Y_dec = av_calloc (image_size_Y, sizeof(uint8_t));
-        delta_prediction_U_dec = av_calloc (image_size_UV, sizeof(uint8_t));
-        delta_prediction_V_dec = av_calloc (image_size_UV, sizeof(uint8_t));
-        
-        intermediate_interpolated_Y = av_calloc (image_size_Y, sizeof(uint8_t));
-        intermediate_interpolated_U = av_calloc (image_size_UV, sizeof(uint8_t));
-        intermediate_interpolated_V = av_calloc (image_size_UV, sizeof(uint8_t));
-        
-        intermediate_adapted_downsampled_data_Y_dec = av_calloc(image_size_Y, sizeof(uint8_t));  
-        intermediate_adapted_downsampled_data_U_dec = av_calloc(image_size_UV, sizeof(uint8_t)); 
-        intermediate_adapted_downsampled_data_V_dec = av_calloc(image_size_UV, sizeof(uint8_t)); 
-        
-        adapted_downsampled_image_Y = av_calloc(image_size_Y, sizeof(uint8_t));  
-        adapted_downsampled_image_U = av_calloc(image_size_UV, sizeof(uint8_t)); 
-        adapted_downsampled_image_V = av_calloc(image_size_UV, sizeof(uint8_t)); 
-        mlhe_decode_delta_frame_alloc_mem = true;
-    }
-    
+       
     #pragma omp parallel for
     for (int block_y=0; block_y<s->total_blocks_height; block_y++)
     {
@@ -1475,103 +1843,6 @@ static void mlhe_decode_delta_frame (LheState *s, LheHuffEntry *he_Y, LheHuffEnt
 //==================================================================
 // DECODE FRAME
 //==================================================================
-static void lhe_init_pixel_format (AVCodecContext *avctx, LheState *s, uint8_t pixel_format)
-{
-    if (pixel_format == LHE_YUV420)
-    {
-        avctx->pix_fmt = AV_PIX_FMT_YUV420P;
-        s->chroma_factor_width = 2;
-        s->chroma_factor_height = 2;
-    } else if (pixel_format == LHE_YUV422) 
-    {
-        avctx->pix_fmt = AV_PIX_FMT_YUV422P;
-        s->chroma_factor_width = 2;
-        s->chroma_factor_height = 1;
-    } else if (pixel_format == LHE_YUV444) 
-    {
-        avctx->pix_fmt = AV_PIX_FMT_YUV444P;
-        s->chroma_factor_width = 1;
-        s->chroma_factor_height = 1;
-    }
-}
-
-/**
- * Free pointers
- * 
- * @param *s Pointers
- * @param total_blocks_width 
- * @param total_blocks_height 
- */
-static void lhe_basic_free(LheState *s, uint32_t total_blocks_width, uint32_t total_blocks_height) 
-{
-    av_free((&s->lheY)->hops);
-    av_free((&s->lheU)->hops);
-    av_free((&s->lheV)->hops);
-    av_free((&s->lheY)->first_color_block);
-    av_free((&s->lheU)->first_color_block);
-    av_free((&s->lheV)->first_color_block);
-        
-    for (int i=0; i < total_blocks_height; i++)
-    {
-        av_free((&s->procY)->basic_block[i]);
-    }
-    
-    av_free((&s->procY)->basic_block);
-
-        
-    for (int i=0; i < total_blocks_height; i++)
-    {
-        av_free((&s->procUV)->basic_block[i]);
-    }
-    
-    av_free((&s->procUV)->basic_block);   
-}
-
-/**
- * Free pointers
- * 
- * @param *s Pointers
- * @param total_blocks_width 
- * @param total_blocks_height 
- */
-static void lhe_advanced_free(LheState *s, uint32_t total_blocks_width, uint32_t total_blocks_height) 
-{     
-    lhe_basic_free(s, total_blocks_width, total_blocks_height);
-
-    for (int i=0; i<total_blocks_height+1; i++) 
-    {
-        av_free((&s->procY)->perceptual_relevance_x[i]);
-    }
-    
-    av_free((&s->procY)->perceptual_relevance_x);
-    
-    for (int i=0; i<total_blocks_height+1; i++) 
-    {
-        av_free((&s->procY)->perceptual_relevance_y[i]);
-    }   
-    
-    av_free((&s->procY)->perceptual_relevance_y);
-
-    //Advanced blocks    
-    for (int i=0; i < total_blocks_height; i++)
-    {
-        av_free((&s->procY)->advanced_block[i]); 
-    }
-    
-    av_free((&s->procY)->advanced_block); 
-
-        
-    for (int i=0; i < total_blocks_height; i++)
-    {
-        av_free((&s->procUV)->advanced_block[i]);
-    }
-    
-    av_free((&s->procUV)->advanced_block); 
-    
-    av_free((&s->lheY)->downsampled_image);
-    av_free((&s->lheU)->downsampled_image);
-    av_free((&s->lheV)->downsampled_image);
-}
 
 /**
  * Read and decodes LHE image
@@ -1603,22 +1874,8 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
     //LHE mode
     s->lhe_mode = get_bits(&s->gb, LHE_MODE_SIZE_BITS);
     
-    //Pixel format byte, init pixel format
-    s->pixel_format = get_bits(&s->gb, PIXEL_FMT_SIZE_BITS); 
-    lhe_init_pixel_format (avctx, s, s->pixel_format);
-           
-    (&s->procY)->width  = get_bits_long(&s->gb, WIDTH_SIZE_BITS);
-    (&s->procY)->height = get_bits_long(&s->gb, HEIGHT_SIZE_BITS);
-    
     image_size_Y = (&s->procY)->width * (&s->procY)->height;
-    
-    (&s->procUV)->width = ((&s->procY)->width - 1)/s->chroma_factor_width + 1;
-    (&s->procUV)->height = ((&s->procY)->height - 1)/s->chroma_factor_height + 1;
     image_size_UV = (&s->procUV)->width * (&s->procUV)->height;
-    
-    avctx->width  = (&s->procY)->width;
-    avctx->height  = (&s->procY)->height;    
-    
     //Allocates frame
     av_frame_unref(s->frame);
     if ((ret = ff_get_buffer(avctx, s->frame, 0)) < 0)
@@ -1628,23 +1885,11 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
     {
         s->total_blocks_width = 1;
         s->total_blocks_height = 1;
-    } 
-    else 
-    {
-        s->total_blocks_width = HORIZONTAL_BLOCKS;
-        pixels_block = (&s->procY)->width / HORIZONTAL_BLOCKS;
-        s->total_blocks_height = (&s->procY)->height / pixels_block;
     }
     
     total_blocks = s->total_blocks_height * s->total_blocks_width;
     
-    //First pixel array
-    if (!(&s->lheY)->first_color_block) {
-        (&s->lheY)->first_color_block = av_calloc(image_size_Y, sizeof(uint8_t));
-        (&s->lheU)->first_color_block = av_calloc(image_size_UV, sizeof(uint8_t));
-        (&s->lheV)->first_color_block = av_calloc(image_size_UV, sizeof(uint8_t));
-    }
-    
+    //First pixel array 
     for (int i=0; i<total_blocks; i++) 
     {
         (&s->lheY)->first_color_block[i] = get_bits(&s->gb, FIRST_COLOR_SIZE_BITS);
@@ -1666,74 +1911,16 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
     (&s->lheY)->component_prediction = s->frame->data[0];
     (&s->lheU)->component_prediction  = s->frame->data[1];
     (&s->lheV)->component_prediction  = s->frame->data[2];
-    if (!(&s->lheY)->hops) {
-        (&s->lheY)->hops = av_calloc(image_size_Y , sizeof(uint8_t));
-        (&s->lheU)->hops = av_calloc(image_size_UV , sizeof(uint8_t));
-        (&s->lheV)->hops = av_calloc(image_size_UV , sizeof(uint8_t));
-        
-        (&s->procY)->basic_block = av_calloc(s->total_blocks_height, sizeof(BasicLheBlock *));
-        
-        for (int i=0; i < s->total_blocks_height; i++)
-        {
-            (&s->procY)->basic_block[i] = av_calloc (s->total_blocks_width, sizeof(BasicLheBlock));  
-        }
-        
-        (&s->procUV)->basic_block = av_calloc (s->total_blocks_height, sizeof(BasicLheBlock *));
-        
-        for (int i=0; i < s->total_blocks_height; i++)
-        {
-            (&s->procUV)->basic_block[i] = av_calloc (s->total_blocks_width, sizeof(BasicLheBlock));
-        }
-    }
-           
-    //lhe_read_huffman_table(s, he_Y, LHE_MAX_HUFF_SIZE_SYMBOLS, LHE_HUFFMAN_NODE_BITS_SYMBOLS, LHE_HUFFMAN_NO_OCCURRENCES_SYMBOLS);
-    //lhe_read_huffman_table(s, he_UV, LHE_MAX_HUFF_SIZE_SYMBOLS, LHE_HUFFMAN_NODE_BITS_SYMBOLS, LHE_HUFFMAN_NO_OCCURRENCES_SYMBOLS);
     
     if (s->lhe_mode == ADVANCED_LHE) /*ADVANCED LHE*/
     {
-        if (!(&s->procY)->advanced_block) {
-            (&s->procY)->perceptual_relevance_x = av_calloc((s->total_blocks_height+1), sizeof(float*));  
-        
-            for (int i=0; i<s->total_blocks_height+1; i++) 
-            {
-                (&s->procY)->perceptual_relevance_x[i] = av_calloc((s->total_blocks_width+1), sizeof(float));
-            }
-            
-            (&s->procY)->perceptual_relevance_y = av_calloc((s->total_blocks_height+1), sizeof(float*)); 
-            
-            for (int i=0; i<s->total_blocks_height+1; i++) 
-            {
-                (&s->procY)->perceptual_relevance_y[i] = av_calloc((s->total_blocks_width+1), sizeof(float));
-            }   
-        
-            //Advanced blocks
-            (&s->procY)->advanced_block = av_calloc (s->total_blocks_height, sizeof(AdvancedLheBlock *));
-            
-            for (int i=0; i < s->total_blocks_height; i++)
-            {
-                (&s->procY)->advanced_block[i] = av_calloc (s->total_blocks_width, sizeof(AdvancedLheBlock));
-            }
-            
-            (&s->procUV)->advanced_block = av_calloc (s->total_blocks_height, sizeof(AdvancedLheBlock *));
-            
-            for (int i=0; i < s->total_blocks_height; i++)
-            {
-                (&s->procUV)->advanced_block[i] = av_calloc (s->total_blocks_width, sizeof(AdvancedLheBlock));
-            }
-        }
 
         (&s->procY)-> theoretical_block_width = (&s->procY)->width / s->total_blocks_width;    
         (&s->procY)-> theoretical_block_height = (&s->procY)->height / s->total_blocks_height;   
         
         (&s->procUV)-> theoretical_block_width = (&s->procUV)->width / s->total_blocks_width;
         (&s->procUV)-> theoretical_block_height = (&s->procUV)->height / s->total_blocks_height; 
-        
-        if (!(&s->lheY)->downsampled_image) {
-            (&s->lheY)->downsampled_image = av_calloc (image_size_Y, sizeof(uint8_t));
-            (&s->lheU)->downsampled_image = av_calloc (image_size_UV, sizeof(uint8_t));
-            (&s->lheV)->downsampled_image = av_calloc (image_size_UV, sizeof(uint8_t));
-        }
-        
+                
         //MESH Huffman
         lhe_read_huffman_table(s, he_mesh, LHE_MAX_HUFF_SIZE_MESH, LHE_HUFFMAN_NODE_BITS_MESH, LHE_HUFFMAN_NO_OCCURRENCES_MESH);
         
@@ -1742,7 +1929,7 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
         ppp_max_theoric = (&s->procY)-> theoretical_block_width/SIDE_MIN;
         if (ppp_max_theoric > PPP_MAX) ppp_max_theoric = PPP_MAX;
         compression_factor = (&s->prec)->compression_factor[ppp_max_theoric][s->quality_level];        
-       
+       /*
         for (int block_y=0; block_y<s->total_blocks_height; block_y++) 
         {
             for (int block_x=0; block_x<s->total_blocks_width; block_x++) 
@@ -1753,7 +1940,7 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
                 
                 (&s->procY)->advanced_block[block_y][block_x].empty_flagV = get_bits(&s->gb, 1);
             }
-        }
+        }*/
 
         lhe_advanced_read_mesh(s, he_mesh, ppp_max_theoric, compression_factor);
 
@@ -1771,16 +1958,9 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
         lhe_advanced_read_file_symbols2 (s, &s->procY, (&s->lheY)->hops, 0, s->total_blocks_height, 1, BASIC_LHE, 0);
         lhe_advanced_read_file_symbols2 (s, &s->procUV, (&s->lheU)->hops, 0, s->total_blocks_height, 1, BASIC_LHE, 1);            
         lhe_advanced_read_file_symbols2 (s, &s->procUV, (&s->lheV)->hops, 0, s->total_blocks_height, 1, BASIC_LHE, 2);
-
-
-
-        //(s, he_Y, image_size_Y, (&s->lheY)->hops);     
-        //lhe_basic_read_file_symbols(s, he_UV, image_size_UV, (&s->lheU)->hops);      
-        //lhe_basic_read_file_symbols(s, he_UV, image_size_UV, (&s->lheV)->hops);      
         
         lhe_basic_decode_frame_sequential (s);    
-        
-        //lhe_basic_free(s, s->total_blocks_width, s->total_blocks_height);
+    
     }
 
     if ((ret = av_frame_ref(data, s->frame)) < 0)
@@ -1839,10 +2019,6 @@ static int mlhe_decode_video(AVCodecContext *avctx, void *data, int *got_frame, 
         (&s->lheU)->component_prediction  = s->frame->data[1];
         (&s->lheV)->component_prediction  = s->frame->data[2];
     
-        s->total_blocks_width = HORIZONTAL_BLOCKS;
-        pixels_block = (&s->procY)->width / HORIZONTAL_BLOCKS;
-        s->total_blocks_height = (&s->procY)->height / pixels_block;
-      
         total_blocks = s->total_blocks_height * s->total_blocks_width;
         
         //First pixel array
@@ -1851,21 +2027,16 @@ static int mlhe_decode_video(AVCodecContext *avctx, void *data, int *got_frame, 
             (&s->lheY)->first_color_block[i] = get_bits(&s->gb, FIRST_COLOR_SIZE_BITS);
         }
 
-        
         for (int i=0; i<total_blocks; i++) 
         {
             (&s->lheU)->first_color_block[i] = get_bits(&s->gb, FIRST_COLOR_SIZE_BITS);
         }
         
-            
         for (int i=0; i<total_blocks; i++) 
         {
             (&s->lheV)->first_color_block[i] = get_bits(&s->gb, FIRST_COLOR_SIZE_BITS); 
         }
-        
-        //lhe_read_huffman_table(s, he_Y, LHE_MAX_HUFF_SIZE_SYMBOLS, LHE_HUFFMAN_NODE_BITS_SYMBOLS, LHE_HUFFMAN_NO_OCCURRENCES_SYMBOLS);
-        //lhe_read_huffman_table(s, he_UV, LHE_MAX_HUFF_SIZE_SYMBOLS, LHE_HUFFMAN_NODE_BITS_SYMBOLS, LHE_HUFFMAN_NO_OCCURRENCES_SYMBOLS);
-        
+
          //MESH Huffman
         lhe_read_huffman_table(s, he_mesh, LHE_MAX_HUFF_SIZE_MESH, LHE_HUFFMAN_NODE_BITS_MESH, LHE_HUFFMAN_NO_OCCURRENCES_MESH);     
         
@@ -1873,7 +2044,7 @@ static int mlhe_decode_video(AVCodecContext *avctx, void *data, int *got_frame, 
         ppp_max_theoric = (&s->procY)->theoretical_block_width/SIDE_MIN;
         if (ppp_max_theoric > PPP_MAX) ppp_max_theoric = PPP_MAX;
         compression_factor = (&s->prec)->compression_factor[ppp_max_theoric][s->quality_level];        
-       
+       /*
         for (int block_y=0; block_y<s->total_blocks_height; block_y++) 
         {
             for (int block_x=0; block_x<s->total_blocks_width; block_x++) 
@@ -1884,7 +2055,7 @@ static int mlhe_decode_video(AVCodecContext *avctx, void *data, int *got_frame, 
                 
                 (&s->procY)->advanced_block[block_y][block_x].empty_flagV = get_bits(&s->gb, 1);
             }
-        }
+        }*/
        
         lhe_advanced_read_mesh(s, he_mesh, ppp_max_theoric, compression_factor);
         
@@ -1896,22 +2067,8 @@ static int mlhe_decode_video(AVCodecContext *avctx, void *data, int *got_frame, 
     {   
         s->global_frames_count++;
         
-        //Pixel format byte, init pixel format
-        s->pixel_format = get_bits(&s->gb, PIXEL_FMT_SIZE_BITS);
-        lhe_init_pixel_format (avctx, s, s->pixel_format);
-            
-        (&s->procY)->width  = get_bits_long(&s->gb, WIDTH_SIZE_BITS);
-        (&s->procY)->height = get_bits_long(&s->gb, HEIGHT_SIZE_BITS);
-        
         image_size_Y = (&s->procY)->width * (&s->procY)->height;
-        
-        (&s->procUV)->width = ((&s->procY)->width - 1)/s->chroma_factor_width + 1;
-        (&s->procUV)->height = ((&s->procY)->height - 1)/s->chroma_factor_height + 1;
         image_size_UV = (&s->procUV)->width * (&s->procUV)->height;
-        
-        avctx->width  = (&s->procY)->width;
-        avctx->height  = (&s->procY)->height;    
-        
         //Allocates frame
         av_frame_unref(s->frame);
         if ((ret = ff_get_buffer(avctx, s->frame, 0)) < 0)
@@ -1922,87 +2079,22 @@ static int mlhe_decode_video(AVCodecContext *avctx, void *data, int *got_frame, 
         (&s->lheU)->component_prediction  = s->frame->data[1];
         (&s->lheV)->component_prediction  = s->frame->data[2];
 
-        s->total_blocks_width = HORIZONTAL_BLOCKS;
-        pixels_block = (&s->procY)->width / HORIZONTAL_BLOCKS;
-        s->total_blocks_height = (&s->procY)->height / pixels_block;
-        
         total_blocks = s->total_blocks_height * s->total_blocks_width;
         
         //First pixel array
-        if (!(&s->lheY)->first_color_block) {
-            (&s->lheY)->first_color_block = av_calloc(image_size_Y, sizeof(uint8_t));
-            (&s->lheU)->first_color_block = av_calloc(image_size_UV, sizeof(uint8_t));
-            (&s->lheV)->first_color_block = av_calloc(image_size_UV, sizeof(uint8_t));
-        }
-        
         for (int i=0; i<total_blocks; i++) 
         {
             (&s->lheY)->first_color_block[i] = get_bits(&s->gb, FIRST_COLOR_SIZE_BITS);
         }
 
-        
         for (int i=0; i<total_blocks; i++) 
         {
             (&s->lheU)->first_color_block[i] = get_bits(&s->gb, FIRST_COLOR_SIZE_BITS);
         }
         
-            
         for (int i=0; i<total_blocks; i++) 
         {
             (&s->lheV)->first_color_block[i] = get_bits(&s->gb, FIRST_COLOR_SIZE_BITS); 
-        }
-        
-        if (!(&s->lheY)->hops) {
-            (&s->lheY)->hops = av_calloc(image_size_Y, sizeof(uint8_t));
-            (&s->lheU)->hops = av_calloc(image_size_UV, sizeof(uint8_t));
-            (&s->lheV)->hops = av_calloc(image_size_UV, sizeof(uint8_t)); 
-        
-            (&s->procY)->basic_block = av_calloc(s->total_blocks_height, sizeof(BasicLheBlock *));
-            
-            for (int i=0; i < s->total_blocks_height; i++)
-            {
-                (&s->procY)->basic_block[i] = av_calloc (s->total_blocks_width, sizeof(BasicLheBlock));
-            }
-            
-            (&s->procUV)->basic_block = av_calloc(s->total_blocks_height, sizeof(BasicLheBlock *));
-            
-            for (int i=0; i < s->total_blocks_height; i++)
-            {
-                (&s->procUV)->basic_block[i] = av_calloc (s->total_blocks_width, sizeof(BasicLheBlock));
-            }
-        }
-            
-        //lhe_read_huffman_table(s, he_Y, LHE_MAX_HUFF_SIZE_SYMBOLS, LHE_HUFFMAN_NODE_BITS_SYMBOLS, LHE_HUFFMAN_NO_OCCURRENCES_SYMBOLS);
-        //lhe_read_huffman_table(s, he_UV, LHE_MAX_HUFF_SIZE_SYMBOLS, LHE_HUFFMAN_NODE_BITS_SYMBOLS, LHE_HUFFMAN_NO_OCCURRENCES_SYMBOLS);
-        
-        if (!(&s->procY)->advanced_block) {
-            (&s->procY)->perceptual_relevance_x = av_calloc(s->total_blocks_height+1, sizeof(float*));  
-            
-            for (int i=0; i<s->total_blocks_height+1; i++) 
-            {
-                (&s->procY)->perceptual_relevance_x[i] = av_calloc(s->total_blocks_width+1, sizeof(float));
-            }
-            
-            (&s->procY)->perceptual_relevance_y = av_calloc(s->total_blocks_height+1, sizeof(float*)); 
-            
-            for (int i=0; i<s->total_blocks_height+1; i++) 
-            {
-                (&s->procY)->perceptual_relevance_y[i] = av_calloc(s->total_blocks_width+1, sizeof(float));
-            }   
-
-            (&s->procY)->advanced_block = av_calloc(s->total_blocks_height, sizeof(AdvancedLheBlock *));
-            
-            for (int i=0; i < s->total_blocks_height; i++)
-            {
-                (&s->procY)->advanced_block[i] = av_calloc (s->total_blocks_width, sizeof(AdvancedLheBlock));
-            }
-            
-            (&s->procUV)->advanced_block = av_calloc(s->total_blocks_height, sizeof(AdvancedLheBlock *));
-            
-            for (int i=0; i < s->total_blocks_height; i++)
-            {
-                (&s->procUV)->advanced_block[i] = av_calloc (s->total_blocks_width, sizeof(AdvancedLheBlock));
-            }
         }
         
         (&s->procY)-> theoretical_block_width = (&s->procY)->width / s->total_blocks_width;    
@@ -2010,12 +2102,6 @@ static int mlhe_decode_video(AVCodecContext *avctx, void *data, int *got_frame, 
         
         (&s->procUV)-> theoretical_block_width = (&s->procUV)->width / s->total_blocks_width;
         (&s->procUV)-> theoretical_block_height = (&s->procUV)->height / s->total_blocks_height; 
-        
-        if (!(&s->lheY)->downsampled_image) {
-            (&s->lheY)-> downsampled_image = av_calloc (image_size_Y, sizeof(uint8_t));
-            (&s->lheU)-> downsampled_image = av_calloc (image_size_UV, sizeof(uint8_t));
-            (&s->lheV)-> downsampled_image = av_calloc (image_size_UV, sizeof(uint8_t));
-        }
         
         //MESH Huffman
         lhe_read_huffman_table(s, he_mesh, LHE_MAX_HUFF_SIZE_MESH, LHE_HUFFMAN_NODE_BITS_MESH, LHE_HUFFMAN_NO_OCCURRENCES_MESH);
@@ -2025,7 +2111,7 @@ static int mlhe_decode_video(AVCodecContext *avctx, void *data, int *got_frame, 
         ppp_max_theoric = (&s->procY)-> theoretical_block_width/SIDE_MIN;
         if (ppp_max_theoric > PPP_MAX) ppp_max_theoric = PPP_MAX;
         compression_factor = (&s->prec)->compression_factor[ppp_max_theoric][s->quality_level];        
-        
+        /*
         for (int block_y=0; block_y<s->total_blocks_height; block_y++) 
         {
             for (int block_x=0; block_x<s->total_blocks_width; block_x++) 
@@ -2036,7 +2122,7 @@ static int mlhe_decode_video(AVCodecContext *avctx, void *data, int *got_frame, 
                 
                 (&s->procY)->advanced_block[block_y][block_x].empty_flagV = get_bits(&s->gb, 1);
             }
-        }
+        }*/
 
         lhe_advanced_read_mesh(s, he_mesh, ppp_max_theoric, compression_factor);
         
@@ -2044,40 +2130,12 @@ static int mlhe_decode_video(AVCodecContext *avctx, void *data, int *got_frame, 
                 
         lhe_advanced_decode_symbols (s, he_Y, he_UV, image_size_Y, image_size_UV);
     }   
-
-    if (!(&s->procY)->last_advanced_block) 
-    {
-         (&s->procY)->last_advanced_block = av_calloc(s->total_blocks_height, sizeof(AdvancedLheBlock *));
-        
-        for (int i=0; i < s->total_blocks_height; i++)
-        {
-            (&s->procY)->last_advanced_block[i] = av_calloc (s->total_blocks_width, sizeof(AdvancedLheBlock));
-        }      
-    }
-    
-    if (!(&s->procUV)->last_advanced_block) {
-        (&s->procUV)->last_advanced_block = av_calloc(s->total_blocks_height, sizeof(AdvancedLheBlock *));
-        
-        for (int i=0; i < s->total_blocks_height; i++)
-        {
-            (&s->procUV)->last_advanced_block[i] = av_calloc (s->total_blocks_width, sizeof(AdvancedLheBlock));
-        }
-    }
-    
-    if (!(&s->lheY)->last_downsampled_image) {
-        (&s->lheY)->last_downsampled_image = av_calloc(image_size_Y, sizeof(uint8_t));  
-    }
     
 
-    if (!(&s->lheU)->last_downsampled_image) {
-        (&s->lheU)->last_downsampled_image = av_calloc(image_size_UV, sizeof(uint8_t)); 
-    }
-    
-    
-    if (!(&s->lheV)->last_downsampled_image) {
-        (&s->lheV)->last_downsampled_image = av_calloc(image_size_UV, sizeof(uint8_t));  
-    }
-    
+
+
+
+
     for (int i=0; i < s->total_blocks_height; i++)
     {
         memcpy((&s->procY)->last_advanced_block[i], (&s->procY)->advanced_block[i], sizeof(AdvancedLheBlock) * (s->total_blocks_width));
@@ -2100,31 +2158,14 @@ static int mlhe_decode_video(AVCodecContext *avctx, void *data, int *got_frame, 
     return 0;
 }
 
-
 static av_cold int lhe_decode_close(AVCodecContext *avctx)
 {
     LheState *s = avctx->priv_data;
-/*
-    av_freep(&s->prec.prec_luminance);
-    av_freep(&s->prec.best_hop);
-    av_free(intermediate_interpolated_Y);
-    av_free(intermediate_interpolated_U);
-    av_free(intermediate_interpolated_V);
-    av_free(delta_prediction_Y_dec); 
-    av_free(delta_prediction_U_dec); 
-    av_free(delta_prediction_V_dec);
-    av_free(intermediate_adapted_downsampled_data_Y_dec); 
-    av_free(intermediate_adapted_downsampled_data_U_dec); 
-    av_free(intermediate_adapted_downsampled_data_V_dec);  
-    
-    av_free(adapted_downsampled_image_Y); 
-    av_free(adapted_downsampled_image_U); 
-    av_free(adapted_downsampled_image_V);  
-    lhe_advanced_free(s, s->total_blocks_width, s->total_blocks_height);
+
+    lhedec_free_tables(s);
+    av_log(NULL, AV_LOG_INFO, "Llama a close despues de liberar los arrays\n");
     av_frame_free(&s->frame);
-    lhe_advanced_decode_symbols_alloc_mem = false;
-    mlhe_decode_delta_frame_alloc_mem = false;
-*/
+
     return 0;
 }
 
@@ -2145,6 +2186,7 @@ AVCodec ff_lhe_decoder = {
     .close          = lhe_decode_close,
     .decode         = lhe_decode_frame,
     .priv_class     = &decoder_class,
+    .pix_fmts       = (const enum AVPixelFormat[]) {AV_PIX_FMT_YUV420P, AV_PIX_FMT_YUV422P, AV_PIX_FMT_YUV444P, AV_PIX_FMT_NONE}
 };
 
 AVCodec ff_mlhe_decoder = {
@@ -2157,4 +2199,5 @@ AVCodec ff_mlhe_decoder = {
     .close          = lhe_decode_close,
     .decode         = mlhe_decode_video,
     .priv_class     = &decoder_class,
+    .pix_fmts       = (const enum AVPixelFormat[]) {AV_PIX_FMT_YUV420P, AV_PIX_FMT_YUV422P, AV_PIX_FMT_YUV444P, AV_PIX_FMT_NONE}
 };

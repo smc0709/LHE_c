@@ -926,9 +926,9 @@ void lhe_init_cache2(LheBasicPrec *prec){
 	float maxr, minr;
 	double rpos, rneg;
 	int h, hop_min, hop_max;
-	const float range=0.7f; //con rango menor da mas calidad pero se gastan mas bits!!!!
+	const float range=0.8f; //con rango menor da mas calidad pero se gastan mas bits!!!!
 
-	maxr = 2.7f;
+	maxr = 4.0f;
 	minr = 1.0f;
 
 	hop_min = 1;

@@ -67,13 +67,14 @@ static int mlhe_read_header(AVFormatContext *s)
 {
     AVIOContext     *pb  = s->pb;
     AVStream        *st;
-    int width, height, time_base_den, codec_time_base_den, ret;
+    int width, height, format, time_base_den, codec_time_base_den, ret;
 
     if ((ret = resync(pb)) < 0)
         return ret;
 
     width  = avio_rl16(pb);
     height = avio_rl16(pb);
+    format = avio_r8(pb);
     time_base_den = avio_rl16 (pb);
     codec_time_base_den = avio_rl16(pb);
     
@@ -90,6 +91,7 @@ static int mlhe_read_header(AVFormatContext *s)
     st->codecpar->codec_id   = AV_CODEC_ID_MLHE;
     st->codecpar->width      = width;
     st->codecpar->height     = height;
+    st->codecpar->format     = format;
         
     return 0;
 }

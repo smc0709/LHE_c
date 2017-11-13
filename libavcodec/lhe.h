@@ -67,7 +67,7 @@ static const uint8_t mlhe_sig[4] = "MLHE";
 
 //LHE params
 #define MAX_HOP_1 10
-#define MIN_HOP_1 4
+#define MIN_HOP_1 6
 #define START_HOP_1 (MAX_HOP_1 + MIN_HOP_1) / 2
 #define PARAM_R 25
 
@@ -165,7 +165,7 @@ static const uint8_t mlhe_sig[4] = "MLHE";
 #define MAX_QL 100
 
 //STREAMING
-#define GOP 25
+#define GOP 0
 
 #define LENGTH 64//sizeof(mask)*CHAR_BIT
 #define testBit(A,k) ((A & (1UL<<(k)))>>k)
@@ -214,10 +214,10 @@ typedef struct AdvancedLheBlock {
     uint32_t downsampled_y_side;
     float ppp_x[CORNERS];
     float ppp_y[CORNERS];
-    uint64_t hop_counter[9];
-    bool empty_flagY;
-    bool empty_flagU;
-    bool empty_flagV;
+    //uint64_t hop_counter[9];
+    //bool empty_flagY;
+    //bool empty_flagU;
+    //bool empty_flagV;
 } AdvancedLheBlock;
 
 typedef struct LheProcessing {

@@ -41,6 +41,7 @@ static int mlhe_image_write_header(AVIOContext *pb, AVStream *st)
     avio_write(pb, "MLHE", 4);
     avio_wl16(pb, st->codecpar->width);
     avio_wl16(pb, st->codecpar->height);
+    avio_w8(pb, st->codecpar->format);
     avio_wl16(pb, st->time_base.den);
     avio_wl16(pb, st->codec->time_base.den);
 
