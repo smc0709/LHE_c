@@ -535,41 +535,6 @@ static void lhe_advanced_read_file_symbols (LheState *s, LheHuffEntry *he, LhePr
     }
 }
 
-static uint8_t get_hop(int zeros_since_a_one) {
-
-    if (zeros_since_a_one == 0) {
-        return (uint8_t)HOP_0;
-    }
-    else if (zeros_since_a_one == 1) {
-        return (uint8_t)HOP_P1;
-    }
-    else if (zeros_since_a_one == 2) {
-        return (uint8_t)HOP_N1;
-    }
-    else if (zeros_since_a_one == 3) {
-        return (uint8_t)HOP_P2;
-    }
-    else if (zeros_since_a_one == 4) {
-        return (uint8_t)HOP_N2;
-    }
-    else if (zeros_since_a_one == 5) {
-        return (uint8_t)HOP_P3;
-    }
-    else if (zeros_since_a_one == 6) {
-        return (uint8_t)HOP_N3;
-    }
-    else if (zeros_since_a_one == 7) {
-        return (uint8_t)HOP_P4;
-    }
-    else if (zeros_since_a_one == 8) {
-        return (uint8_t)HOP_N4;
-    }
-    else {
-        return (uint8_t) 255;
-    }
-
-}
-
 static uint8_t set_bit(uint8_t data, int possition) {
 
     uint8_t mask = 1;
@@ -1206,6 +1171,7 @@ static void lhe_advanced_decode_one_hop_per_pixel_block (LheBasicPrec *prec, Lhe
     int hop, predicted_luminance, hop_1, r_max; 
     int pix, dif_pix, num_block, dato;
     int soft_counter, soft_threshold;
+    int soft_h1 = 2;
     
     num_block = block_y * total_blocks_width + block_x;
     
@@ -1218,7 +1184,7 @@ static void lhe_advanced_decode_one_hop_per_pixel_block (LheBasicPrec *prec, Lhe
     small_hop           = false;
     last_small_hop      = false;        // indicates if last hop is small
     predicted_luminance = 0;            // predicted signal
-    hop_1               = 2;//START_HOP_1;
+    hop_1               = soft_h1;//START_HOP_1;
     pix                 = 0;            // pixel possition, from 0 to image size        
     soft_counter = 0;
     soft_threshold = 8;
@@ -1262,7 +1228,7 @@ static void lhe_advanced_decode_one_hop_per_pixel_block (LheBasicPrec *prec, Lhe
                 if (block_x > 0) predicted_luminance=(lhe->downsampled_image[y_prev*proc->width+proc->advanced_block[block_y][block_x-1].x_fin_downsampled-1]+lhe->downsampled_image[pix-proc->width+1])/2;
                 else predicted_luminance=lhe->downsampled_image[pix-proc->width];
                 last_small_hop=false;
-                hop_1=2;//START_HOP_1;
+                hop_1=soft_h1;//START_HOP_1;
                 soft_counter = 0;
                 soft_mode = true;
             } else if (x == xfin_downsampled -1) //Lado derecho
@@ -1322,7 +1288,7 @@ static void lhe_advanced_decode_one_hop_per_pixel_block (LheBasicPrec *prec, Lhe
                     soft_counter++;
                     if (soft_counter == soft_threshold) {
                         soft_mode = true;
-                        hop_1 = 2;
+                        hop_1 = soft_h1;
                     }
                 } else {
                     soft_counter = 0;
@@ -1352,11 +1318,12 @@ static void lhe_advanced_vertical_nearest_neighbour_interpolation (LheProcessing
 {
     uint32_t block_width, downsampled_y_side;
     float gradient, gradient_0, gradient_1, ppp_y, ppp_0, ppp_1, ppp_2, ppp_3;
-    uint32_t xini, xfin_downsampled, yini, yprev_interpolated, yfin_interpolated, yfin_downsampled;
+    uint32_t xini, xfin_downsampled, yini, yprev_interpolated, yfin_interpolated, yfin_downsampled, downsampled_x_side;
     float yfin_interpolated_float;
     
     block_width = proc->basic_block[block_y][block_x].block_width;
     downsampled_y_side = proc->advanced_block[block_y][block_x].downsampled_y_side;
+    downsampled_x_side = proc->advanced_block[block_y][block_x].downsampled_x_side;
     xini = proc->basic_block[block_y][block_x].x_ini;
     xfin_downsampled = proc->advanced_block[block_y][block_x].x_fin_downsampled;
     yini = proc->basic_block[block_y][block_x].y_ini;
@@ -1368,9 +1335,9 @@ static void lhe_advanced_vertical_nearest_neighbour_interpolation (LheProcessing
     ppp_3=proc->advanced_block[block_y][block_x].ppp_y[BOT_RIGHT_CORNER];
     
     //gradient PPPy side c
-    gradient_0=(ppp_1-ppp_0)/(block_width-1.0);    
+    gradient_0=(ppp_1-ppp_0)/(downsampled_x_side-1.0);    
     //gradient PPPy side d
-    gradient_1=(ppp_3-ppp_2)/(block_width-1.0);
+    gradient_1=(ppp_3-ppp_2)/(downsampled_x_side-1.0);
     
     // pppx initialized to ppp_0
     ppp_y=ppp_0;    
@@ -1421,13 +1388,14 @@ static void lhe_advanced_horizontal_nearest_neighbour_interpolation (LheProcessi
                                                                      uint8_t *intermediate_interpolated_image, 
                                                                      int linesize, int block_x, int block_y) 
 {
-    uint32_t block_height, downsampled_x_side;
+    uint32_t block_height, downsampled_x_side, downsampled_y_side;
     float gradient, gradient_0, gradient_1, ppp_x, ppp_0, ppp_1, ppp_2, ppp_3;
     uint32_t xini, xfin_downsampled, xprev_interpolated, xfin_interpolated, yini, yfin;
     float xfin_interpolated_float;
     
     block_height = proc->basic_block[block_y][block_x].block_height;
     downsampled_x_side = proc->advanced_block[block_y][block_x].downsampled_x_side;
+    downsampled_y_side = proc->advanced_block[block_y][block_x].downsampled_y_side;
     xini = proc->basic_block[block_y][block_x].x_ini;
     xfin_downsampled = proc->advanced_block[block_y][block_x].x_fin_downsampled;
     yini = proc->basic_block[block_y][block_x].y_ini;
@@ -1459,7 +1427,9 @@ static void lhe_advanced_horizontal_nearest_neighbour_interpolation (LheProcessi
                
             for (int i=xprev_interpolated;i < xfin_interpolated;i++)
             {
-                lhe->component_prediction[y*linesize+i]=intermediate_interpolated_image[y*proc->width+x_sc];       
+                lhe->component_prediction[y*linesize+i]=intermediate_interpolated_image[y*proc->width+x_sc];
+                //PARA VER LINEAS VERDES EN LA FRONTERA DE LOS BLOQUES
+                //if (i == xini || y == yini) lhe->component_prediction[y*linesize+i]=0;
                 //PARA SACAR LA IMAGEN DOWNSAMPLEADA
                 //lhe->component_prediction[y*linesize+i]=lhe->downsampled_image[y*proc->width+i];
             }
@@ -1590,7 +1560,8 @@ static void mlhe_decode_delta (LheBasicPrec *prec, LheProcessing *proc, LheImage
     bool small_hop, last_small_hop, soft_mode;
     int hop, predicted_luminance, hop_1, r_max; 
     int pix, dif_pix, num_block;
-    int delta, image, soft_counter, soft_threshold;;
+    int delta, image, soft_counter, soft_threshold;
+    int soft_h1 = 2;
 /////////////////////////////////////////
     int tramo1, tramo2, signo;
 
@@ -1608,7 +1579,7 @@ static void mlhe_decode_delta (LheBasicPrec *prec, LheProcessing *proc, LheImage
     small_hop           = false;
     last_small_hop      = false;        // indicates if last hop is small
     predicted_luminance = 0;            // predicted signal
-    hop_1               = 2;//START_HOP_1;
+    hop_1               = soft_h1;//START_HOP_1;
     pix                 = 0;            // pixel possition, from 0 to image size        
     r_max               = PARAM_R;        
     soft_counter = 0;
@@ -1636,13 +1607,17 @@ static void mlhe_decode_delta (LheBasicPrec *prec, LheProcessing *proc, LheImage
   
             if (x == xini && y==yini)  //Primer pixel
             {
-                predicted_luminance=lhe->first_color_block[num_block];//first pixel always is perfectly predicted! :-)  
+                /*if (x == 0 && y == 0)*/ predicted_luminance=lhe->first_color_block[num_block];//first pixel always is perfectly predicted! :-)  
+                //else if (y > 0) predicted_luminance=(delta_prediction[pix-1]+delta_prediction[(proc->advanced_block[block_y-1][block_x].y_fin_downsampled-1)*proc->width+x_prev])/2;
+                //else predicted_luminance=delta_prediction[pix-1];
+                //if (y > 0) av_log (NULL, AV_LOG_INFO, "pix %d, pred_lum %d\n", pix, predicted_luminance);
             } 
             else if (y == yini) //Lado superior
             {
                 //predicted_luminance=delta_prediction[pix-1];
-                if (y >0) predicted_luminance=(delta_prediction[pix-1]+delta_prediction[(proc->advanced_block[block_y-1][block_x].y_fin_downsampled-1)*proc->width+x_prev])/2;
+                if (y > 0) predicted_luminance=(delta_prediction[pix-1]+delta_prediction[(proc->advanced_block[block_y-1][block_x].y_fin_downsampled-1)*proc->width+x_prev])/2;
                 else predicted_luminance=delta_prediction[pix-1];
+                //if (y > 0) av_log (NULL, AV_LOG_INFO, "pix %d, pred_lum %d, delta_pred pix-1: %d, delta_pred anterior: %d\n", pix, predicted_luminance, delta_prediction[pix-1], delta_prediction[(proc->advanced_block[block_y-1][block_x].y_fin_downsampled-1)*proc->width+x_prev]);
             } 
             else if (x == xini) //Lado izquierdo
             {
@@ -1652,7 +1627,7 @@ static void mlhe_decode_delta (LheBasicPrec *prec, LheProcessing *proc, LheImage
                 if (x > 0) predicted_luminance=(delta_prediction[y_prev*proc->width+proc->advanced_block[block_y][block_x-1].x_fin_downsampled-1]+delta_prediction[pix-proc->width+1])/2;
                 else predicted_luminance=delta_prediction[pix-proc->width];
                 last_small_hop=false;
-                hop_1=2;//START_HOP_1;
+                hop_1=soft_h1;//START_HOP_1;
                 soft_counter = 0;
                 soft_mode = true;
             } else if (x == xfin_downsampled -1) //Lado derecho
@@ -1719,7 +1694,7 @@ static void mlhe_decode_delta (LheBasicPrec *prec, LheProcessing *proc, LheImage
                     soft_counter++;
                     if (soft_counter == soft_threshold) {
                         soft_mode = true;
-                        hop_1 = 2;
+                        hop_1 = soft_h1;
                     }
                 } else {
                     soft_counter = 0;
@@ -1786,7 +1761,7 @@ static void mlhe_decode_delta (LheBasicPrec *prec, LheProcessing *proc, LheImage
 static void mlhe_decode_delta_frame (LheState *s, LheHuffEntry *he_Y, LheHuffEntry *he_UV, uint32_t image_size_Y, uint32_t image_size_UV) 
 {
        
-    #pragma omp parallel for
+    //#pragma omp parallel for
     for (int block_y=0; block_y<s->total_blocks_height; block_y++)
     {
         for (int block_x=0; block_x<s->total_blocks_width; block_x++)

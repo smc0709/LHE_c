@@ -380,6 +380,7 @@ uint32_t lhe_advanced_ppp_side_to_rectangle_shape (LheProcessing *proc, float pp
         }
         
         side_average=side_max;
+        //side_average=(side_c+side_d)/2;
     }
     
     block_width = proc->basic_block[block_y][block_x].block_width;     
@@ -517,6 +518,7 @@ uint32_t lhe_advanced_ppp_side_to_rectangle_shape (LheProcessing *proc, float pp
         }
         
         side_average=side_max;
+        //side_average=(side_a+side_b)/2;
     }
     
     //Block height is calculated as yfin-yini. I calculated block height because it is possible there are 

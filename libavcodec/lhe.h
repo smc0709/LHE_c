@@ -31,10 +31,14 @@
 
 //VIDEO PARAMS
 static const uint8_t mlhe_sig[4] = "MLHE";
+static const uint8_t lhe_sig[3] = "LHE";
 
 #define MLHE_TRAILER                 0x3b
+#define LHE_TRAILER                  0x3b
 #define MLHE_EXTENSION_INTRODUCER    0x21
+#define LHE_EXTENSION_INTRODUCER     0x21
 #define MLHE_IMAGE_SEPARATOR         0x2c
+#define LHE_IMAGE_SEPARATOR          0x2c
 
 //Configuration 
 #define BASIC_LHE 0
@@ -67,7 +71,7 @@ static const uint8_t mlhe_sig[4] = "MLHE";
 
 //LHE params
 #define MAX_HOP_1 10
-#define MIN_HOP_1 6
+#define MIN_HOP_1 4
 #define START_HOP_1 (MAX_HOP_1 + MIN_HOP_1) / 2
 #define PARAM_R 25
 
@@ -113,17 +117,6 @@ static const uint8_t mlhe_sig[4] = "MLHE";
 #define RLC2 1
 #define HUFFMAN 2
 
-////////SUSTITUIR EN LA FUNCION POR LOS DE ARRIBA!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-#define HOP_N1 3
-#define HOP_P1 5
-#define HOP_N2 2
-#define HOP_P2 6
-#define HOP_N3 1
-#define HOP_P3 7
-#define HOP_N4 0
-#define HOP_P4 8
-
-
 #define NO_SYMBOL 20
 #define NO_INTERVAL 20 
 
@@ -160,12 +153,15 @@ static const uint8_t mlhe_sig[4] = "MLHE";
 #define QL_SIZE_BITS 8
 #define PPP_MAX_IMAGES 64 //this value allows to compress images up to 4096 px widthwise
 #define PPP_MIN 1
+
+
+
 #define PPP_MAX 4
 #define ELASTIC_MAX 3
 #define MAX_QL 100
 
 //STREAMING
-#define GOP 0
+#define GOP 30
 
 #define LENGTH 64//sizeof(mask)*CHAR_BIT
 #define testBit(A,k) ((A & (1UL<<(k)))>>k)
