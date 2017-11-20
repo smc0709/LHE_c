@@ -1211,11 +1211,10 @@ static void lhe_advanced_decode_one_hop_per_pixel_block (LheBasicPrec *prec, Lhe
             int x_prev = ((x-xini)*ratioX/1000)+xini;
             
             hop = lhe->hops[pix];          
-  
+/*
             if (x == xini && y==yini) //Primer pixel
             {
                 predicted_luminance=lhe->first_color_block[num_block];//first pixel always is perfectly predicted! :-)  
-                //av_log(NULL, AV_LOG_INFO, "first_color_block %d\n",lhe->first_color_block[num_block]);
             } 
             else if (y == yini) //Lado superior
             {
@@ -1238,6 +1237,31 @@ static void lhe_advanced_decode_one_hop_per_pixel_block (LheBasicPrec *prec, Lhe
             else //Interior del bloque
             {
                 predicted_luminance=(lhe->downsampled_image[pix-1]+lhe->downsampled_image[pix+1-proc->width])>>1;     
+            }*/
+
+            if (y>yini && x>xini && x<(xfin_downsampled-1)) { //Interior del bloque
+                predicted_luminance=(lhe->downsampled_image[pix-1]+lhe->downsampled_image[pix+1-proc->width])>>1;
+            } else if (x==xini && y>yini) { //Lateral izquierdo
+                //predicted_luminance=lhe->downsampled_image[pix-proc->width];
+                if (x > 0) predicted_luminance=(lhe->downsampled_image[y_prev*proc->width+proc->advanced_block[block_y][block_x-1].x_fin_downsampled-1]+lhe->downsampled_image[pix-proc->width+1])/2;
+                else predicted_luminance=lhe->downsampled_image[pix-proc->width];
+                last_small_hop=false;
+                hop_1=soft_h1;//START_HOP_1;
+                soft_counter = 0;
+                soft_mode = true;
+            } else if (y == yini) { //Lateral superior y pixel inicial
+                if(x == 0 && y == 0) predicted_luminance=lhe->first_color_block[0];
+                //Primer pixel de cualquier bloque de la fila superior de bloques
+                else if (y == 0 && x == xini) predicted_luminance=lhe->downsampled_image[proc->advanced_block[block_y][block_x-1].x_fin_downsampled-1];
+                //Cualquier pixel de la primera fila de bloques distinto al primer pixel.
+                else if (y == 0) predicted_luminance=lhe->downsampled_image[pix-1];
+                //Pixel inicial de la primera columna de bloques
+                else if (x == 0) predicted_luminance=lhe->downsampled_image[(proc->advanced_block[block_y-1][block_x].y_fin_downsampled-1)*proc->width];
+                //Pixel inicial de cualquier bloque interno
+                else if (x == xini) predicted_luminance=(lhe->downsampled_image[yini*proc->width+proc->advanced_block[block_y][block_x-1].x_fin_downsampled-1]+lhe->downsampled_image[(proc->advanced_block[block_y-1][block_x].y_fin_downsampled-1)*proc->width+xini])/2;
+                else predicted_luminance=(lhe->downsampled_image[pix-1]+lhe->downsampled_image[(proc->advanced_block[block_y-1][block_x].y_fin_downsampled-1)*proc->width+x_prev])/2;
+            } else { //Lateral derecho
+                predicted_luminance=(lhe->downsampled_image[pix-1]+lhe->downsampled_image[pix-proc->width])>>1;    
             }
             
             if (hop == 4){
@@ -1605,38 +1629,29 @@ static void mlhe_decode_delta (LheBasicPrec *prec, LheProcessing *proc, LheImage
             int x_prev = ((x-xini)*ratioX/1000)+xini;
             hop = lhe->hops[pix];          
   
-            if (x == xini && y==yini)  //Primer pixel
-            {
-                /*if (x == 0 && y == 0)*/ predicted_luminance=lhe->first_color_block[num_block];//first pixel always is perfectly predicted! :-)  
-                //else if (y > 0) predicted_luminance=(delta_prediction[pix-1]+delta_prediction[(proc->advanced_block[block_y-1][block_x].y_fin_downsampled-1)*proc->width+x_prev])/2;
-                //else predicted_luminance=delta_prediction[pix-1];
-                //if (y > 0) av_log (NULL, AV_LOG_INFO, "pix %d, pred_lum %d\n", pix, predicted_luminance);
-            } 
-            else if (y == yini) //Lado superior
-            {
-                //predicted_luminance=delta_prediction[pix-1];
-                if (y > 0) predicted_luminance=(delta_prediction[pix-1]+delta_prediction[(proc->advanced_block[block_y-1][block_x].y_fin_downsampled-1)*proc->width+x_prev])/2;
-                else predicted_luminance=delta_prediction[pix-1];
-                //if (y > 0) av_log (NULL, AV_LOG_INFO, "pix %d, pred_lum %d, delta_pred pix-1: %d, delta_pred anterior: %d\n", pix, predicted_luminance, delta_prediction[pix-1], delta_prediction[(proc->advanced_block[block_y-1][block_x].y_fin_downsampled-1)*proc->width+x_prev]);
-            } 
-            else if (x == xini) //Lado izquierdo
-            {
+            if (y>yini && x>xini && x<(xfin_downsampled-1)) { //Interior del bloque
+                predicted_luminance=(delta_prediction[pix-1]+delta_prediction[pix+1-proc->width])>>1;
+            } else if (x==xini && y>yini) { //Lateral izquierdo
                 //predicted_luminance=delta_prediction[pix-proc->width];
-                //last_small_hop=false;
-                //hop_1=START_HOP_1;
                 if (x > 0) predicted_luminance=(delta_prediction[y_prev*proc->width+proc->advanced_block[block_y][block_x-1].x_fin_downsampled-1]+delta_prediction[pix-proc->width+1])/2;
                 else predicted_luminance=delta_prediction[pix-proc->width];
                 last_small_hop=false;
                 hop_1=soft_h1;//START_HOP_1;
                 soft_counter = 0;
                 soft_mode = true;
-            } else if (x == xfin_downsampled -1) //Lado derecho
-            {
-                predicted_luminance=(delta_prediction[pix-1]+delta_prediction[pix-proc->width])>>1;                                                             
-            } 
-            else //Interior del bloque
-            {
-                predicted_luminance=(delta_prediction[pix-1]+delta_prediction[pix+1-proc->width])>>1;     
+            } else if (y == yini) { //Lateral superior y pixel inicial
+                if(x == 0 && y == 0) predicted_luminance=lhe->first_color_block[0];
+                //Primer pixel de cualquier bloque de la fila superior de bloques
+                else if (y == 0 && x == xini) predicted_luminance=delta_prediction[proc->advanced_block[block_y][block_x-1].x_fin_downsampled-1];
+                //Cualquier pixel de la primera fila de bloques distinto al primer pixel.
+                else if (y == 0) predicted_luminance=delta_prediction[pix-1];
+                //Pixel inicial de la primera columna de bloques
+                else if (x == 0) predicted_luminance=delta_prediction[(proc->advanced_block[block_y-1][block_x].y_fin_downsampled-1)*proc->width];
+                //Pixel inicial de cualquier bloque interno
+                else if (x == xini) predicted_luminance=(delta_prediction[yini*proc->width+proc->advanced_block[block_y][block_x-1].x_fin_downsampled-1]+delta_prediction[(proc->advanced_block[block_y-1][block_x].y_fin_downsampled-1)*proc->width+xini])/2;
+                else predicted_luminance=(delta_prediction[pix-1]+delta_prediction[(proc->advanced_block[block_y-1][block_x].y_fin_downsampled-1)*proc->width+x_prev])/2;
+            } else { //Lateral derecho
+                predicted_luminance=(delta_prediction[pix-1]+delta_prediction[pix-proc->width])>>1;    
             }
             
           
@@ -1865,22 +1880,22 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
     total_blocks = s->total_blocks_height * s->total_blocks_width;
     
     //First pixel array 
-    for (int i=0; i<total_blocks; i++) 
-    {
-        (&s->lheY)->first_color_block[i] = get_bits(&s->gb, FIRST_COLOR_SIZE_BITS);
-    }
+    //for (int i=0; i<total_blocks; i++) 
+    //{
+    (&s->lheY)->first_color_block[0] = get_bits(&s->gb, FIRST_COLOR_SIZE_BITS);
+    //}
 
     
-    for (int i=0; i<total_blocks; i++) 
-    {
-        (&s->lheU)->first_color_block[i] = get_bits(&s->gb, FIRST_COLOR_SIZE_BITS);
-    }
+    //for (int i=0; i<total_blocks; i++) 
+    //{
+    (&s->lheU)->first_color_block[0] = get_bits(&s->gb, FIRST_COLOR_SIZE_BITS);
+    //}
     
         
-    for (int i=0; i<total_blocks; i++) 
-    {
-        (&s->lheV)->first_color_block[i] = get_bits(&s->gb, FIRST_COLOR_SIZE_BITS);
-    }
+    //for (int i=0; i<total_blocks; i++) 
+    //{
+    (&s->lheV)->first_color_block[0] = get_bits(&s->gb, FIRST_COLOR_SIZE_BITS);
+    //}
 
     //Pointers to different color components
     (&s->lheY)->component_prediction = s->frame->data[0];
@@ -1997,20 +2012,20 @@ static int mlhe_decode_video(AVCodecContext *avctx, void *data, int *got_frame, 
         total_blocks = s->total_blocks_height * s->total_blocks_width;
         
         //First pixel array
-        for (int i=0; i<total_blocks; i++) 
-        {
-            (&s->lheY)->first_color_block[i] = get_bits(&s->gb, FIRST_COLOR_SIZE_BITS);
-        }
+        //for (int i=0; i<total_blocks; i++) 
+        //{
+        (&s->lheY)->first_color_block[0] = get_bits(&s->gb, FIRST_COLOR_SIZE_BITS);
+        //}
 
-        for (int i=0; i<total_blocks; i++) 
-        {
-            (&s->lheU)->first_color_block[i] = get_bits(&s->gb, FIRST_COLOR_SIZE_BITS);
-        }
+        //for (int i=0; i<total_blocks; i++) 
+        //{
+        (&s->lheU)->first_color_block[0] = get_bits(&s->gb, FIRST_COLOR_SIZE_BITS);
+        //}
         
-        for (int i=0; i<total_blocks; i++) 
-        {
-            (&s->lheV)->first_color_block[i] = get_bits(&s->gb, FIRST_COLOR_SIZE_BITS); 
-        }
+        //for (int i=0; i<total_blocks; i++) 
+        //{
+        (&s->lheV)->first_color_block[0] = get_bits(&s->gb, FIRST_COLOR_SIZE_BITS); 
+        //}
 
          //MESH Huffman
         lhe_read_huffman_table(s, he_mesh, LHE_MAX_HUFF_SIZE_MESH, LHE_HUFFMAN_NODE_BITS_MESH, LHE_HUFFMAN_NO_OCCURRENCES_MESH);     
@@ -2057,20 +2072,20 @@ static int mlhe_decode_video(AVCodecContext *avctx, void *data, int *got_frame, 
         total_blocks = s->total_blocks_height * s->total_blocks_width;
         
         //First pixel array
-        for (int i=0; i<total_blocks; i++) 
-        {
-            (&s->lheY)->first_color_block[i] = get_bits(&s->gb, FIRST_COLOR_SIZE_BITS);
-        }
+        //for (int i=0; i<total_blocks; i++) 
+        //{
+        (&s->lheY)->first_color_block[0] = get_bits(&s->gb, FIRST_COLOR_SIZE_BITS);
+        //}
 
-        for (int i=0; i<total_blocks; i++) 
-        {
-            (&s->lheU)->first_color_block[i] = get_bits(&s->gb, FIRST_COLOR_SIZE_BITS);
-        }
+        //for (int i=0; i<total_blocks; i++) 
+        //{
+        (&s->lheU)->first_color_block[0] = get_bits(&s->gb, FIRST_COLOR_SIZE_BITS);
+        //}
         
-        for (int i=0; i<total_blocks; i++) 
-        {
-            (&s->lheV)->first_color_block[i] = get_bits(&s->gb, FIRST_COLOR_SIZE_BITS); 
-        }
+        //for (int i=0; i<total_blocks; i++) 
+        //{
+        (&s->lheV)->first_color_block[0] = get_bits(&s->gb, FIRST_COLOR_SIZE_BITS); 
+        //}
         
         (&s->procY)-> theoretical_block_width = (&s->procY)->width / s->total_blocks_width;    
         (&s->procY)-> theoretical_block_height = (&s->procY)->height / s->total_blocks_height;   

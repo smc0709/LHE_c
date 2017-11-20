@@ -1598,20 +1598,20 @@ static int lhe_advanced_write_file2(AVCodecContext *avctx, AVPacket *pkt,
 
 
     //Save first pixel for each block
-    for (i=0; i<total_blocks; i++) 
-    {
-        put_bits(&s->pb, FIRST_COLOR_SIZE_BITS, lheY->first_color_block[i]);  
-    }
+    //for (i=0; i<total_blocks; i++) 
+    //{
+    put_bits(&s->pb, FIRST_COLOR_SIZE_BITS, lheY->first_color_block[0]);  
+    //}
     
-      for (i=0; i<total_blocks; i++) 
-    {
-        put_bits(&s->pb, FIRST_COLOR_SIZE_BITS, lheU->first_color_block[i]);  
-    }
+    //for (i=0; i<total_blocks; i++) 
+    //{
+    put_bits(&s->pb, FIRST_COLOR_SIZE_BITS, lheU->first_color_block[0]);  
+    //}
     
-      for (i=0; i<total_blocks; i++) 
-    {
-        put_bits(&s->pb, FIRST_COLOR_SIZE_BITS, lheV->first_color_block[i]);  
-    }
+    //for (i=0; i<total_blocks; i++) 
+    //{
+    put_bits(&s->pb, FIRST_COLOR_SIZE_BITS, lheV->first_color_block[0]);  
+    //}
          
     for (i=0; i<LHE_MAX_HUFF_SIZE_MESH; i++)
     {
@@ -1679,7 +1679,7 @@ static int lhe_advanced_write_file2(AVCodecContext *avctx, AVPacket *pkt,
 //==================================================================
 // BASIC LHE FUNCTIONS
 //==================================================================
-static void lhe_advanced_encode_block2 (LheBasicPrec *prec, LheProcessing *proc, LheImage *lhe, uint8_t *original_data,
+static void lhe_advanced_encode_block2_sequential (LheBasicPrec *prec, LheProcessing *proc, LheImage *lhe, uint8_t *original_data,
                                        int total_blocks_width, int block_x, int block_y, int lhe_type, int linesize)
 {
 
@@ -1753,8 +1753,11 @@ static void lhe_advanced_encode_block2 (LheBasicPrec *prec, LheProcessing *proc,
     //if (block_x > 0 && block_y > 0) oc = (component_prediction[yini*proc->width+proc->advanced_block[block_y][block_x-1].x_fin_downsampled-1]+component_prediction[(proc->advanced_block[block_y-1][block_x].y_fin_downsampled-1)*proc->width+xini])/2;///Habria que tener tambien en cuenta el superior derecho(mejora)
     oc = component_original_data[pix_original_data];//original color
     //av_log(NULL,AV_LOG_INFO, "num_block: %d, first_color_block: %d\n", num_block, oc);
-    lhe->first_color_block[num_block]=oc;
-    prev_color = oc;
+    if (num_block == 0) lhe->first_color_block[num_block]=oc;
+    if (block_x == 0 && block_y == 0) prev_color = oc;
+    else if (block_x == 0) prev_color = component_prediction[(proc->advanced_block[block_y-1][block_x].y_fin_downsampled-1)*proc->width+xini];
+    else if (block_y == 0) prev_color = component_prediction[yini*proc->width + proc->advanced_block[block_y][block_x-1].x_fin_downsampled-1];
+    else prev_color = (component_prediction[yini*proc->width + proc->advanced_block[block_y][block_x-1].x_fin_downsampled-1]+component_prediction[(proc->advanced_block[block_y-1][block_x].y_fin_downsampled-1)*proc->width+xini])/2;
     quantum = oc; //final quantum asigned value
    
     //bool nulos = true;
@@ -1822,7 +1825,239 @@ static void lhe_advanced_encode_block2 (LheBasicPrec *prec, LheProcessing *proc,
                             if (emin<4) break;// go to phase 3
                         } else break;
                     }
+                }
+                //negative hops
+                else {
+                    //case hop0 (most frequent)
+                    if ((quantum - h1)<0)    goto phase3;
+                    //case hop1 (frequent)
+                    error=emin-h1;
+                    if (error<0) error=-error;
+                    if (error<emin) {
+                        hop_number=3;
+                        emin=error;
+                        quantum-=h1;
+                        if (emin<4) goto phase3;
+                    } else goto phase3;
+                    // case hops 2 to 0 (less frequent)
+                    if (soft_mode) h1 = min_h1;
+                    for (int i=2;i>=0;i--) {
+                       // if (!lineal_mode)
+                        hop_value=prec->cache_hops[hop0][h1-4][i];//indexes are 2 to 0
+                        //else hop_value = hop0 - 2*(4-i);
+                        //if (hop_value<0) hop_value=0;
+                        error=hop_value-oc;
+                        if (error<0) error=-error;
+                        if (error<emin) {
+                            hop_number=i;
+                            emin=error;
+                            quantum=hop_value;
+                            if (emin<4) break;// go to phase 3
+                        } else break;
+                    }
+                }
+            }//endif emin
+            if (soft_mode) h1 = soft_h1;
+            //------------- PHASE 3: assignment of final quantized value --------------------------
+            phase3:    
+            component_prediction[pix]=quantum;
+            prev_color=quantum;
+            hops[pix]=hop_number;
 
+            //------------- PHASE 4: h1 logic  --------------------------
+            if (hop_number>5 || hop_number<3) small_hop=false; //true by default
+                if(!soft_mode){
+                //if (hop_number>5 || hop_number<3) small_hop=false; //true by default
+                if (small_hop==true && last_small_hop==true) {
+                    if (h1>min_h1) h1--;
+                } else {
+                    h1=max_h1;
+                }
+            }
+            //h1=2;
+            last_small_hop=small_hop;
+
+            //Soft mode logic
+            
+            if (soft_mode && !small_hop) {
+                soft_counter = 0;
+                soft_mode = false;
+                h1 = max_h1;
+            } else if (!soft_mode) {
+                if (small_hop) {
+                    soft_counter++;
+                    if (soft_counter == soft_threshold) {
+                        soft_mode = true;
+                        h1 = soft_h1;
+                    }
+                } else {
+                    soft_counter = 0;
+                }
+            }
+            pix++;
+            pix_original_data++;
+        }
+        pix+=dif_pix;
+        pix_original_data+=dif_line;
+    }
+
+    //if ((&proc->advanced_block[block_y][block_x])->hop_counter[4] == (xfin-xini)*(yfin-yini)) (&proc->advanced_block[block_y][block_x])->empty_flag = 1;
+    //else (&proc->advanced_block[block_y][block_x])->empty_flag = 0;
+    //return nulos;
+    /*
+    }
+
+    gettimeofday(&after , NULL);
+    microsec += (time_diff(before , after))/5000;
+    */
+}
+
+static void lhe_advanced_encode_block2_parallel (LheBasicPrec *prec, LheProcessing *proc, LheImage *lhe, uint8_t *original_data,
+                                       int total_blocks_width, int block_x, int block_y, int lhe_type, int linesize)
+{
+
+    int h1, emin, error, dif_line, dif_pix, pix, pix_original_data, soft_counter, soft_threshold;
+    int oc, hop0, quantum, hop_value, hop_number, prev_color;
+    bool last_small_hop, small_hop, soft_mode;
+    int xini, xfin, yini, yfin, num_block, soft_h1;
+    uint8_t *component_original_data, *component_prediction, *hops;
+    const int max_h1 = 10;
+    const int min_h1 = 4;
+    const int start_h1 = (max_h1+min_h1)/2;
+
+    soft_counter = 0;
+    soft_threshold = 8;
+    soft_mode = true;
+    soft_h1 = 2;
+    
+    //gettimeofday(&before , NULL);
+    //for (int i = 0; i < 5000; i++){
+
+    xini = proc->basic_block[block_y][block_x].x_ini;
+    yini = proc->basic_block[block_y][block_x].y_ini;
+
+    if (lhe_type == DELTA_MLHE) {
+        xfin = proc->advanced_block[block_y][block_x].x_fin_downsampled;    
+        yfin = proc->advanced_block[block_y][block_x].y_fin_downsampled;
+        component_original_data = lhe->delta;
+        dif_line = proc->width - xfin + xini;
+        dif_pix = dif_line;
+        pix_original_data = yini*proc->width + xini;
+        pix = yini*proc->width + xini;
+    } else if (lhe_type == ADVANCED_LHE) {        
+        xfin = proc->advanced_block[block_y][block_x].x_fin_downsampled;    
+        yfin = proc->advanced_block[block_y][block_x].y_fin_downsampled;
+        component_original_data = lhe->downsampled_image;
+        dif_line = proc->width - xfin + xini;
+        dif_pix = dif_line;
+        pix_original_data = yini*proc->width + xini;
+        pix = yini*proc->width + xini;
+    } else { //BASIC_LHE
+        xfin = proc->basic_block[block_y][block_x].x_fin;
+        yfin = proc->basic_block[block_y][block_x].y_fin;
+        component_original_data = original_data;
+        dif_line = linesize - xfin + xini;
+        dif_pix = proc->width - xfin + xini;
+        pix_original_data = yini*linesize + xini;
+        pix = yini*proc->width + xini;
+    }
+
+    int ratioY = 1;
+    if (block_x > 0){
+        ratioY = 1000*(proc->advanced_block[block_y][block_x-1].y_fin_downsampled - proc->basic_block[block_y][block_x-1].y_ini)/(yfin - yini);
+    }
+
+    int ratioX = 1;
+    if (block_y > 0){
+        ratioX = 1000*(proc->advanced_block[block_y-1][block_x].x_fin_downsampled - proc->basic_block[block_y-1][block_x].x_ini)/(xfin - xini);
+    }
+
+    component_prediction = lhe->component_prediction;
+    hops = lhe->hops;
+    h1 = soft_h1;//start_h1;
+    last_small_hop = false;//true; //last hop was small
+    small_hop = false;//true;//current hop is small
+    emin = 255;//error min
+    error = 0;//computed error
+    hop0 = 0; //prediction
+    hop_value = 0;//data from cache
+    hop_number = 4;// final assigned hop
+    num_block = block_y * total_blocks_width + block_x;
+    //if (block_x > 0 && block_y > 0) oc = (component_prediction[yini*proc->width+proc->advanced_block[block_y][block_x-1].x_fin_downsampled-1]+component_prediction[(proc->advanced_block[block_y-1][block_x].y_fin_downsampled-1)*proc->width+xini])/2;///Habria que tener tambien en cuenta el superior derecho(mejora)
+    oc = component_original_data[pix_original_data];//original color
+    //av_log(NULL,AV_LOG_INFO, "num_block: %d, first_color_block: %d\n", num_block, oc);
+    if (num_block == 0) lhe->first_color_block[num_block]=oc;
+    if (block_x == 0 && block_y == 0) prev_color = oc;
+    else if (block_x == 0) prev_color = component_prediction[(proc->advanced_block[block_y-1][block_x].y_fin_downsampled-1)*proc->width+xini];
+    else if (block_y == 0) prev_color = component_prediction[yini*proc->width + proc->advanced_block[block_y][block_x-1].x_fin_downsampled-1];
+    else prev_color = (component_prediction[yini*proc->width + proc->advanced_block[block_y][block_x-1].x_fin_downsampled-1]+component_prediction[(proc->advanced_block[block_y-1][block_x].y_fin_downsampled-1)*proc->width+xini])/2;
+    quantum = oc; //final quantum asigned value
+   
+    //bool nulos = true;
+
+    for (int y = yini; y < yfin; y++) {
+        int y_prev = ((y-yini)*ratioY/1000)+yini;
+        for (int x=xini;x<xfin;x++) {
+            int x_prev = ((x-xini)*ratioX/1000)+xini;
+            // --------------------- PHASE 1: PREDICTION-------------------------------
+            oc=component_original_data[pix_original_data];//original color
+            if (y>yini && x>xini && x<(xfin-1)) { //Interior del bloque
+                hop0=(prev_color+component_prediction[pix-proc->width+1])>>1;
+            } else if (x==xini && y>yini) { //Lateral izquierdo
+                if (x > 0) hop0=(component_prediction[y_prev*proc->width + proc->advanced_block[block_y][block_x-1].x_fin_downsampled-1]+component_prediction[pix-proc->width+1])/2;
+                else hop0=component_prediction[pix-proc->width];
+                last_small_hop = false;
+                h1 = soft_h1;//start_h1;
+                soft_counter = 0;
+                soft_mode = true;
+            } else if (y == yini) { //Lateral superior y pixel inicial
+                //hop0=prev_color;
+                if (y >0 && x != xini) hop0=(prev_color + component_prediction[(proc->advanced_block[block_y-1][block_x].y_fin_downsampled-1)*proc->width+x_prev])/2;
+                else hop0=prev_color;
+                //if (y > 0) av_log (NULL, AV_LOG_INFO, "pix %d, pred_lum %d, delta_pred pix-1: %d, delta_pred anterior: %d\n", pix, hop0, prev_color, component_prediction[(proc->advanced_block[block_y-1][block_x].y_fin_downsampled-1)*proc->width+x_prev]);
+            } else { //Lateral derecho
+                hop0=(prev_color+component_prediction[pix-proc->width])>>1;
+            }
+
+
+            //-------------------------PHASE 2: HOPS COMPUTATION-------------------------------
+            hop_number = 4;// prediction corresponds with hop_number=4
+            quantum = hop0;//this is the initial predicted quantum, the value of prediction
+            small_hop = true;//i supossed initially that hop will be small (3,4,5)
+            emin = oc-hop0 ; 
+            if (emin<0) emin=-emin;//minimum error achieved
+            if (emin>h1/2) { //only enter in computation if emin>threshold
+                //positive hops
+                if (oc>hop0) {
+                    //case hop0 (most frequent)
+                    if ((quantum +h1)>255) goto phase3;
+                    //case hop1 (frequent)
+                    error=emin-h1;
+                    if (error<0) error=-error;
+                    if (error<emin){
+                        hop_number=5;
+                        emin=error;
+                        quantum+=h1;
+                        if (emin<4) goto phase3;
+                    } else goto phase3;
+                    // case hops 6 to 8 (less frequent)
+                    if (soft_mode) h1 = min_h1;
+                    for (int i=3;i<6;i++){
+                        //cache de 5KB simetrica
+                        //if (!lineal_mode) 
+                        hop_value=255-prec->cache_hops[255-hop0][h1-4][5-i];//indexes are 2 to 0
+                        //else hop_value = hop0+2*(i-1);
+                        //if (hop_value>255) hop_value=255;
+
+                        error=oc-hop_value;
+                        if (error<0) error=-error;
+                        if (error<emin){
+                            hop_number=i+3;
+                            emin=error;
+                            quantum=hop_value;
+                            if (emin<4) break;// go to phase 3
+                        } else break;
+                    }
                 }
                 //negative hops
                 else {
@@ -1921,13 +2156,13 @@ static void lhe_basic_encode_frame_sequential (LheContext *s, const AVFrame *fra
     lhe_calculate_block_coordinates (&s->procY, &s->procUV, 1, 1, 0, 0);
     
     //Luminance
-    lhe_advanced_encode_block2 (&s->prec, &s->procY, &s->lheY, component_original_data_Y, 1, 0,  0, BASIC_LHE, frame->linesize[0]); 
+    lhe_advanced_encode_block2_sequential (&s->prec, &s->procY, &s->lheY, component_original_data_Y, 1, 0,  0, BASIC_LHE, frame->linesize[0]); 
 
     //Crominance U
-    lhe_advanced_encode_block2 (&s->prec, &s->procUV, &s->lheU, component_original_data_U, 1, 0,  0, BASIC_LHE, frame->linesize[1]); 
+    lhe_advanced_encode_block2_sequential (&s->prec, &s->procUV, &s->lheU, component_original_data_U, 1, 0,  0, BASIC_LHE, frame->linesize[1]); 
 
     //Crominance V
-    lhe_advanced_encode_block2 (&s->prec, &s->procUV, &s->lheV, component_original_data_V, 1, 0,  0, BASIC_LHE, frame->linesize[2]); 
+    lhe_advanced_encode_block2_sequential (&s->prec, &s->procUV, &s->lheV, component_original_data_V, 1, 0,  0, BASIC_LHE, frame->linesize[2]); 
   
 }
 
@@ -2677,17 +2912,17 @@ static float lhe_advanced_encode (LheContext *s, const AVFrame *frame,
 
             //bool nulo;
             //LUMINANCE
-            lhe_advanced_encode_block2 (&s->prec, &s->procY, &s->lheY, component_original_data_Y, total_blocks_width, block_x,  block_y, ADVANCED_LHE, 0); 
+            lhe_advanced_encode_block2_sequential (&s->prec, &s->procY, &s->lheY, component_original_data_Y, total_blocks_width, block_x,  block_y, ADVANCED_LHE, 0); 
 
             //if (nulo) (&s->procY)->advanced_block[block_y][block_x].empty_flagY = true; //av_log(NULL, AV_LOG_PANIC, "Bloque nulo\n"); }
 
             //CHROMINANCE U 
-            lhe_advanced_encode_block2 (&s->prec, &s->procUV, &s->lheU, component_original_data_U, total_blocks_width, block_x,  block_y, ADVANCED_LHE, 0);
+            lhe_advanced_encode_block2_sequential (&s->prec, &s->procUV, &s->lheU, component_original_data_U, total_blocks_width, block_x,  block_y, ADVANCED_LHE, 0);
 
             //if (nulo) (&s->procY)->advanced_block[block_y][block_x].empty_flagU = true; //av_log(NULL, AV_LOG_PANIC, "Bloque nulo\n"); }
 
             //CHROMINANCE V
-            lhe_advanced_encode_block2 (&s->prec, &s->procUV, &s->lheV, component_original_data_V, total_blocks_width, block_x,  block_y, ADVANCED_LHE, 0);
+            lhe_advanced_encode_block2_sequential (&s->prec, &s->procUV, &s->lheV, component_original_data_V, total_blocks_width, block_x,  block_y, ADVANCED_LHE, 0);
 
             //if (nulo) (&s->procY)->advanced_block[block_y][block_x].empty_flagV = true; //av_log(NULL, AV_LOG_PANIC, "Bloque nulo\n"); }
             
@@ -2869,7 +3104,7 @@ static void mlhe_delta_frame_encode (LheContext *s, const AVFrame *frame,
         for (int block_x=0; block_x<total_blocks_width; block_x++) 
         {   
             //bool nulo;
-            lhe_advanced_encode_block2 (&s->prec, &s->procY, &s->lheY, component_original_data_Y, total_blocks_width, block_x, block_y, DELTA_MLHE, 0);
+            lhe_advanced_encode_block2_sequential (&s->prec, &s->procY, &s->lheY, component_original_data_Y, total_blocks_width, block_x, block_y, DELTA_MLHE, 0);
 
             //if (nulo) (&s->procY)->advanced_block[block_y][block_x].empty_flagY = true;
         }
@@ -2910,7 +3145,7 @@ static void mlhe_delta_frame_encode (LheContext *s, const AVFrame *frame,
         for (int block_x=0; block_x<total_blocks_width; block_x++) 
         {
 
-            lhe_advanced_encode_block2 (&s->prec, &s->procUV, &s->lheU, component_original_data_U, total_blocks_width, block_x, block_y, DELTA_MLHE, 0);
+            lhe_advanced_encode_block2_sequential (&s->prec, &s->procUV, &s->lheU, component_original_data_U, total_blocks_width, block_x, block_y, DELTA_MLHE, 0);
 
             //if (nulo) (&s->procY)->advanced_block[block_y][block_x].empty_flagU = true;
         }
@@ -2952,7 +3187,7 @@ static void mlhe_delta_frame_encode (LheContext *s, const AVFrame *frame,
     {
         for (int block_x=0; block_x<total_blocks_width; block_x++) 
         {
-            lhe_advanced_encode_block2 (&s->prec, &s->procUV, &s->lheV, component_original_data_V, total_blocks_width, block_x, block_y, DELTA_MLHE, 0);
+            lhe_advanced_encode_block2_sequential (&s->prec, &s->procUV, &s->lheV, component_original_data_V, total_blocks_width, block_x, block_y, DELTA_MLHE, 0);
         }
     }
             //if (nulo) (&s->procY)->advanced_block[block_y][block_x].empty_flagV = true;
@@ -3022,20 +3257,20 @@ static int mlhe_advanced_write_delta_frame2(AVCodecContext *avctx, AVPacket *pkt
     put_bits(&s->pb, LHE_MODE_SIZE_BITS, lhe_mode);
 
     //Save first delta for each block
-    for (i=0; i<total_blocks; i++) 
-    {
-        put_bits(&s->pb, FIRST_COLOR_SIZE_BITS, lheY->first_color_block[i]);
-    }
+    //for (i=0; i<total_blocks; i++) 
+    //{
+    put_bits(&s->pb, FIRST_COLOR_SIZE_BITS, lheY->first_color_block[0]);
+    //}
     
-    for (i=0; i<total_blocks; i++) 
-    {
-        put_bits(&s->pb, FIRST_COLOR_SIZE_BITS, lheU->first_color_block[i]);
-    }
+    //for (i=0; i<total_blocks; i++) 
+    //{
+    put_bits(&s->pb, FIRST_COLOR_SIZE_BITS, lheU->first_color_block[0]);
+    //}
     
-    for (i=0; i<total_blocks; i++) 
-    {
-        put_bits(&s->pb, FIRST_COLOR_SIZE_BITS, lheV->first_color_block[i]);
-    }
+    //for (i=0; i<total_blocks; i++) 
+    //{
+    put_bits(&s->pb, FIRST_COLOR_SIZE_BITS, lheV->first_color_block[0]);
+    //}
          
     //Write Huffman tables 
     for (i=0; i<LHE_MAX_HUFF_SIZE_MESH; i++)
