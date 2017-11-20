@@ -161,7 +161,7 @@ static const uint8_t lhe_sig[3] = "LHE";
 #define MAX_QL 100
 
 //STREAMING
-#define GOP 30
+#define GOP 500
 
 #define LENGTH 64//sizeof(mask)*CHAR_BIT
 #define testBit(A,k) ((A & (1UL<<(k)))>>k)

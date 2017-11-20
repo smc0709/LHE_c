@@ -2896,8 +2896,8 @@ static float lhe_advanced_encode (LheContext *s, const AVFrame *frame,
                     break;
                                   
             }
-}
-}
+        }
+    }
 /*
             for (int i = 0; i < 9; i++){
                 (&s->procY)->advanced_block[block_y][block_x].hop_counter[i] = 0;
@@ -2905,6 +2905,27 @@ static float lhe_advanced_encode (LheContext *s, const AVFrame *frame,
             }
 */
 
+    for (int i = -(int)total_blocks_height+1; i < (int)total_blocks_width; i++){
+        #pragma omp parallel for
+        for (int block_y=total_blocks_height-1; block_y>=0; block_y--) 
+        {
+            int block_x = i + total_blocks_height -1 - block_y;
+            if (block_x >= 0 && block_x < total_blocks_width) {
+                //LUMINANCE
+                //av_log(NULL, AV_LOG_PANIC, "BX: %d, BY: %d\n", block_x, block_y);
+                lhe_advanced_encode_block2_sequential (&s->prec, &s->procY, &s->lheY, component_original_data_Y, total_blocks_width, block_x,  block_y, ADVANCED_LHE, 0); 
+
+                //CHROMINANCE U 
+                lhe_advanced_encode_block2_sequential (&s->prec, &s->procUV, &s->lheU, component_original_data_U, total_blocks_width, block_x,  block_y, ADVANCED_LHE, 0);
+
+                //CHROMINANCE V
+                lhe_advanced_encode_block2_sequential (&s->prec, &s->procUV, &s->lheV, component_original_data_V, total_blocks_width, block_x,  block_y, ADVANCED_LHE, 0);
+            }
+        }
+    }
+
+
+/*
     for (int block_y=0; block_y<total_blocks_height; block_y++) 
     {
         for (int block_x=0; block_x<total_blocks_width; block_x++) 
@@ -2928,7 +2949,75 @@ static float lhe_advanced_encode (LheContext *s, const AVFrame *frame,
             
         }
     }
+*/
+/*
+   // #pragma omp parallel for ordered
+int i=0;
+int block_y=0;
 
+    for (int i=0; i<total_blocks_height; i++) 
+    {
+        block_y = i;
+        
+        #pragma omp parallel for ordered shared(i, block_y)
+        for (int block_x=0; block_x<=i; block_x++) 
+        {     
+            //bool nulo;
+            //LUMINANCE
+            lhe_advanced_encode_block2_sequential (&s->prec, &s->procY, &s->lheY, component_original_data_Y, total_blocks_width, block_x,  block_y, ADVANCED_LHE, 0); 
+
+            //if (nulo) (&s->procY)->advanced_block[block_y][block_x].empty_flagY = true; //av_log(NULL, AV_LOG_PANIC, "Bloque nulo\n"); }
+
+            //CHROMINANCE U 
+            lhe_advanced_encode_block2_sequential (&s->prec, &s->procUV, &s->lheU, component_original_data_U, total_blocks_width, block_x,  block_y, ADVANCED_LHE, 0);
+
+            //if (nulo) (&s->procY)->advanced_block[block_y][block_x].empty_flagU = true; //av_log(NULL, AV_LOG_PANIC, "Bloque nulo\n"); }
+
+            //CHROMINANCE V
+            lhe_advanced_encode_block2_sequential (&s->prec, &s->procUV, &s->lheV, component_original_data_V, total_blocks_width, block_x,  block_y, ADVANCED_LHE, 0);
+
+            //if (nulo) (&s->procY)->advanced_block[block_y][block_x].empty_flagV = true; //av_log(NULL, AV_LOG_PANIC, "Bloque nulo\n"); }
+             block_y--;
+        }
+    }
+    
+   // #pragma omp parallel for ordered
+    for (int i = 1; i <= total_blocks_width - total_blocks_height; i++){
+        //#pragma omp parallel for private (block_y, block_x)
+        for (int block_x=i, block_y=total_blocks_height-1; block_y>=0; block_x++, block_y--) 
+        {
+
+            //av_log(NULL, AV_LOG_PANIC, "BX: %d, BY: %d\n", block_x, block_y);
+            //LUMINANCE
+            lhe_advanced_encode_block2_sequential (&s->prec, &s->procY, &s->lheY, component_original_data_Y, total_blocks_width, block_x,  block_y, ADVANCED_LHE, 0); 
+
+            //CHROMINANCE U 
+            lhe_advanced_encode_block2_sequential (&s->prec, &s->procUV, &s->lheU, component_original_data_U, total_blocks_width, block_x,  block_y, ADVANCED_LHE, 0);
+
+            //CHROMINANCE V
+            lhe_advanced_encode_block2_sequential (&s->prec, &s->procUV, &s->lheV, component_original_data_V, total_blocks_width, block_x,  block_y, ADVANCED_LHE, 0);
+
+        }
+    }
+
+    //#pragma omp parallel for ordered
+    for (int i = total_blocks_width - total_blocks_height+1; i < total_blocks_width; i++){
+        for (int block_x=i, block_y=total_blocks_height-1; block_x<total_blocks_width; block_x++, block_y--) 
+        {
+
+            //av_log(NULL, AV_LOG_PANIC, "BX: %d, BY: %d\n", block_x, block_y);
+            //LUMINANCE
+            lhe_advanced_encode_block2_sequential (&s->prec, &s->procY, &s->lheY, component_original_data_Y, total_blocks_width, block_x,  block_y, ADVANCED_LHE, 0); 
+
+            //CHROMINANCE U 
+            lhe_advanced_encode_block2_sequential (&s->prec, &s->procUV, &s->lheU, component_original_data_U, total_blocks_width, block_x,  block_y, ADVANCED_LHE, 0);
+
+            //CHROMINANCE V
+            lhe_advanced_encode_block2_sequential (&s->prec, &s->procUV, &s->lheV, component_original_data_V, total_blocks_width, block_x,  block_y, ADVANCED_LHE, 0);
+
+        }
+    }
+*/
 
 /*
     }
@@ -3099,14 +3188,17 @@ static void mlhe_delta_frame_encode (LheContext *s, const AVFrame *frame,
         }
     }
          
-    for (int block_y=0; block_y<total_blocks_height; block_y++)
-    {
-        for (int block_x=0; block_x<total_blocks_width; block_x++) 
-        {   
-            //bool nulo;
-            lhe_advanced_encode_block2_sequential (&s->prec, &s->procY, &s->lheY, component_original_data_Y, total_blocks_width, block_x, block_y, DELTA_MLHE, 0);
+    for (int i = -(int)total_blocks_height+1; i < (int)total_blocks_width; i++){
+        #pragma omp parallel for
+        for (int block_y=total_blocks_height-1; block_y>=0; block_y--) 
+        {
+            int block_x = i + total_blocks_height -1 - block_y;
+            if (block_x >= 0 && block_x < total_blocks_width) {
+                //bool nulo;
+                lhe_advanced_encode_block2_sequential (&s->prec, &s->procY, &s->lheY, component_original_data_Y, total_blocks_width, block_x, block_y, DELTA_MLHE, 0);
 
-            //if (nulo) (&s->procY)->advanced_block[block_y][block_x].empty_flagY = true;
+                //if (nulo) (&s->procY)->advanced_block[block_y][block_x].empty_flagY = true;
+            }
         }
     }
     #pragma omp parallel for
@@ -3140,14 +3232,17 @@ static void mlhe_delta_frame_encode (LheContext *s, const AVFrame *frame,
         }
     }
 
-    for (int block_y=0; block_y<total_blocks_height; block_y++)
-    {
-        for (int block_x=0; block_x<total_blocks_width; block_x++) 
+    for (int i = -(int)total_blocks_height+1; i < (int)total_blocks_width; i++){
+        #pragma omp parallel for
+        for (int block_y=total_blocks_height-1; block_y>=0; block_y--) 
         {
+            int block_x = i + total_blocks_height -1 - block_y;
+            if (block_x >= 0 && block_x < total_blocks_width) {
 
-            lhe_advanced_encode_block2_sequential (&s->prec, &s->procUV, &s->lheU, component_original_data_U, total_blocks_width, block_x, block_y, DELTA_MLHE, 0);
+                lhe_advanced_encode_block2_sequential (&s->prec, &s->procUV, &s->lheU, component_original_data_U, total_blocks_width, block_x, block_y, DELTA_MLHE, 0);
 
-            //if (nulo) (&s->procY)->advanced_block[block_y][block_x].empty_flagU = true;
+                //if (nulo) (&s->procY)->advanced_block[block_y][block_x].empty_flagU = true;
+            }
         }
     }
 
@@ -3183,11 +3278,14 @@ static void mlhe_delta_frame_encode (LheContext *s, const AVFrame *frame,
         }
     }
 
-    for (int block_y=0; block_y<total_blocks_height; block_y++)
-    {
-        for (int block_x=0; block_x<total_blocks_width; block_x++) 
+    for (int i = -(int)total_blocks_height+1; i < (int)total_blocks_width; i++){
+        #pragma omp parallel for
+        for (int block_y=total_blocks_height-1; block_y>=0; block_y--) 
         {
-            lhe_advanced_encode_block2_sequential (&s->prec, &s->procUV, &s->lheV, component_original_data_V, total_blocks_width, block_x, block_y, DELTA_MLHE, 0);
+            int block_x = i + total_blocks_height -1 - block_y;
+            if (block_x >= 0 && block_x < total_blocks_width) {
+                lhe_advanced_encode_block2_sequential (&s->prec, &s->procUV, &s->lheV, component_original_data_V, total_blocks_width, block_x, block_y, DELTA_MLHE, 0);
+            }
         }
     }
             //if (nulo) (&s->procY)->advanced_block[block_y][block_x].empty_flagV = true;
