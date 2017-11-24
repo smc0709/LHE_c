@@ -1686,16 +1686,17 @@ static void lhe_advanced_encode_block2_sequential (LheBasicPrec *prec, LheProces
     int h1, emin, error, dif_line, dif_pix, pix, pix_original_data, soft_counter, soft_threshold;
     int oc, hop0, quantum, hop_value, hop_number, prev_color;
     bool last_small_hop, small_hop, soft_mode;
-    int xini, xfin, yini, yfin, num_block, soft_h1;
+    int xini, xfin, yini, yfin, num_block, soft_h1, grad;
     uint8_t *component_original_data, *component_prediction, *hops;
     const int max_h1 = 10;
     const int min_h1 = 4;
-    const int start_h1 = (max_h1+min_h1)/2;
+    const int start_h1 = min_h1;//(max_h1+min_h1)/2;
 
-    soft_counter = 0;
-    soft_threshold = 8;
-    soft_mode = true;
-    soft_h1 = 2;
+    //soft_counter = 0;
+    //soft_threshold = 8;
+    //soft_mode = false;
+    //soft_h1 = 2;
+    grad = 0;
     
     //gettimeofday(&before , NULL);
     //for (int i = 0; i < 5000; i++){
@@ -1741,8 +1742,8 @@ static void lhe_advanced_encode_block2_sequential (LheBasicPrec *prec, LheProces
 
     component_prediction = lhe->component_prediction;
     hops = lhe->hops;
-    h1 = soft_h1;//start_h1;
-    last_small_hop = false;//true; //last hop was small
+    h1 = start_h1;
+    last_small_hop = true;//true; //last hop was small
     small_hop = false;//true;//current hop is small
     emin = 255;//error min
     error = 0;//computed error
@@ -1773,10 +1774,10 @@ static void lhe_advanced_encode_block2_sequential (LheBasicPrec *prec, LheProces
             } else if (x==xini && y>yini) { //Lateral izquierdo
                 if (x > 0) hop0=(component_prediction[y_prev*proc->width + proc->advanced_block[block_y][block_x-1].x_fin_downsampled-1]+component_prediction[pix-proc->width+1])/2;
                 else hop0=component_prediction[pix-proc->width];
-                last_small_hop = false;
-                h1 = soft_h1;//start_h1;
-                soft_counter = 0;
-                soft_mode = true;
+                last_small_hop = true;
+                h1 = start_h1;
+                //soft_counter = 0;
+                //soft_mode = true;
             } else if (y == yini) { //Lateral superior y pixel inicial
                 //hop0=prev_color;
                 if (y >0 && x != xini) hop0=(prev_color + component_prediction[(proc->advanced_block[block_y-1][block_x].y_fin_downsampled-1)*proc->width+x_prev])/2;
@@ -1786,7 +1787,13 @@ static void lhe_advanced_encode_block2_sequential (LheBasicPrec *prec, LheProces
                 hop0=(prev_color+component_prediction[pix-proc->width])>>1;
             }
 
-
+            if (lhe_type != DELTA_MLHE)
+            {
+                hop0 = hop0 + grad;
+                if (hop0 > 255) hop0 = 255;
+                else if (hop0 < 0) hop0 = 0;
+            }
+            
             //-------------------------PHASE 2: HOPS COMPUTATION-------------------------------
             hop_number = 4;// prediction corresponds with hop_number=4
             quantum = hop0;//this is the initial predicted quantum, the value of prediction
@@ -1805,10 +1812,10 @@ static void lhe_advanced_encode_block2_sequential (LheBasicPrec *prec, LheProces
                         hop_number=5;
                         emin=error;
                         quantum+=h1;
-                        if (emin<4) goto phase3;
+                        //f (emin<4) goto phase3;
                     } else goto phase3;
                     // case hops 6 to 8 (less frequent)
-                    if (soft_mode) h1 = min_h1;
+                    //if (soft_mode) h1 = min_h1;
                     for (int i=3;i<6;i++){
                         //cache de 5KB simetrica
                         //if (!lineal_mode) 
@@ -1822,7 +1829,7 @@ static void lhe_advanced_encode_block2_sequential (LheBasicPrec *prec, LheProces
                             hop_number=i+3;
                             emin=error;
                             quantum=hop_value;
-                            if (emin<4) break;// go to phase 3
+                            //if (emin<4) break;// go to phase 3
                         } else break;
                     }
                 }
@@ -1837,10 +1844,10 @@ static void lhe_advanced_encode_block2_sequential (LheBasicPrec *prec, LheProces
                         hop_number=3;
                         emin=error;
                         quantum-=h1;
-                        if (emin<4) goto phase3;
+                        //if (emin<4) goto phase3;
                     } else goto phase3;
                     // case hops 2 to 0 (less frequent)
-                    if (soft_mode) h1 = min_h1;
+                    //if (soft_mode) h1 = min_h1;
                     for (int i=2;i>=0;i--) {
                        // if (!lineal_mode)
                         hop_value=prec->cache_hops[hop0][h1-4][i];//indexes are 2 to 0
@@ -1852,33 +1859,43 @@ static void lhe_advanced_encode_block2_sequential (LheBasicPrec *prec, LheProces
                             hop_number=i;
                             emin=error;
                             quantum=hop_value;
-                            if (emin<4) break;// go to phase 3
+                            //if (emin<4) break;// go to phase 3
                         } else break;
                     }
                 }
             }//endif emin
-            if (soft_mode) h1 = soft_h1;
+            //if (soft_mode) h1 = soft_h1;
             //------------- PHASE 3: assignment of final quantized value --------------------------
             phase3:    
             component_prediction[pix]=quantum;
             prev_color=quantum;
             hops[pix]=hop_number;
 
+            //tunning grad for next pixel
+            //if (hop_number != 4){
+                if (hop_number == 5) grad = 1;
+                else if (hop_number == 3) grad = -1;
+                else if (hop_number > 5 || hop_number < 3) grad = 0;
+            //}
+
             //------------- PHASE 4: h1 logic  --------------------------
             if (hop_number>5 || hop_number<3) small_hop=false; //true by default
-                if(!soft_mode){
+            //if(!soft_mode){
                 //if (hop_number>5 || hop_number<3) small_hop=false; //true by default
-                if (small_hop==true && last_small_hop==true) {
-                    if (h1>min_h1) h1--;
-                } else {
-                    h1=max_h1;
-                }
+            if (small_hop==true && last_small_hop==true) {
+                if (h1>min_h1) h1--;
+            } else {
+                h1=max_h1;
             }
+            //}
             //h1=2;
             last_small_hop=small_hop;
 
             //Soft mode logic
             
+
+
+            /*
             if (soft_mode && !small_hop) {
                 soft_counter = 0;
                 soft_mode = false;
@@ -1887,13 +1904,17 @@ static void lhe_advanced_encode_block2_sequential (LheBasicPrec *prec, LheProces
                 if (small_hop) {
                     soft_counter++;
                     if (soft_counter == soft_threshold) {
-                        soft_mode = true;
+                        //oft_mode = true;
                         h1 = soft_h1;
                     }
                 } else {
                     soft_counter = 0;
                 }
-            }
+            }*/
+
+
+
+
             pix++;
             pix_original_data++;
         }

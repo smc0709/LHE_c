@@ -974,16 +974,17 @@ static void lhe_basic_decode_one_hop_per_pixel (LheBasicPrec *prec, LheProcessin
     bool small_hop, last_small_hop, soft_mode;
     uint8_t hop, predicted_luminance, hop_1, r_max; 
     int pix, pix_original_data, dif_pix, dato;
-    int soft_counter, soft_threshold;
+    int soft_counter, soft_threshold, grad;
 
-    soft_counter = 0;
-    soft_threshold = 8;
-    soft_mode = true;
+    //soft_counter = 0;
+    //soft_threshold = 8;
+    //soft_mode = false;
+    grad = 0;
     
     small_hop           = false;
-    last_small_hop      = false;        // indicates if last hop is small
+    last_small_hop      = true;        // indicates if last hop is small
     predicted_luminance = 0;            // predicted signal
-    hop_1               = 2;//START_HOP_1;
+    hop_1               = MIN_HOP_1;//START_HOP_1;
     pix                 = 0;            // pixel possition, from 0 to image size       
     pix_original_data   = 0;
     r_max               = PARAM_R;        
@@ -1006,10 +1007,10 @@ static void lhe_basic_decode_one_hop_per_pixel (LheBasicPrec *prec, LheProcessin
             else if (x == 0)
             {
                 predicted_luminance=lhe->component_prediction[pix-linesize];
-                last_small_hop=false;
-                hop_1=2;//START_HOP_1;
-                soft_counter = 0;
-                soft_mode = true;
+                last_small_hop=true;
+                hop_1=MIN_HOP_1;//START_HOP_1;
+                //soft_counter = 0;
+                //soft_mode = true;
             } 
             else if (x == proc->width -1)
             {
@@ -1019,7 +1020,17 @@ static void lhe_basic_decode_one_hop_per_pixel (LheBasicPrec *prec, LheProcessin
             {
                 predicted_luminance=(lhe->component_prediction[pix-1]+lhe->component_prediction[pix+1-linesize])>>1;     
             }
+
+            predicted_luminance = predicted_luminance + grad;
+            if (predicted_luminance > 255) predicted_luminance = 255;
+            else if (predicted_luminance < 1) predicted_luminance = 1;
             
+            if (hop != 4){
+                if (hop == 5) grad = 1;
+                else if (hop == 3) grad = -1;
+                else grad = 0;
+            }
+
             if (hop == 4){
                 dato = predicted_luminance;
                 small_hop = true;
@@ -1030,10 +1041,10 @@ static void lhe_basic_decode_one_hop_per_pixel (LheBasicPrec *prec, LheProcessin
                 dato = predicted_luminance - hop_1;
                 small_hop = true;
             } else {
-                if (soft_mode) {
-                    hop_1 = MIN_HOP_1;
+                //if (soft_mode) {
+                    //hop_1 = MIN_HOP_1;
                     //soft_mode = false;
-                }
+                //}
                 small_hop = false;
                 if (hop > 5) {
                     dato = 255 - prec->cache_hops[255-predicted_luminance][hop_1-4][8 - hop];
@@ -1048,17 +1059,17 @@ static void lhe_basic_decode_one_hop_per_pixel (LheBasicPrec *prec, LheProcessin
             //tunning hop1 for the next hop ( "h1 adaptation")
             //------------------------------------------------
             if (hop>5 || hop<3) small_hop=false; //true by default
-            if(!soft_mode){
-                if (small_hop==true && last_small_hop==true) {
-                    if (hop_1>MIN_HOP_1) hop_1--;
-                } else {
-                    hop_1=MAX_HOP_1;
-                }
+            //if(!soft_mode){
+            if (small_hop==true && last_small_hop==true) {
+                if (hop_1>MIN_HOP_1) hop_1--;
+            } else {
+                hop_1=MAX_HOP_1;
             }
+            //}
             
             last_small_hop=small_hop;
 
-            if (soft_mode && !small_hop) {
+            /*if (soft_mode && !small_hop) {
                 soft_counter = 0;
                 soft_mode = false;
                 hop_1 = MAX_HOP_1;
@@ -1066,13 +1077,13 @@ static void lhe_basic_decode_one_hop_per_pixel (LheBasicPrec *prec, LheProcessin
                 if (small_hop) {
                     soft_counter++;
                     if (soft_counter == soft_threshold) {
-                        soft_mode = true;
+                        //soft_mode = true;
                         hop_1 = 2;
                     }
                 } else {
                     soft_counter = 0;
                 }
-            }
+            }*/
 
             //lets go for the next pixel
             //--------------------------
@@ -1169,9 +1180,9 @@ static void lhe_advanced_decode_one_hop_per_pixel_block (LheBasicPrec *prec, Lhe
     int xini, xfin_downsampled, yini, yfin_downsampled;
     bool small_hop, last_small_hop, soft_mode;
     int hop, predicted_luminance, hop_1, r_max; 
-    int pix, dif_pix, num_block, dato;
+    int pix, dif_pix, num_block, dato, grad;
     int soft_counter, soft_threshold;
-    int soft_h1 = 2;
+    //int soft_h1 = 2;
     
     num_block = block_y * total_blocks_width + block_x;
     
@@ -1182,13 +1193,14 @@ static void lhe_advanced_decode_one_hop_per_pixel_block (LheBasicPrec *prec, Lhe
     yfin_downsampled = proc->advanced_block[block_y][block_x].y_fin_downsampled;
     
     small_hop           = false;
-    last_small_hop      = false;        // indicates if last hop is small
+    last_small_hop      = true;        // indicates if last hop is small
     predicted_luminance = 0;            // predicted signal
-    hop_1               = soft_h1;//START_HOP_1;
+    hop_1               = MIN_HOP_1;//START_HOP_1;
     pix                 = 0;            // pixel possition, from 0 to image size        
-    soft_counter = 0;
-    soft_threshold = 8;
-    soft_mode = true;
+    grad = 0;
+    //soft_counter = 0;
+    //soft_threshold = 8;
+    //soft_mode = true;
     
     pix = yini*proc->width + xini; 
     dif_pix = proc->width - xfin_downsampled + xini;
@@ -1245,10 +1257,10 @@ static void lhe_advanced_decode_one_hop_per_pixel_block (LheBasicPrec *prec, Lhe
                 //predicted_luminance=lhe->downsampled_image[pix-proc->width];
                 if (x > 0) predicted_luminance=(lhe->downsampled_image[y_prev*proc->width+proc->advanced_block[block_y][block_x-1].x_fin_downsampled-1]+lhe->downsampled_image[pix-proc->width+1])/2;
                 else predicted_luminance=lhe->downsampled_image[pix-proc->width];
-                last_small_hop=false;
-                hop_1=soft_h1;//START_HOP_1;
-                soft_counter = 0;
-                soft_mode = true;
+                last_small_hop=true;
+                hop_1=MIN_HOP_1;//START_HOP_1;
+                //soft_counter = 0;
+                //soft_mode = true;
             } else if (y == yini) { //Lateral superior y pixel inicial
                 if(x == 0 && y == 0) predicted_luminance=lhe->first_color_block[0];
                 //Primer pixel de cualquier bloque de la fila superior de bloques
@@ -1264,6 +1276,16 @@ static void lhe_advanced_decode_one_hop_per_pixel_block (LheBasicPrec *prec, Lhe
                 predicted_luminance=(lhe->downsampled_image[pix-1]+lhe->downsampled_image[pix-proc->width])>>1;    
             }
             
+            predicted_luminance = predicted_luminance + grad;
+            if (predicted_luminance > 255) predicted_luminance = 255;
+            else if (predicted_luminance < 1) predicted_luminance = 1;
+            
+            if (hop != 4){
+                if (hop == 5) grad = 1;
+                else if (hop == 3) grad = -1;
+                else grad = 0;
+            }
+
             if (hop == 4){
                 dato = predicted_luminance;
                 small_hop = true;
@@ -1293,17 +1315,17 @@ static void lhe_advanced_decode_one_hop_per_pixel_block (LheBasicPrec *prec, Lhe
             //tunning hop1 for the next hop ( "h1 adaptation")
             //------------------------------------------------
             if (hop>5 || hop<3) small_hop=false; //true by default
-            if(!soft_mode){
+            //if(!soft_mode){
                 if (small_hop==true && last_small_hop==true) {
                     if (hop_1>MIN_HOP_1) hop_1--;
                 } else {
                     hop_1=MAX_HOP_1;
                 }
-            }
+            //}
             
             last_small_hop=small_hop;
 
-            if (soft_mode && !small_hop) {
+            /*if (soft_mode && !small_hop) {
                 soft_counter = 0;
                 soft_mode = false;
                 hop_1 = MAX_HOP_1;
@@ -1317,7 +1339,7 @@ static void lhe_advanced_decode_one_hop_per_pixel_block (LheBasicPrec *prec, Lhe
                 } else {
                     soft_counter = 0;
                 }
-            }
+            }*/
 
             //lets go for the next pixel
             //--------------------------
@@ -1414,7 +1436,7 @@ static void lhe_advanced_horizontal_nearest_neighbour_interpolation (LheProcessi
 {
     uint32_t block_height, downsampled_x_side, downsampled_y_side;
     float gradient, gradient_0, gradient_1, ppp_x, ppp_0, ppp_1, ppp_2, ppp_3;
-    uint32_t xini, xfin_downsampled, xprev_interpolated, xfin_interpolated, yini, yfin;
+    uint32_t xini, xfin_downsampled, xprev_interpolated, xfin_interpolated, yini, yfin, xfin;
     float xfin_interpolated_float;
     
     block_height = proc->basic_block[block_y][block_x].block_height;
@@ -1424,6 +1446,7 @@ static void lhe_advanced_horizontal_nearest_neighbour_interpolation (LheProcessi
     xfin_downsampled = proc->advanced_block[block_y][block_x].x_fin_downsampled;
     yini = proc->basic_block[block_y][block_x].y_ini;
     yfin =  proc->basic_block[block_y][block_x].y_fin;
+    xfin =  proc->basic_block[block_y][block_x].x_fin;
 
     ppp_0=proc->advanced_block[block_y][block_x].ppp_x[TOP_LEFT_CORNER];
     ppp_1=proc->advanced_block[block_y][block_x].ppp_x[TOP_RIGHT_CORNER];
@@ -1435,6 +1458,7 @@ static void lhe_advanced_horizontal_nearest_neighbour_interpolation (LheProcessi
     //gradient PPPx side b
     gradient_1=(ppp_3-ppp_1)/(block_height-1.0);
     
+
     for (int y=yini; y<yfin; y++)
     {        
         gradient=(ppp_1-ppp_0)/(downsampled_x_side-1.0); 
@@ -1456,6 +1480,8 @@ static void lhe_advanced_horizontal_nearest_neighbour_interpolation (LheProcessi
                 //if (i == xini || y == yini) lhe->component_prediction[y*linesize+i]=0;
                 //PARA SACAR LA IMAGEN DOWNSAMPLEADA
                 //lhe->component_prediction[y*linesize+i]=lhe->downsampled_image[y*proc->width+i];
+                //PARA SACAR LA IMAGEN DELTA
+                //lhe->component_prediction[y*linesize+i]=delta_prediction_Y_dec[y*proc->width+i];
             }
                         
             xprev_interpolated=xfin_interpolated;
@@ -1467,6 +1493,14 @@ static void lhe_advanced_horizontal_nearest_neighbour_interpolation (LheProcessi
         ppp_1+=gradient_1;
 
     }//y 
+
+    for (int y=yini; y<yfin; y++)
+    {   
+        for (int x=xini; x<xfin; x++)
+        {             
+            //delta_prediction_Y_dec[y*proc->width+x]=0;
+        }
+    }
 }
 
 
@@ -1583,9 +1617,9 @@ static void mlhe_decode_delta (LheBasicPrec *prec, LheProcessing *proc, LheImage
     int xini, xfin_downsampled, yini, yfin_downsampled;
     bool small_hop, last_small_hop, soft_mode;
     int hop, predicted_luminance, hop_1, r_max; 
-    int pix, dif_pix, num_block;
+    int pix, dif_pix, num_block, grad;
     int delta, image, soft_counter, soft_threshold;
-    int soft_h1 = 2;
+    //int soft_h1 = 2;
 /////////////////////////////////////////
     int tramo1, tramo2, signo;
 
@@ -1601,14 +1635,15 @@ static void mlhe_decode_delta (LheBasicPrec *prec, LheProcessing *proc, LheImage
     yfin_downsampled = proc->advanced_block[block_y][block_x].y_fin_downsampled;
     
     small_hop           = false;
-    last_small_hop      = false;        // indicates if last hop is small
+    last_small_hop      = true;        // indicates if last hop is small
     predicted_luminance = 0;            // predicted signal
-    hop_1               = soft_h1;//START_HOP_1;
+    hop_1               = MIN_HOP_1;//START_HOP_1;
     pix                 = 0;            // pixel possition, from 0 to image size        
-    r_max               = PARAM_R;        
-    soft_counter = 0;
-    soft_threshold = 8;
-    soft_mode = true;    
+    r_max               = PARAM_R;      
+    grad = 0;  
+    //soft_counter = 0;
+    //soft_threshold = 8;
+    //soft_mode = true;    
  
     pix = yini*proc->width + xini; 
     dif_pix = proc->width - xfin_downsampled + xini;
@@ -1635,10 +1670,10 @@ static void mlhe_decode_delta (LheBasicPrec *prec, LheProcessing *proc, LheImage
                 //predicted_luminance=delta_prediction[pix-proc->width];
                 if (x > 0) predicted_luminance=(delta_prediction[y_prev*proc->width+proc->advanced_block[block_y][block_x-1].x_fin_downsampled-1]+delta_prediction[pix-proc->width+1])/2;
                 else predicted_luminance=delta_prediction[pix-proc->width];
-                last_small_hop=false;
-                hop_1=soft_h1;//START_HOP_1;
-                soft_counter = 0;
-                soft_mode = true;
+                last_small_hop=true;
+                hop_1=MIN_HOP_1;//START_HOP_1;
+                //soft_counter = 0;
+                //soft_mode = true;
             } else if (y == yini) { //Lateral superior y pixel inicial
                 if(x == 0 && y == 0) predicted_luminance=lhe->first_color_block[0];
                 //Primer pixel de cualquier bloque de la fila superior de bloques
@@ -1658,7 +1693,15 @@ static void mlhe_decode_delta (LheBasicPrec *prec, LheProcessing *proc, LheImage
             //assignment of component_prediction
             //This is the uncompressed image
             //delta = prec -> prec_luminance[predicted_luminance][r_max][hop_1][hop];
-
+            //predicted_luminance = predicted_luminance + grad;
+            //if (predicted_luminance > 255) predicted_luminance = 255;
+            //else if (predicted_luminance < 1) predicted_luminance = 1;
+            /*
+            if (hop != 4){
+                if (hop == 5) grad = 1;
+                else if (hop == 3) grad = -1;
+                else grad = 0;
+            }*/
 
             if (hop == 4){
                 delta = predicted_luminance;
@@ -1670,10 +1713,10 @@ static void mlhe_decode_delta (LheBasicPrec *prec, LheProcessing *proc, LheImage
                 delta = predicted_luminance - hop_1;
                 small_hop = true;
             } else {
-                if (soft_mode) {
-                    hop_1 = MIN_HOP_1;
+                //if (soft_mode) {
+                    //hop_1 = MIN_HOP_1;
                     //soft_mode = false;
-                }
+                //}
                 small_hop = false;
                 if (hop > 5) {
                     delta = 255 - prec->cache_hops[255-predicted_luminance][hop_1-4][8 - hop];
@@ -1690,17 +1733,17 @@ static void mlhe_decode_delta (LheBasicPrec *prec, LheProcessing *proc, LheImage
             //tunning hop1 for the next hop ( "h1 adaptation")
             //------------------------------------------------
             if (hop>5 || hop<3) small_hop=false; //true by default
-            if(!soft_mode){
+            //if(!soft_mode){
                 if (small_hop==true && last_small_hop==true) {
                     if (hop_1>MIN_HOP_1) hop_1--;
                 } else {
                     hop_1=MAX_HOP_1;
                 }
-            }
+            //}
             
             last_small_hop=small_hop;
 
-            if (soft_mode && !small_hop) {
+            /*if (soft_mode && !small_hop) {
                 soft_counter = 0;
                 soft_mode = false;
                 hop_1 = MAX_HOP_1;
@@ -1714,7 +1757,7 @@ static void mlhe_decode_delta (LheBasicPrec *prec, LheProcessing *proc, LheImage
                 } else {
                     soft_counter = 0;
                 }
-            }    
+            }    */
 
             //delta = 128;
 
