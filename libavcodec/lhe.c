@@ -950,7 +950,7 @@ void lhe_init_cache2(LheBasicPrec *prec){
 			//-------------------------------------------------------------------
 			h=(int)(hop0-hop1*rneg*rneg*rneg);
 			h=min(hop_max,h);h=max(h,hop_min);
-			prec->cache_hops[hop0][hop1-4][0] = (uint8_t)h;//(hop0-hop1*rneg*rneg*rneg);
+			prec->cache_hops[hop0][hop1-4][0] = 0;//(uint8_t)h;//(hop0-hop1*rneg*rneg*rneg);
 			h=(int)(hop0-hop1*rneg*rneg);
 			h=min(hop_max,h);h=max(h,hop_min);
 			prec->cache_hops[hop0][hop1-4][1] = (uint8_t)h;//(hop0-hop1*rneg*rneg);
