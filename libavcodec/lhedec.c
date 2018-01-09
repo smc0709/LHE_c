@@ -77,8 +77,8 @@ static void lhe_init_pixel_format (AVCodecContext *avctx, LheState *s)
     } else
     {
         avctx->pix_fmt = AV_PIX_FMT_YUV420P;
-        avctx->width = 512;
-        avctx->height = 384;
+        avctx->width = 1280;//512;
+        avctx->height = 720;//384;
         av_log(NULL, AV_LOG_INFO, "Pix fmt 420 con el else\n");
         s->chroma_factor_width = 2;
         s->chroma_factor_height = 2;
@@ -1503,35 +1503,264 @@ static void lhe_advanced_horizontal_nearest_neighbour_interpolation (LheProcessi
     }
 }
 
-
-
-
-
-static void lhe_advanced_filter (LheProcessing *proc, LheImage *lhe, int linesize) 
+static void filter_pixel_soft(LheState *s, int x, int y)
 {
+    uint32_t left, right, up, down, pix;
+    LheProcessing *proc = (&s->procUV);
+    pix = (&s->lheY)->component_prediction[y*((s->frame)->linesize[0])+x];
+    left = (&s->lheY)->component_prediction[y*((s->frame)->linesize[0])+x-1];
+    right = (&s->lheY)->component_prediction[y*((s->frame)->linesize[0])+x+1];
+    up = (&s->lheY)->component_prediction[(y-1)*((s->frame)->linesize[0])+x];
+    down = (&s->lheY)->component_prediction[(y+1)*((s->frame)->linesize[0])+x];
 
+    (&s->lheY)->component_prediction[y*((s->frame)->linesize[0])+x] = (pix + left + right + up + down)/5;
+
+    if (x % 2 == 0 && y % 2 == 0) {
+        if (x/2 < proc->width-1 && y/2 < proc->height-1){
+            x = x/2;
+            y = y/2;
+            pix = (&s->lheU)->component_prediction[y*((s->frame)->linesize[1])+x];
+            left = (&s->lheU)->component_prediction[y*((s->frame)->linesize[1])+x-1];
+            right = (&s->lheU)->component_prediction[y*((s->frame)->linesize[1])+x+1];
+            up = (&s->lheU)->component_prediction[(y-1)*((s->frame)->linesize[1])+x];
+            down = (&s->lheU)->component_prediction[(y+1)*((s->frame)->linesize[1])+x];
+
+            (&s->lheU)->component_prediction[y*((s->frame)->linesize[1])+x] = (pix + left + right + up + down)/5;
+
+            pix = (&s->lheV)->component_prediction[y*((s->frame)->linesize[2])+x];
+            left = (&s->lheV)->component_prediction[y*((s->frame)->linesize[2])+x-1];
+            right = (&s->lheV)->component_prediction[y*((s->frame)->linesize[2])+x+1];
+            up = (&s->lheV)->component_prediction[(y-1)*((s->frame)->linesize[2])+x];
+            down = (&s->lheV)->component_prediction[(y+1)*((s->frame)->linesize[2])+x];
+
+            (&s->lheV)->component_prediction[y*((s->frame)->linesize[2])+x] = (pix + left + right + up + down)/5;
+        }
+    }
     
-    for (int y=1; y<proc->height-1; y++)
-    {        
+}
 
-        for (int x=1; x<proc->width-1; x++)
-        {         
-               
-                lhe->component_prediction[y*linesize+x]=(lhe->component_prediction[y*linesize+x] +
-                                                         lhe->component_prediction[y*linesize+x+1] +
-                                                         lhe->component_prediction[y*linesize+x-1] +
-                                                         lhe->component_prediction[(y+1)*linesize+x] +
-                                                         lhe->component_prediction[(y-1)*linesize+x])/5;
-                //PARA SACAR LA IMAGEN DOWNSAMPLEADA
-                //lhe->component_prediction[y*linesize+i]=lhe->downsampled_image[y*proc->width+i];
-                         
-        }//x
 
-    }//y 
+static void filter_pixel_epx2x(LheState *s, int x, int y)
+{
+    int u1, u2, mix, mixU, mixV;
+    LheProcessing *proc = (&s->procUV);
+    u1 = 11;
+    u2 = 16;
+
+    int a, b, c, d, e, f, g, h, i;
+    int aU, bU, cU, dU, eU, fU, gU, hU, iU;
+    int aV, bV, cV, dV, eV, fV, gV, hV, iV;
+    //a b c
+    //d e f
+    //g h i
+    a = (&s->lheY)->component_prediction[(y-1)*((s->frame)->linesize[0])+x-1];
+    b = (&s->lheY)->component_prediction[(y-1)*((s->frame)->linesize[0])+x];
+    c = (&s->lheY)->component_prediction[(y-1)*((s->frame)->linesize[0])+x+1];
+    d = (&s->lheY)->component_prediction[y*((s->frame)->linesize[0])+x-1];
+    e = (&s->lheY)->component_prediction[y*((s->frame)->linesize[0])+x];
+    f = (&s->lheY)->component_prediction[y*((s->frame)->linesize[0])+x+1];
+    g = (&s->lheY)->component_prediction[(y+1)*((s->frame)->linesize[0])+x-1];
+    h = (&s->lheY)->component_prediction[(y+1)*((s->frame)->linesize[0])+x];
+    i = (&s->lheY)->component_prediction[(y+1)*((s->frame)->linesize[0])+x+1];
+    
+    aU = (&s->lheU)->component_prediction[(y/2-1)*((s->frame)->linesize[1])+x/2-1];
+    bU = (&s->lheU)->component_prediction[(y/2-1)*((s->frame)->linesize[1])+x/2];
+    cU = (&s->lheU)->component_prediction[(y/2-1)*((s->frame)->linesize[1])+x/2+1];
+    dU = (&s->lheU)->component_prediction[y/2*((s->frame)->linesize[1])+x/2-1];
+    eU = (&s->lheU)->component_prediction[y/2*((s->frame)->linesize[1])+x/2];
+    fU = (&s->lheU)->component_prediction[y/2*((s->frame)->linesize[1])+x/2+1];
+    gU = (&s->lheU)->component_prediction[(y/2+1)*((s->frame)->linesize[1])+x/2-1];
+    hU = (&s->lheU)->component_prediction[(y/2+1)*((s->frame)->linesize[1])+x/2];
+    iU = (&s->lheU)->component_prediction[(y/2+1)*((s->frame)->linesize[1])+x/2+1];
+    
+    aV = (&s->lheV)->component_prediction[(y/2-1)*((s->frame)->linesize[2])+x/2-1];
+    bV = (&s->lheV)->component_prediction[(y/2-1)*((s->frame)->linesize[2])+x/2];
+    cV = (&s->lheV)->component_prediction[(y/2-1)*((s->frame)->linesize[2])+x/2+1];
+    dV = (&s->lheV)->component_prediction[y/2*((s->frame)->linesize[2])+x/2-1];
+    eV = (&s->lheV)->component_prediction[y/2*((s->frame)->linesize[2])+x/2];
+    fV = (&s->lheV)->component_prediction[y/2*((s->frame)->linesize[2])+x/2+1];
+    gV = (&s->lheV)->component_prediction[(y/2+1)*((s->frame)->linesize[2])+x/2-1];
+    hV = (&s->lheV)->component_prediction[(y/2+1)*((s->frame)->linesize[2])+x/2];
+    iV = (&s->lheV)->component_prediction[(y/2+1)*((s->frame)->linesize[2])+x/2+1];
+
+    //Marco arriba izquierdo
+    if (dif(b, c) < u1 && dif(d, g) < u1 && dif(b, d) < u2) {
+        mix = (b + d)/2;
+        mixU = (bU + dU)/2;
+        mixV = (bV + dV)/2;
+    }
+    //Marco arriba derecho
+    else if (dif(a, b) < u1 && dif(f, i) < u1 && dif(b, f) < u2) {
+        mix = (b + f)/2;
+        mixU = (bU + fU)/2;
+        mixV = (bV + fV)/2;
+    }
+    //Marco abajo izquierdo
+    else if (dif(a, d) < u1 && dif(h, i) < u1 && dif(d, h) < u2) {
+        mix = (d + h)/2;
+        mixU = (dU + hU)/2;
+        mixV = (dV + hV)/2;
+    }
+    //Marco abajo derecho
+    else if (dif(c, f) < u1 && dif(g, h) < u1 && dif(f, h) < u2) {
+        mix = (f + h)/2;
+        mixU = (fU + hU)/2;
+        mixV = (fV + hV)/2;
+    } 
+    //Diagonal h arriba izquierdo
+    else if (dif(b, c) < u1 && dif(b, d) < u2) {
+        mix = (b + e)/2;
+        mixU = (bU + eU)/2;
+        mixV = (bV + eV)/2;
+    }
+    //Diagonal h arriba derecho
+    else if (dif(a, b) < u1 && dif(b, f) < u2) {
+        mix = (e + b)/2;
+        mixU = (eU + bU)/2;
+        mixV = (eV + bV)/2;
+    }
+    //Diagonal h abajo izquierdo
+    else if (dif(h, i) < u1 && dif(d, h) < u2) {
+        mix = (e + h)/2;
+        mixU = (eU + hU)/2;
+        mixV = (eV + hV)/2;
+    }
+    //Diagonal h abajo derecho
+    else if (dif(g, h) < u1 && dif(f, h) < u2) {
+        mix = (e + h)/2;
+        mixU = (eU + hU)/2;
+        mixV = (eV + hV)/2;
+    }
+    //Diagonal v arriba izquierdo
+    if (dif(d, g) < u1 && dif(b, d) < u2) {
+        mix = (e + d)/2;
+        mixU = (eU + dU)/2;
+        mixV = (eV + dV)/2;
+    }
+    //Diagonal v arriba derecho
+    else if (dif(f, i) < u1 && dif(b, f) < u2) {
+        mix = (e + f)/2;
+        mixU = (eU + fU)/2;
+        mixV = (eV + fV)/2;
+    }
+    //Diagonal v abajo izquierdo
+    else if (dif(a, d) < u1 && dif(d, h) < u2) {
+        mix = (d + e)/2;
+        mixU = (dU + eU)/2;
+        mixV = (dV + eV)/2;
+    }
+    //Diagonal v abajo derecho
+    else if (dif(c, f) < u1 && dif(f, h) < u2) {
+        mix = (f + e)/2;
+        mixU = (fU + eU)/2;
+        mixV = (fV + eV)/2;
+    } 
+
+    (&s->lheY)->component_prediction[y*((s->frame)->linesize[0])+x] = mix;
+    if (x % 2 == 0 && y % 2 == 0){
+        if (x/2 < proc->width-1 && y/2 < proc->height-1){
+            x = x/2;
+            y = y/2;
+            //(&s->lheU)->component_prediction[y*((s->frame)->linesize[1])+x] = mixU;
+            //(&s->lheV)->component_prediction[y*((s->frame)->linesize[2])+x] = mixV;
+        }
+    }
+
 }
 
 
 
+
+static void lhe_advanced_filter_epxp (LheState *s, int block_x, int block_y)
+{
+
+    uint32_t block_height, block_width, x_side, y_side;
+    float grx_pppx, grx_pppy, gry_pppax, gry_pppbx, gry_pppay, gry_pppby, ppp_x, ppp_y, ppp_ax, ppp_bx, ppp_ay, ppp_by;
+    float pr_ax, pr_ay, pr_bx, pr_by, gry_prax, gry_prbx, gry_pray, gry_prby, pr_x, pr_y, grx_prx, grx_pry;
+    float ppp_threshold, pr_threshold;
+    uint32_t xini, yini, yfin, xfin;
+    LheProcessing *proc = (&s->procY);
+    
+    block_height = proc->basic_block[block_y][block_x].block_height;
+    block_width = proc->basic_block[block_y][block_x].block_width;
+    xini = proc->basic_block[block_y][block_x].x_ini;
+    yini = proc->basic_block[block_y][block_x].y_ini;
+    yfin =  proc->basic_block[block_y][block_x].y_fin;
+    xfin =  proc->basic_block[block_y][block_x].x_fin;
+
+    pr_ax = proc->perceptual_relevance_x[block_y][block_x];
+    pr_bx = proc->perceptual_relevance_x[block_y][block_x+1];
+    pr_ay = proc->perceptual_relevance_y[block_y][block_x];
+    pr_by = proc->perceptual_relevance_y[block_y][block_x+1];
+
+    gry_prax = (proc->perceptual_relevance_x[block_y+1][block_x] - pr_ax)/(block_height-1);
+    gry_prbx = (proc->perceptual_relevance_x[block_y+1][block_x+1] - pr_bx)/(block_height-1);
+    gry_pray = (proc->perceptual_relevance_y[block_y+1][block_x] - pr_ay)/(block_height-1);
+    gry_prby = (proc->perceptual_relevance_y[block_y+1][block_x+1] - pr_by)/(block_height-1);  
+
+    ppp_ax=proc->advanced_block[block_y][block_x].ppp_x[TOP_LEFT_CORNER]; //PPPax
+    ppp_bx=proc->advanced_block[block_y][block_x].ppp_x[TOP_RIGHT_CORNER]; //PPPbx
+    ppp_ay=proc->advanced_block[block_y][block_x].ppp_y[TOP_LEFT_CORNER]; //PPPay
+    ppp_by=proc->advanced_block[block_y][block_x].ppp_y[TOP_RIGHT_CORNER]; //PPPby
+    
+    //gradient PPPx side a
+    gry_pppax=(proc->advanced_block[block_y][block_x].ppp_x[BOT_LEFT_CORNER]-proc->advanced_block[block_y][block_x].ppp_x[TOP_LEFT_CORNER])/(block_height-1.0);   
+    //gradient PPPx side b
+    gry_pppbx=(proc->advanced_block[block_y][block_x].ppp_x[BOT_RIGHT_CORNER]-proc->advanced_block[block_y][block_x].ppp_x[TOP_RIGHT_CORNER])/(block_height-1.0);
+    //gradient PPPx side a
+    gry_pppay=(proc->advanced_block[block_y][block_x].ppp_y[BOT_LEFT_CORNER]-proc->advanced_block[block_y][block_x].ppp_y[TOP_LEFT_CORNER])/(block_height-1.0);   
+    //gradient PPPx side b
+    gry_pppby=(proc->advanced_block[block_y][block_x].ppp_y[BOT_RIGHT_CORNER]-proc->advanced_block[block_y][block_x].ppp_y[TOP_RIGHT_CORNER])/(block_height-1.0);
+
+    ppp_threshold = 2;
+    pr_threshold = 0.25;
+    bool modif;
+
+    for (int y = yini; y < yfin; y++) {
+        
+        ppp_x = ppp_ax;
+        ppp_y = ppp_ay;
+        pr_x = pr_ax;
+        pr_y = pr_ay;
+
+        grx_pppx = (ppp_bx - ppp_ax)/(block_width-1);
+        grx_pppy = (ppp_by - ppp_ay)/(block_width-1);
+
+        grx_prx = (pr_bx - pr_ax)/(block_width-1);
+        grx_pry = (pr_by - pr_ay)/(block_width-1);
+
+        for (int x = xini; x < xfin; x++) {
+            modif = false;
+            if (x > 0 && y > 0 && x < proc->width-1 && y < proc->height-1){
+                if (ppp_x > ppp_threshold || ppp_y > ppp_threshold){
+                    if (pr_x <= pr_threshold && pr_y <= pr_threshold){
+                        filter_pixel_soft(s, x, y);
+                        modif = true;
+                    }
+                } 
+                if (modif == false && ppp_x > ppp_threshold && ppp_y > ppp_threshold){
+                    //filter_pixel_epx2x(s, x, y);
+                }
+            }
+
+            ppp_x += grx_pppx;
+            ppp_y += grx_pppy;
+            pr_x += grx_prx;
+            pr_y += grx_pry;
+        }
+
+        ppp_ax += gry_pppax;
+        ppp_bx += gry_pppbx;
+        ppp_ay += gry_pppay;
+        ppp_by += gry_pppby;
+
+        pr_ax += gry_prax;
+        pr_bx += gry_prbx;
+        pr_ay += gry_pray;
+        pr_by += gry_prby;
+    }
+
+}
 
 
 
@@ -1589,6 +1818,17 @@ static void lhe_advanced_decode_symbols (LheState *s, LheHuffEntry *he_Y, LheHuf
             
         }
     }
+
+    for (int block_y=0; block_y<s->total_blocks_height; block_y++)
+    {
+        for (int block_x=0; block_x<s->total_blocks_width; block_x++)
+        {  
+
+            lhe_advanced_filter_epxp (s, block_x, block_y);
+
+        }
+    }
+
     //lhe_advanced_filter (&s->procY, &s->lheY, s->frame->linesize[0]);
     //lhe_advanced_filter (&s->procUV, &s->lheU, s->frame->linesize[1]);
     //lhe_advanced_filter (&s->procUV, &s->lheV, s->frame->linesize[2]);

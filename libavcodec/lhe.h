@@ -168,6 +168,7 @@ static const uint8_t lhe_sig[3] = "LHE";
 
 #define min(a, b) (((a) < (b)) ? (a) : (b))
 #define max(a, b) (((a) > (b)) ? (a) : (b))
+#define dif(a, b) (((a) > (b)) ? ((a)-(b)) : ((b)-(a)))
 
 typedef struct LheBasicPrec {
     uint8_t prec_luminance[Y_MAX_COMPONENT][RATIO][H1_RANGE][NUMBER_OF_HOPS]; // precomputed luminance component

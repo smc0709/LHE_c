@@ -1873,9 +1873,7 @@ static void lhe_advanced_encode_block2_sequential (LheBasicPrec *prec, LheProces
 
             //tunning grad for next pixel
             //if (hop_number != 4){
-                if (hop_number == 5) grad = 1;
-                else if (hop_number == 3) grad = -1;
-                else if (hop_number > 5 || hop_number < 3) grad = 0;
+                
             //}
 
             //------------- PHASE 4: h1 logic  --------------------------
@@ -1890,6 +1888,10 @@ static void lhe_advanced_encode_block2_sequential (LheBasicPrec *prec, LheProces
             //}
             //h1=2;
             last_small_hop=small_hop;
+
+            if (hop_number == 5) grad = 1;
+            else if (hop_number == 3) grad = -1;
+            else if (!small_hop) grad = 0;
 
             //Soft mode logic
             
