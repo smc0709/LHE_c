@@ -2930,8 +2930,9 @@ static float lhe_advanced_encode (LheContext *s, const AVFrame *frame,
 
     for (int i = -(int)total_blocks_height+1; i < (int)total_blocks_width; i++){
         #pragma omp parallel for
-        for (int block_y=total_blocks_height-1; block_y>=0; block_y--) 
+        for (int block_y2=total_blocks_height-1; block_y2>=0; block_y2--) 
         {
+            int block_y = (block_y2*(total_blocks_height-1))%total_blocks_height;
             int block_x = i + total_blocks_height -1 - block_y;
             if (block_x >= 0 && block_x < total_blocks_width) {
                 //LUMINANCE
