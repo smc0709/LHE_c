@@ -2198,7 +2198,8 @@ static void lhe_advanced_compute_pr_lum (LheBasicPrec *prec, LheProcessing *proc
                                        int xini, int xfin, int yini, int yfin, 
                                        int linesize, int block_x, int block_y, 
                                        uint8_t sps_ratio_height, uint8_t sps_ratio_width)
-{          
+{
+         
     //Hops computation.
     int lum_dif, last_lum_dif, pix, dif_pix, y, x, dif;
     int Cx, Cy;
@@ -2265,11 +2266,13 @@ static void lhe_advanced_compute_pr_lum (LheBasicPrec *prec, LheProcessing *proc
         }
         //pix+=dif_pix;
     }
+
+
     lum_sign=true;
     lum_dif=0;
     last_lum_sign=true;
     last_lum_dif=0;
-    
+
     //dif_pix = -linesize*(yfin - yini)+sps_ratio_width;
     for (x=xini+sps_ratio_width/2;x<xfin;x+=sps_ratio_width)
     {
@@ -2286,9 +2289,10 @@ static void lhe_advanced_compute_pr_lum (LheBasicPrec *prec, LheProcessing *proc
             else last_lum_dif = 4;
         }
         for (y=yini;y<yfin;y++)
-        {                                        
+        {  
+                                              
             dif=0;
-            if (y>0) dif=component_original_data[pix]-component_original_data[pix-linesize/*(y-1)*linesize+x*/];
+            if (y>0) dif=component_original_data[pix]-component_original_data[pix-linesize];
             lum_dif=dif;
             if (!(lum_sign=(lum_dif>=0))) lum_dif = -lum_dif;
             if (lum_dif < QUANT_LUM0) {lum_dif = 0;}
@@ -2309,9 +2313,12 @@ static void lhe_advanced_compute_pr_lum (LheBasicPrec *prec, LheProcessing *proc
             last_lum_dif=lum_dif;
             last_lum_sign=lum_sign;
             pix += linesize;
+            
+
         }
         //pix += dif_pix;
     }
+
     if (PRx>0) {
         PRx=PRx/(Cx*4); 
     }
@@ -2396,6 +2403,7 @@ static void lhe_advanced_compute_perceptual_relevance (LheContext *s, uint8_t *c
     /*
     struct timeval t_ini, t_fin;
     double secs;
+    secs = 0;
 
     gettimeofday(&t_ini, NULL);
     for (int i = 0; i < 1000; i++){
@@ -2403,6 +2411,7 @@ static void lhe_advanced_compute_perceptual_relevance (LheContext *s, uint8_t *c
     proc = &s->procY;
     prec = &s->prec;
 
+    //#pragma omp parallel for schedule(static)
     for (int i = 0; i < 5; i++) {
         proc->pr_quanta_counter[i] = 0;
     }
@@ -2411,11 +2420,10 @@ static void lhe_advanced_compute_perceptual_relevance (LheContext *s, uint8_t *c
     block_height = proc->theoretical_block_height;
     half_block_width = (block_width >>1);
     half_block_height = (block_width >>1);
-    
-    #pragma omp parallel for
+
+    #pragma omp parallel for schedule(static)
     for (int block_y=0; block_y<total_blocks_height+1; block_y++)      
     {
-	
         for (int block_x=0; block_x<total_blocks_width+1; block_x++) 
         {   
             //int limite = block_x2+4;
@@ -2426,7 +2434,7 @@ static void lhe_advanced_compute_perceptual_relevance (LheContext *s, uint8_t *c
 
             //First LHE Block coordinates
             xini = block_x * block_width;
-            xfin = xini +  block_width;
+            xfin = xini + block_width;
 
             yini = block_y * block_height;
             yfin = yini + block_height;
@@ -2459,15 +2467,23 @@ static void lhe_advanced_compute_perceptual_relevance (LheContext *s, uint8_t *c
             {
                 yfin_pr_block = proc->height;
             }
+
+            //gettimeofday(&before , NULL);
+            //for (int i = 0; i < 1000; i++){
             
             //COMPUTE, HISTOGRAM EXPANSION AND QUANTIZATION
             lhe_advanced_compute_pr_lum (prec, proc, component_original_data_Y, 
                                             xini_pr_block, xfin_pr_block, yini_pr_block, yfin_pr_block, 
                                             linesize, block_x, block_y, proc->pr_factor, proc->pr_factor);
             //}
+            //gettimeofday(&after , NULL);
+            //microsec += time_diff(before , after);
         }
     }
 
+
+    //av_log(NULL, AV_LOG_INFO, "@@@@@@@Expansion and quant%f \n", microsec);
+    //microsec = 0;
     /*
     }
     gettimeofday(&t_fin, NULL);   
@@ -2849,7 +2865,7 @@ static float lhe_advanced_encode (LheContext *s, const AVFrame *frame,
     gettimeofday(&t_ini, NULL);
     for (int i = 0; i < 1000; i++){
 */
-    #pragma omp parallel for
+    #pragma omp parallel for schedule(static)
     for (int block_y=0; block_y<total_blocks_height; block_y++) 
     {
         for (int block_x=0; block_x<total_blocks_width; block_x++) 
@@ -2929,7 +2945,7 @@ static float lhe_advanced_encode (LheContext *s, const AVFrame *frame,
 */
 
     for (int i = -(int)total_blocks_height+1; i < (int)total_blocks_width; i++){
-        #pragma omp parallel for
+        #pragma omp parallel for schedule(static)
         for (int block_y2=total_blocks_height-1; block_y2>=0; block_y2--) 
         {
             int block_y = (block_y2*(total_blocks_height-1))%total_blocks_height;
