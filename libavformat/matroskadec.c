@@ -1989,7 +1989,13 @@ static int mkv_parse_video_projection(AVStream *st, const MatroskaTrack *track) 
             return AVERROR_INVALIDDATA;
         }
         break;
+    case MATROSKA_VIDEO_PROJECTION_TYPE_RECTANGULAR:
+        /* No Spherical metadata */
+        return 0;
     default:
+        av_log(NULL, AV_LOG_WARNING,
+               "Unknown spherical metadata type %"PRIu64"\n",
+               track->video.projection.type);
         return 0;
     }
 
@@ -2090,8 +2096,16 @@ static int matroska_parse_tracks(AVFormatContext *s)
         }
 
         if (track->type == MATROSKA_TRACK_TYPE_VIDEO) {
-            if (!track->default_duration && track->video.frame_rate > 0)
-                track->default_duration = 1000000000 / track->video.frame_rate;
+            if (!track->default_duration && track->video.frame_rate > 0) {
+                double default_duration = 1000000000 / track->video.frame_rate;
+                if (default_duration > UINT64_MAX || default_duration < 0) {
+                    av_log(matroska->ctx, AV_LOG_WARNING,
+                         "Invalid frame rate %e. Cannot calculate default duration.\n",
+                         track->video.frame_rate);
+                } else {
+                    track->default_duration = default_duration;
+                }
+            }
             if (track->video.display_width == -1)
                 track->video.display_width = track->video.pixel_width;
             if (track->video.display_height == -1)
