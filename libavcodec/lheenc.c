@@ -64,6 +64,7 @@ typedef struct LheContext {
     int ql;
     int down_mode;
     uint16_t dif_frames_count;
+    LheReconfParams reconf;
 } LheContext;
 
 uint8_t *intermediate_downsample_Y, *intermediate_downsample_U, *intermediate_downsample_V;
