@@ -1518,7 +1518,7 @@ static void lhe_advanced_horizontal_nearest_neighbour_interpolation (LheProcessi
  */
 static void lhe_advanced_vertical_adaptative_interpolation(LheProcessing *proc, 
                                             LheImage *lhe, uint8_t *intermediate_interpolated_image,
-                                            int block_x, int block_y)
+                                            int block_x, int block_y, int vertical_blocks)
 {
     uint32_t downsampled_y_side, downsampled_x_side;
     float gradient, gradient_0, gradient_1, gradient_pr, gradient_0_pr, 
@@ -1546,8 +1546,7 @@ static void lhe_advanced_vertical_adaptative_interpolation(LheProcessing *proc,
     pr_1 = proc->perceptual_relevance_y[block_y][block_x + 1];
     pr_2 = proc->perceptual_relevance_y[block_y + 1][block_x];
     pr_3 = proc->perceptual_relevance_y[block_y + 1][block_x + 1];
-
-    if (block_y == 18/*VERTICAL_BLOCKS*/ - 1)
+    if (block_y == vertical_blocks - 1)
     {
         last_block = true;
     }
@@ -1598,8 +1597,9 @@ static void lhe_advanced_vertical_adaptative_interpolation(LheProcessing *proc,
                     else if (i >= half && y_sc == yfin_downsampled - 1 && !last_block) //Must look into the next block- Right Errore
                     {
                         float dummy;
-                        float next_value_index = yfin * proc->width + xini + (x - xini) * x_side_relation;
-                        int contribution = (int)(modff((x - xini) * x_side_relation, &dummy) * 100);
+                        float next_value_x = xini + (x - xini) * x_side_relation;
+                        float next_value_index = yfin * proc->width + next_value_x;
+                        int contribution = (int)((next_value_x-((int)next_value_x))*100);
                         int value = (lhe->downsampled_image[(int)next_value_index] * (100 - contribution) + lhe->downsampled_image[(int)next_value_index + 1] * contribution) / 100;
                         intermediate_interpolated_image[i * proc->width + x] = (lhe->downsampled_image[y_sc * proc->width + x] * (yfin - i) + value * (i - half)) / (yfin - half); //(lhe->downsampled_image[y_sc * proc->width + x]*(yfin-i)+ lhe->downsampled_image[(int)next_value_index] *(i-half))/(yfin-half);
                     }
@@ -2051,13 +2051,14 @@ static void lhe_advanced_decode_symbols(LheState *s, LheHuffEntry *he_Y, LheHuff
         {
             //Luminance
             lhe_advanced_vertical_adaptative_interpolation(&s->procY, &s->lheY, intermediate_interpolated_Y,
-                                                                  block_x, block_y);
+                                                                  block_x, block_y, s->total_blocks_height);
             //Chrominance U
             lhe_advanced_vertical_adaptative_interpolation(&s->procUV, &s->lheU, intermediate_interpolated_U,
-                                                                  block_x, block_y);
+                                                                  block_x, block_y, s->total_blocks_height);
             //Chrominance V
             lhe_advanced_vertical_adaptative_interpolation(&s->procUV, &s->lheV, intermediate_interpolated_V,
-                                                                  block_x, block_y);
+                                                                  block_x, block_y, s->total_blocks_height);
+            
         }
     }
     //#pragma omp parallel for
