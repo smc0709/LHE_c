@@ -154,6 +154,8 @@ static const uint8_t lhe_sig[3] = "LHE";
 #define PPP_MAX_IMAGES 64 //this value allows to compress images up to 4096 px widthwise
 #define PPP_MIN 1
 
+#define MAX_RECTANGLES 5
+
 
 
 #define PPP_MAX 4
@@ -161,7 +163,7 @@ static const uint8_t lhe_sig[3] = "LHE";
 #define MAX_QL 100
 
 //STREAMING
-#define GOP 0
+//#define GOP 0
 
 #define LENGTH 64//sizeof(mask)*CHAR_BIT
 #define testBit(A,k) ((A & (1UL<<(k)))>>k)
@@ -169,6 +171,15 @@ static const uint8_t lhe_sig[3] = "LHE";
 #define min(a, b) (((a) < (b)) ? (a) : (b))
 #define max(a, b) (((a) > (b)) ? (a) : (b))
 #define dif(a, b) (((a) > (b)) ? ((a)-(b)) : ((b)-(a)))
+
+typedef struct Rectangle{
+	bool active;
+	bool protection;
+	int xini;
+	int xfin;
+	int yini;
+	int yfin;
+} Rectangle;
 
 typedef struct LheBasicPrec {
     uint8_t prec_luminance[Y_MAX_COMPONENT][RATIO][H1_RANGE][NUMBER_OF_HOPS]; // precomputed luminance component
@@ -185,16 +196,16 @@ typedef struct LheHuffEntry {
     uint64_t count;
 } LheHuffEntry;
 
-typedef struct LheReconfParams {
+/*typedef struct LheReconfParams {
     int ql;
     int skip_frames;
-    uint16_t **protected_rectangles;
+    Rectangle protected_rectangles[MAX_RECTANGLES];
     uint8_t down_mode_p;
     bool color;
     bool pr_metrics;
     uint8_t gop;
 } LheReconfParams;
-
+*/
 typedef struct BasicLheBlock {
     uint32_t block_width;
     uint32_t block_height;

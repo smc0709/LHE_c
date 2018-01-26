@@ -64,7 +64,19 @@ typedef struct LheContext {
     int ql;
     int down_mode;
     uint16_t dif_frames_count;
-    LheReconfParams reconf;
+    int skip_frames;
+    Rectangle protected_rectangles[MAX_RECTANGLES];
+    uint8_t down_mode_p;
+    int down_mode_reconf;
+    bool color;
+    bool pr_metrics_active;
+    int ql_reconf;
+    int skip_frames_reconf;
+    Rectangle protected_rectangles_reconf[MAX_RECTANGLES];
+    uint8_t down_mode_p_reconf;
+    bool color_reconf;
+    bool pr_metrics_active_reconf;
+    uint8_t gop_reconf;
 } LheContext;
 
 uint8_t *intermediate_downsample_Y, *intermediate_downsample_U, *intermediate_downsample_V;
@@ -406,6 +418,34 @@ static int lhe_alloc_tables(AVCodecContext *ctx, LheContext *s)
 static av_cold int lhe_encode_init(AVCodecContext *avctx)
 {
     LheContext *s = avctx->priv_data;
+    //s->ql_reconf = -1;
+    s->down_mode_reconf = -1;
+    s->color_reconf = true;
+    s->down_mode_p_reconf = -1;
+    for (int i = 0; i < MAX_RECTANGLES; i++){
+        s->protected_rectangles_reconf[i].active = false;    
+    }
+    s->pr_metrics_active_reconf = false;
+    s->skip_frames_reconf = -1;
+    //s->gop_reconf = -1;
+
+
+
+    s->protected_rectangles_reconf[0].active = true;
+    s->protected_rectangles_reconf[0].xini = -50;
+    s->protected_rectangles_reconf[0].xfin = 800;
+    s->protected_rectangles_reconf[0].yini = -50;
+    s->protected_rectangles_reconf[0].yfin = 500;
+    s->protected_rectangles_reconf[0].protection = false;
+
+    s->protected_rectangles_reconf[1].active = true;
+    s->protected_rectangles_reconf[1].xini = 300;
+    s->protected_rectangles_reconf[1].xfin = 500;
+    s->protected_rectangles_reconf[1].yini = 200;
+    s->protected_rectangles_reconf[1].yfin = 300;
+    s->protected_rectangles_reconf[1].protection = true;
+
+    
     uint32_t total_blocks_width, pixels_block, total_blocks_height;
     uint8_t pixel_format;
 
@@ -455,7 +495,7 @@ static av_cold int lhe_encode_init(AVCodecContext *avctx)
         }
     }
 
-    s->dif_frames_count = GOP;
+    s->dif_frames_count = s->gop_reconf;
 
     microsec = 0;
     //num_bloques_nulos = 0;
@@ -467,9 +507,28 @@ static av_cold int lhe_encode_init(AVCodecContext *avctx)
 //==================================================================
 // AUXILIARY FUNCTIONS
 //==================================================================
-static void mlhe_reconfig (LheContext *s, LheReconfParams *params)
+static void mlhe_reconfig (AVCodecContext *avctx, LheContext *s)
 {
-    s->ql = params->ql;
+    if (s->ql_reconf != -1 && s->ql != s->ql_reconf)
+        s->ql = s->ql_reconf;
+    if (s->down_mode_reconf != -1 && s->down_mode != s->down_mode_reconf)
+        s->down_mode = s->down_mode_reconf;
+    if (s->down_mode_p_reconf != -1 && s->down_mode_p != s->down_mode_p_reconf)
+        s->down_mode_p = s->down_mode_p_reconf;
+
+    if (s->color_reconf != -1 && s->color != s->color_reconf)
+        s->color = s->color_reconf;
+
+    for (int i = 0; i < MAX_RECTANGLES; i++) {
+            s->protected_rectangles[i] = s->protected_rectangles_reconf[i];
+    }
+
+    if (s->pr_metrics_active != s->pr_metrics_active_reconf)
+        s->pr_metrics_active = s->pr_metrics_active_reconf;
+    if (s->skip_frames_reconf != -1 && s->skip_frames != s->skip_frames_reconf)
+        s->skip_frames = s->skip_frames_reconf;
+    if (s->gop_reconf != -1 && avctx->gop_size != s->gop_reconf)
+        avctx->gop_size = s->gop_reconf;
 
 }
 
@@ -2396,9 +2455,8 @@ static void lhe_advanced_compute_perceptual_relevance (LheContext *s, uint8_t *c
                                                        int linesize, uint32_t total_blocks_width, uint32_t total_blocks_height) 
 {
     
-    int xini, xfin, yini, yfin, xini_pr_block, xfin_pr_block, yini_pr_block, yfin_pr_block;
     uint32_t block_width, block_height, half_block_width, half_block_height;
-    
+
     LheProcessing *proc;
     LheBasicPrec *prec;
     /*
@@ -2427,6 +2485,10 @@ static void lhe_advanced_compute_perceptual_relevance (LheContext *s, uint8_t *c
     {
         for (int block_x=0; block_x<total_blocks_width+1; block_x++) 
         {   
+
+            int xini, xfin, yini, yfin, xini_pr_block, xfin_pr_block, yini_pr_block, yfin_pr_block;
+            
+            bool modif = false;
             //int limite = block_x2+4;
             //if (block_x2+4 > total_blocks_width+1) limite = total_blocks_width+1;
             //#pragma omp parallel for
@@ -2471,11 +2533,33 @@ static void lhe_advanced_compute_perceptual_relevance (LheContext *s, uint8_t *c
 
             //gettimeofday(&before , NULL);
             //for (int i = 0; i < 1000; i++){
-            
-            //COMPUTE, HISTOGRAM EXPANSION AND QUANTIZATION
-            lhe_advanced_compute_pr_lum (prec, proc, component_original_data_Y, 
-                                            xini_pr_block, xfin_pr_block, yini_pr_block, yfin_pr_block, 
-                                            linesize, block_x, block_y, proc->pr_factor, proc->pr_factor);
+
+            for (int i = 0; i < MAX_RECTANGLES; i++){
+                if (s->protected_rectangles[i].active) {
+                    if (xini_pr_block >= s->protected_rectangles[i].xini && xfin_pr_block < s->protected_rectangles[i].xfin 
+                        && yini_pr_block >= s->protected_rectangles[i].yini && yfin_pr_block < s->protected_rectangles[i].yfin){
+                        if (s->protected_rectangles[i].protection == true) {
+                            proc->perceptual_relevance_x[block_y][block_x] = 1;
+                            proc->perceptual_relevance_y[block_y][block_x] = 1;
+                            modif = true;
+                            break;
+                        } else {
+                            proc->perceptual_relevance_x[block_y][block_x] = 0;
+                            proc->perceptual_relevance_y[block_y][block_x] = 0;
+                            modif = true;
+                        }
+                    }
+                }
+            }
+
+            //if (modif) av_log(NULL, AV_LOG_INFO, "modif a TRUE!!!!!!!@@@@@@@@\n");
+
+            if (modif == false) {
+                //COMPUTE, HISTOGRAM EXPANSION AND QUANTIZATION
+                lhe_advanced_compute_pr_lum (prec, proc, component_original_data_Y, 
+                                                xini_pr_block, xfin_pr_block, yini_pr_block, yfin_pr_block, 
+                                                linesize, block_x, block_y, proc->pr_factor, proc->pr_factor);
+            }
             //}
             //gettimeofday(&after , NULL);
             //microsec += time_diff(before , after);
@@ -3169,7 +3253,7 @@ static void mlhe_delta_frame_encode (LheContext *s, const AVFrame *frame,
 
     float compression_factor;
     uint32_t ppp_max_theoric;
-    
+
     ppp_max_theoric = (&s->procY)->theoretical_block_width/SIDE_MIN;
     if (ppp_max_theoric > PPP_MAX) ppp_max_theoric = PPP_MAX;
     compression_factor = (&s->prec)->compression_factor[ppp_max_theoric][s->ql];
@@ -3514,6 +3598,8 @@ static int lhe_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     component_original_data_Y = frame->data[0];
     component_original_data_U = frame->data[1];
     component_original_data_V = frame->data[2];
+
+    mlhe_reconfig(avctx, s);
     
     if (s->basic_lhe) 
     {  
@@ -3600,9 +3686,11 @@ static int mlhe_encode_video(AVCodecContext *avctx, AVPacket *pkt,
     component_original_data_Y = frame->data[0];
     component_original_data_U = frame->data[1];
     component_original_data_V = frame->data[2];
+
+    mlhe_reconfig(avctx, s);
          
     /* GOP frames P, 1 frame I*/
-    if (s->dif_frames_count<GOP) 
+    if (s->dif_frames_count<avctx->gop_size) 
     {
 
         s->dif_frames_count++;
@@ -3724,8 +3812,9 @@ static int lhe_encode_close(AVCodecContext *avctx)
 static const AVOption options[] = {
     { "pr_metrics", "Print PR metrics", OFFSET(pr_metrics), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, VE },
     { "basic_lhe", "Basic LHE", OFFSET(basic_lhe), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, VE },
-    { "ql", "Quality level from 0 to 99", OFFSET(ql), AV_OPT_TYPE_INT, { .i64 = 25 }, 0, 99, VE },
-    { "down_mode", "0 -> SPS, 1 -> AVG, 2 -> AVGY+SPSX", OFFSET(down_mode), AV_OPT_TYPE_INT, { .i64 = 2 }, 0, 2, VE },
+    { "ql", "Quality level from 0 to 99", OFFSET(ql_reconf), AV_OPT_TYPE_INT, { .i64 = 25 }, 0, 99, VE },
+    { "gop", "GOP size from 0 to 32000", OFFSET(gop_reconf), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 32000, VE },
+    { "down_mode", "0 -> SPS, 1 -> AVG, 2 -> AVGY+SPSX", OFFSET(down_mode_reconf), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 2, VE },
     { NULL },
 };
 

@@ -2050,13 +2050,13 @@ static void lhe_advanced_decode_symbols(LheState *s, LheHuffEntry *he_Y, LheHuff
         for (int block_x = 0; block_x < s->total_blocks_width; block_x++)
         {
             //Luminance
-            lhe_advanced_vertical_adaptative_interpolation(&s->procY, &s->lheY, intermediate_interpolated_Y,
+            lhe_advanced_vertical_nearest_neighbour_interpolation(&s->procY, &s->lheY, intermediate_interpolated_Y,
                                                                   block_x, block_y);
             //Chrominance U
-            lhe_advanced_vertical_adaptative_interpolation(&s->procUV, &s->lheU, intermediate_interpolated_U,
+            lhe_advanced_vertical_nearest_neighbour_interpolation(&s->procUV, &s->lheU, intermediate_interpolated_U,
                                                                   block_x, block_y);
             //Chrominance V
-            lhe_advanced_vertical_adaptative_interpolation(&s->procUV, &s->lheV, intermediate_interpolated_V,
+            lhe_advanced_vertical_nearest_neighbour_interpolation(&s->procUV, &s->lheV, intermediate_interpolated_V,
                                                                   block_x, block_y);
         }
     }
@@ -2066,13 +2066,13 @@ static void lhe_advanced_decode_symbols(LheState *s, LheHuffEntry *he_Y, LheHuff
         for (int block_x = 0; block_x < s->total_blocks_width; block_x++)
         {
             //Luminance
-            lhe_advanced_horizontal_adaptative_interpolation(&s->procY, &s->lheY, intermediate_interpolated_Y,
+            lhe_advanced_horizontal_nearest_neighbour_interpolation(&s->procY, &s->lheY, intermediate_interpolated_Y,
                                                                     s->frame->linesize[0], block_x, block_y);
             //Chrominance U
-            lhe_advanced_horizontal_adaptative_interpolation(&s->procUV, &s->lheU, intermediate_interpolated_U,
+            lhe_advanced_horizontal_nearest_neighbour_interpolation(&s->procUV, &s->lheU, intermediate_interpolated_U,
                                                                     s->frame->linesize[1], block_x, block_y);
             //Chrominance V
-            lhe_advanced_horizontal_adaptative_interpolation(&s->procUV, &s->lheV, intermediate_interpolated_V,
+            lhe_advanced_horizontal_nearest_neighbour_interpolation(&s->procUV, &s->lheV, intermediate_interpolated_V,
                                                                     s->frame->linesize[2], block_x, block_y);
         }
     }
