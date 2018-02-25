@@ -431,7 +431,7 @@ static av_cold int lhe_encode_init(AVCodecContext *avctx)
 
 
 
-    s->protected_rectangles_reconf[0].active = true;
+    /*s->protected_rectangles_reconf[0].active = true;
     s->protected_rectangles_reconf[0].xini = -50;
     s->protected_rectangles_reconf[0].xfin = 800;
     s->protected_rectangles_reconf[0].yini = -50;
@@ -444,7 +444,7 @@ static av_cold int lhe_encode_init(AVCodecContext *avctx)
     s->protected_rectangles_reconf[1].yini = 200;
     s->protected_rectangles_reconf[1].yfin = 300;
     s->protected_rectangles_reconf[1].protection = true;
-
+*/
     
     uint32_t total_blocks_width, pixels_block, total_blocks_height;
     uint8_t pixel_format;
