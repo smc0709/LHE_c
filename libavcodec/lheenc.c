@@ -72,14 +72,14 @@ typedef struct LheContext {
     int yfin;
     uint16_t dif_frames_count;
     int skip_frames;
-    Rectangle protected_rectangles[MAX_RECTANGLES];
+    Prot_Rectangle protected_rectangles[MAX_RECTANGLES];
     uint8_t down_mode_p;
     int down_mode_reconf;
     bool color;
     bool pr_metrics_active;
     int ql_reconf;
     int skip_frames_reconf;
-    Rectangle protected_rectangles_reconf[MAX_RECTANGLES];
+    Prot_Rectangle protected_rectangles_reconf[MAX_RECTANGLES];
     uint8_t down_mode_p_reconf;
     bool color_reconf;
     bool pr_metrics_active_reconf;

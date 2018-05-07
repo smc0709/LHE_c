@@ -172,14 +172,14 @@ static const uint8_t lhe_sig[3] = "LHE";
 #define max(a, b) (((a) > (b)) ? (a) : (b))
 #define dif(a, b) (((a) > (b)) ? ((a)-(b)) : ((b)-(a)))
 
-typedef struct Rectangle{
+typedef struct Prot_Rectangle{
 	bool active;
 	bool protection;
 	int xini;
 	int xfin;
 	int yini;
 	int yfin;
-} Rectangle;
+} Prot_Rectangle;
 
 typedef struct LheBasicPrec {
     uint8_t prec_luminance[Y_MAX_COMPONENT][RATIO][H1_RANGE][NUMBER_OF_HOPS]; // precomputed luminance component
