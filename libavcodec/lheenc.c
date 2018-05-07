@@ -63,6 +63,13 @@ typedef struct LheContext {
     bool basic_lhe;
     int ql;
     int down_mode;
+    int num_rectangle;
+    int active;
+    int protection;
+    int xini;
+    int xfin;
+    int yini;
+    int yfin;
     uint16_t dif_frames_count;
     int skip_frames;
     Rectangle protected_rectangles[MAX_RECTANGLES];
@@ -422,28 +429,36 @@ static av_cold int lhe_encode_init(AVCodecContext *avctx)
     s->down_mode_reconf = -1;
     s->color_reconf = true;
     s->down_mode_p_reconf = -1;
-    for (int i = 0; i < MAX_RECTANGLES; i++){
-        s->protected_rectangles_reconf[i].active = false;    
-    }
-    s->pr_metrics_active_reconf = false;
+    //for (int i = 0; i < MAX_RECTANGLES; i++){
+    //    s->protected_rectangles_reconf[i].active = 0;    
+    //}
+    s->pr_metrics_active_reconf = 0;
     s->skip_frames_reconf = -1;
     //s->gop_reconf = -1;
 
+    //s->num_rectangle=1;
+    //s->active=0;
+    //s->protection=1;
+    //s->xini=1;
+    //s->xfin=2;
+    //s->yini=3;
+    //s->yfin=4;
 
 
-    /*s->protected_rectangles_reconf[0].active = true;
+
+    /*s->protected_rectangles_reconf[0].active = 1;
     s->protected_rectangles_reconf[0].xini = -50;
     s->protected_rectangles_reconf[0].xfin = 800;
     s->protected_rectangles_reconf[0].yini = -50;
     s->protected_rectangles_reconf[0].yfin = 500;
-    s->protected_rectangles_reconf[0].protection = false;
+    s->protected_rectangles_reconf[0].protection = 0;
 
-    s->protected_rectangles_reconf[1].active = true;
+    s->protected_rectangles_reconf[1].active = 1;
     s->protected_rectangles_reconf[1].xini = 300;
     s->protected_rectangles_reconf[1].xfin = 500;
     s->protected_rectangles_reconf[1].yini = 200;
     s->protected_rectangles_reconf[1].yfin = 300;
-    s->protected_rectangles_reconf[1].protection = true;
+    s->protected_rectangles_reconf[1].protection = 1;
 */
     
     uint32_t total_blocks_width, pixels_block, total_blocks_height;
@@ -509,6 +524,7 @@ static av_cold int lhe_encode_init(AVCodecContext *avctx)
 //==================================================================
 static void mlhe_reconfig (AVCodecContext *avctx, LheContext *s)
 {
+
     if (s->ql_reconf != -1 && s->ql != s->ql_reconf)
         s->ql = s->ql_reconf;
     if (s->down_mode_reconf != -1 && s->down_mode != s->down_mode_reconf)
@@ -519,9 +535,17 @@ static void mlhe_reconfig (AVCodecContext *avctx, LheContext *s)
     if (s->color_reconf != -1 && s->color != s->color_reconf)
         s->color = s->color_reconf;
 
-    for (int i = 0; i < MAX_RECTANGLES; i++) {
-            s->protected_rectangles[i] = s->protected_rectangles_reconf[i];
-    }
+    s->protected_rectangles[s->num_rectangle].active = s->active;
+    s->protected_rectangles[s->num_rectangle].protection = s->protection;
+    s->protected_rectangles[s->num_rectangle].xini = s->xini;
+    s->protected_rectangles[s->num_rectangle].xfin = s->xfin;
+    s->protected_rectangles[s->num_rectangle].yini = s->yini;
+    s->protected_rectangles[s->num_rectangle].yfin = s->yfin;
+
+    //av_log(NULL, AV_LOG_INFO, "num_rectangle %d; active %d, protection %d; xini %d; xfin %d; yini %d; yfin %d\n", s->num_rectangle, s->protected_rectangles[s->num_rectangle].active , s->protected_rectangles[s->num_rectangle].protection, 
+    //    s->protected_rectangles[s->num_rectangle].xini, s->protected_rectangles[s->num_rectangle].xfin, s->protected_rectangles[s->num_rectangle].yini, s->protected_rectangles[s->num_rectangle].yfin);
+
+    //s->protected_rectangles[s->num_rectangle] = s->protected_rectangles_reconf[s->num_rectangle];
 
     if (s->pr_metrics_active != s->pr_metrics_active_reconf)
         s->pr_metrics_active = s->pr_metrics_active_reconf;
@@ -2538,7 +2562,7 @@ static void lhe_advanced_compute_perceptual_relevance (LheContext *s, uint8_t *c
                 if (s->protected_rectangles[i].active) {
                     if (xini_pr_block >= s->protected_rectangles[i].xini && xfin_pr_block < s->protected_rectangles[i].xfin 
                         && yini_pr_block >= s->protected_rectangles[i].yini && yfin_pr_block < s->protected_rectangles[i].yfin){
-                        if (s->protected_rectangles[i].protection == true) {
+                        if (s->protected_rectangles[i].protection == 1) {
                             proc->perceptual_relevance_x[block_y][block_x] = 1;
                             proc->perceptual_relevance_y[block_y][block_x] = 1;
                             modif = true;
@@ -3814,6 +3838,13 @@ static const AVOption options[] = {
     { "basic_lhe", "Basic LHE", OFFSET(basic_lhe), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, VE },
     { "ql", "Quality level from 0 to 99", OFFSET(ql_reconf), AV_OPT_TYPE_INT, { .i64 = 25 }, 0, 99, VE },
     { "gop", "GOP size from 0 to 32000", OFFSET(gop_reconf), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 32000, VE },
+    { "num_rectangle", "asdf", OFFSET(num_rectangle), AV_OPT_TYPE_INT, { .i64 = 4 }, 0, 4, VE },
+    { "active", "asdf", OFFSET(active), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 1, VE },
+    { "protection", "asdf", OFFSET(protection), AV_OPT_TYPE_INT, { .i64 = 1 }, 0, 1, VE },
+    { "xini", "asdf", OFFSET(xini), AV_OPT_TYPE_INT, { .i64 = 0 }, -100, 30000, VE },
+    { "xfin", "asdf", OFFSET(xfin), AV_OPT_TYPE_INT, { .i64 = 0 }, -100, 30000, VE },
+    { "yini", "asdf", OFFSET(yini), AV_OPT_TYPE_INT, { .i64 = 0 }, -100, 30000, VE },
+    { "yfin", "asdf", OFFSET(yfin), AV_OPT_TYPE_INT, { .i64 = 0 }, -100, 30000, VE },
     { "down_mode", "0 -> SPS, 1 -> AVG, 2 -> AVGY+SPSX", OFFSET(down_mode_reconf), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 2, VE },
     { NULL },
 };
