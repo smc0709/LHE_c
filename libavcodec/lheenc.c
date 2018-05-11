@@ -72,18 +72,19 @@ typedef struct LheContext {
     int yfin;
     uint16_t dif_frames_count;
     int skip_frames;
-    Prot_Rectangle protected_rectangles[MAX_RECTANGLES];
+    Rectangle protected_rectangles[MAX_RECTANGLES];
     uint8_t down_mode_p;
     int down_mode_reconf;
     bool color;
     bool pr_metrics_active;
     int ql_reconf;
     int skip_frames_reconf;
-    Prot_Rectangle protected_rectangles_reconf[MAX_RECTANGLES];
+    Rectangle protected_rectangles_reconf[MAX_RECTANGLES];
     uint8_t down_mode_p_reconf;
     bool color_reconf;
     bool pr_metrics_active_reconf;
     uint8_t gop_reconf;
+    int frame_count;
 } LheContext;
 
 uint8_t *intermediate_downsample_Y, *intermediate_downsample_U, *intermediate_downsample_V;
@@ -433,18 +434,8 @@ static av_cold int lhe_encode_init(AVCodecContext *avctx)
     //    s->protected_rectangles_reconf[i].active = 0;    
     //}
     s->pr_metrics_active_reconf = 0;
-    s->skip_frames_reconf = -1;
+    s->skip_frames = 0;
     //s->gop_reconf = -1;
-
-    //s->num_rectangle=1;
-    //s->active=0;
-    //s->protection=1;
-    //s->xini=1;
-    //s->xfin=2;
-    //s->yini=3;
-    //s->yfin=4;
-
-
 
     /*s->protected_rectangles_reconf[0].active = 1;
     s->protected_rectangles_reconf[0].xini = -50;
@@ -512,6 +503,8 @@ static av_cold int lhe_encode_init(AVCodecContext *avctx)
 
     s->dif_frames_count = s->gop_reconf;
 
+    s->frame_count = 0;
+
     microsec = 0;
     //num_bloques_nulos = 0;
 
@@ -549,8 +542,7 @@ static void mlhe_reconfig (AVCodecContext *avctx, LheContext *s)
 
     if (s->pr_metrics_active != s->pr_metrics_active_reconf)
         s->pr_metrics_active = s->pr_metrics_active_reconf;
-    if (s->skip_frames_reconf != -1 && s->skip_frames != s->skip_frames_reconf)
-        s->skip_frames = s->skip_frames_reconf;
+    s->skip_frames = s->skip_frames_reconf;
     if (s->gop_reconf != -1 && avctx->gop_size != s->gop_reconf)
         avctx->gop_size = s->gop_reconf;
 
@@ -3691,6 +3683,14 @@ static int mlhe_encode_video(AVCodecContext *avctx, AVPacket *pkt,
         
     gettimeofday(&before , NULL);
 
+    if (s->skip_frames > 0) {
+        s->frame_count++;
+        if (s->frame_count >= s->skip_frames) {
+            s->frame_count = 0;
+            return 0;
+        }
+    }
+
     image_size_Y = (&s->procY)->width * (&s->procY)->height;
     image_size_UV = (&s->procUV)->width * (&s->procUV)->height;
 
@@ -3837,7 +3837,7 @@ static const AVOption options[] = {
     { "pr_metrics", "Print PR metrics", OFFSET(pr_metrics), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, VE },
     { "basic_lhe", "Basic LHE", OFFSET(basic_lhe), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, VE },
     { "ql", "Quality level from 0 to 99", OFFSET(ql_reconf), AV_OPT_TYPE_INT, { .i64 = 25 }, 0, 99, VE },
-    { "gop", "GOP size from 0 to 32000", OFFSET(gop_reconf), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 32000, VE },
+    { "block_gop", "GOP size from 0 to 32000", OFFSET(gop_reconf), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 32000, VE },
     { "num_rectangle", "asdf", OFFSET(num_rectangle), AV_OPT_TYPE_INT, { .i64 = 4 }, 0, 4, VE },
     { "active", "asdf", OFFSET(active), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 1, VE },
     { "protection", "asdf", OFFSET(protection), AV_OPT_TYPE_INT, { .i64 = 1 }, 0, 1, VE },
@@ -3846,6 +3846,7 @@ static const AVOption options[] = {
     { "yini", "asdf", OFFSET(yini), AV_OPT_TYPE_INT, { .i64 = 0 }, -100, 30000, VE },
     { "yfin", "asdf", OFFSET(yfin), AV_OPT_TYPE_INT, { .i64 = 0 }, -100, 30000, VE },
     { "down_mode", "0 -> SPS, 1 -> AVG, 2 -> AVGY+SPSX", OFFSET(down_mode_reconf), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 2, VE },
+    { "skip_frames", "asdf", OFFSET(skip_frames_reconf), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 100, VE },
     { NULL },
 };
 
