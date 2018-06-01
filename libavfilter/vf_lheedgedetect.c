@@ -20,7 +20,7 @@
 
 /**
  * @file
- * Edge detection filter with LHE interpretation.
+ * Edge detection filter with LHE hop interpretation.
  */
 
 #include "libavutil/avassert.h"
@@ -32,6 +32,7 @@
 #include "libavcodec/avcodec.h"
 #include "libavcodec/lhe.h"
 #include "libavcodec/put_bits.h"
+//#include <stdio.h>
 
 static uint8_t *intermediate_downsample_Y, *intermediate_downsample_U, *intermediate_downsample_V;
 static double microsec;//, num_bloques_nulos;
@@ -41,7 +42,7 @@ static double microsec;//, num_bloques_nulos;
  * Adapts hop_1 value depending on last hops. It is used
  * in BASIC LHE and ADVANCED LHE
  */
-#define H1_ADAPTATION                                   \
+/*#define H1_ADAPTATION                                   \
     if (hop_number<=HOP_POS_1 && hop_number>=HOP_NEG_1) \
     {                                                   \
         small_hop=true;                                 \
@@ -60,7 +61,7 @@ static double microsec;//, num_bloques_nulos;
         hop_1=MAX_HOP_1;                                \
     }                                                   \
     last_small_hop=small_hop;
-
+*/
 
 /////// COPIED FROM LHEENC.C (move to lheenc.h?)
 /**
@@ -108,7 +109,11 @@ typedef struct LheEdgeDetectContext {
     const AVClass *class;
     LheContext *lhe_ctx; //The lhe context (definition copied from the lheenc.c)
     int  hop_threshold; // The minimum hop (absolute value) required to trigger the edge detection.
-    AVCodec *codec; // The codec used??? is this really needed?
+    char *codec_name; // The codec used
+    int gop_size; // The GOP size
+    int height;
+    int width;
+    bool basic_lhe;
 } LheEdgeDetectContext;
 
 
@@ -147,7 +152,7 @@ static int lhe_free_tables(LheEdgeDetectContext *led_ctx, AVFrame *in) // cambia
 
     av_free((&s->procUV)->basic_block);
 
-    if (strcmp((led_ctx->codec)->name, "lhe") == 0) {
+    if (strcmp(led_ctx->codec_name, "lhe") == 0) {
 
         if (s->basic_lhe == 0) {
             
@@ -190,7 +195,7 @@ static int lhe_free_tables(LheEdgeDetectContext *led_ctx, AVFrame *in) // cambia
 
         }
 
-    } else if (strcmp((led_ctx->codec)->name, "mlhe") == 0) {
+    } else if (strcmp(led_ctx->codec_name, "mlhe") == 0) {
 
         av_free((&s->lheY)->delta);
         av_free((&s->lheU)->delta);
@@ -304,7 +309,7 @@ static int lhe_alloc_tables(LheEdgeDetectContext *led_ctx, AVFrame *in) // cambi
         FF_ALLOC_ARRAY_OR_GOTO(s, (&s->procUV)->basic_block[i], total_blocks_width, sizeof(BasicLheBlock), fail);
     }
 
-    if (strcmp((led_ctx->codec)->name, "lhe") == 0) {
+    if (strcmp(led_ctx->codec_name, "lhe") == 0) {
 
         FF_ALLOC_ARRAY_OR_GOTO(s, (&s->lheY)->component_prediction, image_size_Y, sizeof(uint8_t), fail);
         FF_ALLOC_ARRAY_OR_GOTO(s, (&s->lheU)->component_prediction, image_size_UV, sizeof(uint8_t), fail);
@@ -351,7 +356,7 @@ static int lhe_alloc_tables(LheEdgeDetectContext *led_ctx, AVFrame *in) // cambi
 
         }
 
-    } else if (strcmp((led_ctx->codec)->name, "mlhe") == 0) {
+    } else if (strcmp(led_ctx->codec_name, "mlhe") == 0) {
         
         FF_ALLOC_ARRAY_OR_GOTO(s, (&s->lheY)->delta, image_size_Y, sizeof(uint8_t), fail);
         FF_ALLOC_ARRAY_OR_GOTO(s, (&s->lheU)->delta, image_size_UV, sizeof(uint8_t), fail);
@@ -439,7 +444,291 @@ static int lhe_alloc_tables(LheEdgeDetectContext *led_ctx, AVFrame *in) // cambi
         return AVERROR(ENOMEM);
 }
 
+/*
+/////// COPIED FROM LHEENC.C (move to lheenc.h?)
+static void mlhe_reconfig (LheEdgeDetectContext *led_ctx, AVFrame *in) // cambiados parametros (AVCodecContext *avctx, LheContext *s)
+{
+    if (s->ql_reconf != -1 && s->ql != s->ql_reconf)
+        s->ql = s->ql_reconf;
+    if (s->down_mode_reconf != -1 && s->down_mode != s->down_mode_reconf)
+        s->down_mode = s->down_mode_reconf;
+    if (s->down_mode_p_reconf != -1 && s->down_mode_p != s->down_mode_p_reconf)
+        s->down_mode_p = s->down_mode_p_reconf;
 
+    if (s->color_reconf != -1 && s->color != s->color_reconf)
+        s->color = s->color_reconf;
+
+    for (int i = 0; i < MAX_RECTANGLES; i++) {
+            s->protected_rectangles[i] = s->protected_rectangles_reconf[i];
+    }
+
+    if (s->pr_metrics_active != s->pr_metrics_active_reconf)
+        s->pr_metrics_active = s->pr_metrics_active_reconf;
+    if (s->skip_frames_reconf != -1 && s->skip_frames != s->skip_frames_reconf)
+        s->skip_frames = s->skip_frames_reconf;
+    if (s->gop_reconf != -1 && led_ctx->gop_size != s->gop_reconf)
+        led_ctx->gop_size = s->gop_reconf;
+
+}*/
+
+
+
+/////// COPIED FROM LHEENC.C (move to lheenc.h?)     NOTHING CHANGED
+static void lhe_advanced_encode_block2_sequential (LheBasicPrec *prec, LheProcessing *proc, LheImage *lhe, uint8_t *original_data,
+                                       int total_blocks_width, int block_x, int block_y, int lhe_type, int linesize)
+{
+
+    int h1, emin, error, dif_line, dif_pix, pix, pix_original_data, soft_counter, soft_threshold;
+    int oc, hop0, quantum, hop_value, hop_number, prev_color;
+    bool last_small_hop, small_hop, soft_mode;
+    int xini, xfin, yini, yfin, num_block, soft_h1, grad;
+    uint8_t *component_original_data, *component_prediction, *hops;
+    const int max_h1 = 10;
+    const int min_h1 = 4;
+    const int start_h1 = min_h1;//(max_h1+min_h1)/2;
+
+    //soft_counter = 0;
+    //soft_threshold = 8;
+    //soft_mode = false;
+    //soft_h1 = 2;
+    grad = 0;
+    
+    //gettimeofday(&before , NULL);
+    //for (int i = 0; i < 5000; i++){
+
+    xini = proc->basic_block[block_y][block_x].x_ini;
+    yini = proc->basic_block[block_y][block_x].y_ini;
+
+    if (lhe_type == DELTA_MLHE) {
+        xfin = proc->advanced_block[block_y][block_x].x_fin_downsampled;    
+        yfin = proc->advanced_block[block_y][block_x].y_fin_downsampled;
+        component_original_data = lhe->delta;
+        dif_line = proc->width - xfin + xini;
+        dif_pix = dif_line;
+        pix_original_data = yini*proc->width + xini;
+        pix = yini*proc->width + xini;
+    } else if (lhe_type == ADVANCED_LHE) {        
+        xfin = proc->advanced_block[block_y][block_x].x_fin_downsampled;    
+        yfin = proc->advanced_block[block_y][block_x].y_fin_downsampled;
+        component_original_data = lhe->downsampled_image;
+        dif_line = proc->width - xfin + xini;
+        dif_pix = dif_line;
+        pix_original_data = yini*proc->width + xini;
+        pix = yini*proc->width + xini;
+    } else { //BASIC_LHE
+        xfin = proc->basic_block[block_y][block_x].x_fin;
+        yfin = proc->basic_block[block_y][block_x].y_fin;
+        component_original_data = original_data;
+        dif_line = linesize - xfin + xini;
+        dif_pix = proc->width - xfin + xini;
+        pix_original_data = yini*linesize + xini;
+        pix = yini*proc->width + xini;
+    }
+
+    int ratioY = 1;
+    if (block_x > 0){
+        ratioY = 1000*(proc->advanced_block[block_y][block_x-1].y_fin_downsampled - proc->basic_block[block_y][block_x-1].y_ini)/(yfin - yini);
+    }
+
+    int ratioX = 1;
+    if (block_y > 0){
+        ratioX = 1000*(proc->advanced_block[block_y-1][block_x].x_fin_downsampled - proc->basic_block[block_y-1][block_x].x_ini)/(xfin - xini);
+    }
+
+    component_prediction = lhe->component_prediction;
+    hops = lhe->hops;
+    h1 = start_h1;
+    last_small_hop = true;//true; //last hop was small
+    small_hop = false;//true;//current hop is small
+    emin = 255;//error min
+    error = 0;//computed error
+    hop0 = 0; //prediction
+    hop_value = 0;//data from cache
+    hop_number = 4;// final assigned hop
+    num_block = block_y * total_blocks_width + block_x;
+    //if (block_x > 0 && block_y > 0) oc = (component_prediction[yini*proc->width+proc->advanced_block[block_y][block_x-1].x_fin_downsampled-1]+component_prediction[(proc->advanced_block[block_y-1][block_x].y_fin_downsampled-1)*proc->width+xini])/2;///Habria que tener tambien en cuenta el superior derecho(mejora)
+    oc = component_original_data[pix_original_data];//original color
+    //av_log(NULL,AV_LOG_INFO, "num_block: %d, first_color_block: %d\n", num_block, oc);
+    if (num_block == 0) lhe->first_color_block[num_block]=oc;
+    if (block_x == 0 && block_y == 0) prev_color = oc;
+    else if (block_x == 0) prev_color = component_prediction[(proc->advanced_block[block_y-1][block_x].y_fin_downsampled-1)*proc->width+xini];
+    else if (block_y == 0) prev_color = component_prediction[yini*proc->width + proc->advanced_block[block_y][block_x-1].x_fin_downsampled-1];
+    else prev_color = (component_prediction[yini*proc->width + proc->advanced_block[block_y][block_x-1].x_fin_downsampled-1]+component_prediction[(proc->advanced_block[block_y-1][block_x].y_fin_downsampled-1)*proc->width+xini])/2;
+    quantum = oc; //final quantum asigned value
+   
+    //bool nulos = true;
+
+    for (int y = yini; y < yfin; y++) {
+        int y_prev = ((y-yini)*ratioY/1000)+yini;
+        for (int x=xini;x<xfin;x++) {
+            int x_prev = ((x-xini)*ratioX/1000)+xini;
+            // --------------------- PHASE 1: PREDICTION-------------------------------
+            oc=component_original_data[pix_original_data];//original color
+            if (y>yini && x>xini && x<(xfin-1)) { //Interior del bloque
+                hop0=(prev_color+component_prediction[pix-proc->width+1])>>1;
+            } else if (x==xini && y>yini) { //Lateral izquierdo
+                if (x > 0) hop0=(component_prediction[y_prev*proc->width + proc->advanced_block[block_y][block_x-1].x_fin_downsampled-1]+component_prediction[pix-proc->width+1])/2;
+                else hop0=component_prediction[pix-proc->width];
+                last_small_hop = true;
+                h1 = start_h1;
+                //soft_counter = 0;
+                //soft_mode = true;
+            } else if (y == yini) { //Lateral superior y pixel inicial
+                //hop0=prev_color;
+                if (y >0 && x != xini) hop0=(prev_color + component_prediction[(proc->advanced_block[block_y-1][block_x].y_fin_downsampled-1)*proc->width+x_prev])/2;
+                else hop0=prev_color;
+                //if (y > 0) av_log (NULL, AV_LOG_INFO, "pix %d, pred_lum %d, delta_pred pix-1: %d, delta_pred anterior: %d\n", pix, hop0, prev_color, component_prediction[(proc->advanced_block[block_y-1][block_x].y_fin_downsampled-1)*proc->width+x_prev]);
+            } else { //Lateral derecho
+                hop0=(prev_color+component_prediction[pix-proc->width])>>1;
+            }
+
+            if (lhe_type != DELTA_MLHE)
+            {
+                hop0 = hop0 + grad;
+                if (hop0 > 255) hop0 = 255;
+                else if (hop0 < 0) hop0 = 0;
+            }
+            
+            //-------------------------PHASE 2: HOPS COMPUTATION-------------------------------
+            hop_number = 4;// prediction corresponds with hop_number=4
+            quantum = hop0;//this is the initial predicted quantum, the value of prediction
+            small_hop = true;//i supossed initially that hop will be small (3,4,5)
+            emin = oc-hop0 ; 
+            if (emin<0) emin=-emin;//minimum error achieved
+            if (emin>h1/2) { //only enter in computation if emin>threshold
+                //positive hops
+                if (oc>hop0) {
+                    //case hop0 (most frequent)
+                    if ((quantum +h1)>255) goto phase3;
+                    //case hop1 (frequent)
+                    error=emin-h1;
+                    if (error<0) error=-error;
+                    if (error<emin){
+                        hop_number=5;
+                        emin=error;
+                        quantum+=h1;
+                        //f (emin<4) goto phase3;
+                    } else goto phase3;
+                    // case hops 6 to 8 (less frequent)
+                    //if (soft_mode) h1 = min_h1;
+                    for (int i=3;i<6;i++){
+                        //cache de 5KB simetrica
+                        //if (!lineal_mode) 
+                        hop_value=255-prec->cache_hops[255-hop0][h1-4][5-i];//indexes are 2 to 0
+                        //else hop_value = hop0+2*(i-1);
+                        //if (hop_value>255) hop_value=255;
+
+                        error=oc-hop_value;
+                        if (error<0) error=-error;
+                        if (error<emin){
+                            hop_number=i+3;
+                            emin=error;
+                            quantum=hop_value;
+                            //if (emin<4) break;// go to phase 3
+                        } else break;
+                    }
+                }
+                //negative hops
+                else {
+                    //case hop0 (most frequent)
+                    if ((quantum - h1)<0)    goto phase3;
+                    //case hop1 (frequent)
+                    error=emin-h1;
+                    if (error<0) error=-error;
+                    if (error<emin) {
+                        hop_number=3;
+                        emin=error;
+                        quantum-=h1;
+                        //if (emin<4) goto phase3;
+                    } else goto phase3;
+                    // case hops 2 to 0 (less frequent)
+                    //if (soft_mode) h1 = min_h1;
+                    for (int i=2;i>=0;i--) {
+                       // if (!lineal_mode)
+                        hop_value=prec->cache_hops[hop0][h1-4][i];//indexes are 2 to 0
+                        //else hop_value = hop0 - 2*(4-i);
+                        //if (hop_value<0) hop_value=0;
+                        error=hop_value-oc;
+                        if (error<0) error=-error;
+                        if (error<emin) {
+                            hop_number=i;
+                            emin=error;
+                            quantum=hop_value;
+                            //if (emin<4) break;// go to phase 3
+                        } else break;
+                    }
+                }
+            }//endif emin
+            //if (soft_mode) h1 = soft_h1;
+            //------------- PHASE 3: assignment of final quantized value --------------------------
+            phase3:    
+            component_prediction[pix]=quantum;
+            prev_color=quantum;
+            hops[pix]=hop_number;
+
+            //tunning grad for next pixel
+            //if (hop_number != 4){
+                
+            //}
+
+            //------------- PHASE 4: h1 logic  --------------------------
+            if (hop_number>5 || hop_number<3) small_hop=false; //true by default
+            //if(!soft_mode){
+                //if (hop_number>5 || hop_number<3) small_hop=false; //true by default
+            if (small_hop==true && last_small_hop==true) {
+                if (h1>min_h1) h1--;
+            } else {
+                h1=max_h1;
+            }
+            //}
+            //h1=2;
+            last_small_hop=small_hop;
+
+            if (hop_number == 5) grad = 1;
+            else if (hop_number == 3) grad = -1;
+            else if (!small_hop) grad = 0;
+
+            //Soft mode logic
+            
+
+
+            /*
+            if (soft_mode && !small_hop) {
+                soft_counter = 0;
+                soft_mode = false;
+                h1 = max_h1;
+            } else if (!soft_mode) {
+                if (small_hop) {
+                    soft_counter++;
+                    if (soft_counter == soft_threshold) {
+                        //oft_mode = true;
+                        h1 = soft_h1;
+                    }
+                } else {
+                    soft_counter = 0;
+                }
+            }*/
+
+
+
+
+            pix++;
+            pix_original_data++;
+        }
+        pix+=dif_pix;
+        pix_original_data+=dif_line;
+    }
+
+    //if ((&proc->advanced_block[block_y][block_x])->hop_counter[4] == (xfin-xini)*(yfin-yini)) (&proc->advanced_block[block_y][block_x])->empty_flag = 1;
+    //else (&proc->advanced_block[block_y][block_x])->empty_flag = 0;
+    //return nulos;
+    /*
+    }
+
+    gettimeofday(&after , NULL);
+    microsec += (time_diff(before , after))/5000;
+    */
+}
 
 /////// END OF COPIED FUNCTIONS FROM LHEENC.C ////////
 
@@ -450,7 +739,8 @@ static int lhe_alloc_tables(LheEdgeDetectContext *led_ctx, AVFrame *in) // cambi
 #define FLAGS AV_OPT_FLAG_FILTERING_PARAM|AV_OPT_FLAG_VIDEO_PARAM
 static const AVOption lheedgedetect_options[] = {
 	// SYNTAX: {name, description, offset, type, default_value, min, max, flags},
-	{"hop_threshold", "sets the hop threshold", OFFSET(hop_threshold), AV_OPT_TYPE_INT, {.i64=3}, 0, 4, FLAGS},
+	{"hopth", "sets the hop threshold", OFFSET(hop_threshold), AV_OPT_TYPE_INT, {.i64=3}, 0, 4, FLAGS}, // defaul th is 3
+    {"basic", "enables the basic mode", OFFSET(basic_lhe), AV_OPT_TYPE_BOOL, {.i64=1}, 0, 1, FLAGS}, // basic lhe is ON by default
 	{ NULL }
 };
 
@@ -460,6 +750,7 @@ static av_cold int init(AVFilterContext *ctx)
 {
 	LheEdgeDetectContext *led_ctx = ctx->priv;
 	led_ctx->lhe_ctx = av_calloc(1, sizeof(LheContext));
+    led_ctx->codec_name = av_calloc(32, sizeof(char));
 
 	return 0;
 }
@@ -482,17 +773,58 @@ static int query_formats(AVFilterContext *ctx)
 	return ff_set_common_formats(ctx, fmts_list);
 }
 
-/*static int config_props(AVFilterLink *inlink)
+static int config_props(AVFilterLink *inlink)
 {
 	AVFilterContext *ctx = inlink->dst;
 	LheEdgeDetectContext *led_ctx = ctx->priv;
+    LheContext *lhe_ctx = led_ctx->lhe_ctx;
+    led_ctx->height = inlink->h;
+    led_ctx->width = inlink->w;
+    strcpy(led_ctx->codec_name, "lhe");
+    lhe_ctx->basic_lhe = led_ctx->basic_lhe;
 
 	return 0;
 }
-*/
+
+
+static void set_edges(LheEdgeDetectContext *led_ctx, AVFrame *out){
+    int x, y, pix;
+    uint8_t *hops;
+    LheContext *lhe_ctx = led_ctx->lhe_ctx;
+    hops = (lhe_ctx->lheY).hops;
+
+    for (y = 0; y < led_ctx->height; y++) {
+        for (x = 0; x < led_ctx->width; x++) {
+            pix = x + y * out->linesize[0];
+            if (hops[pix] < led_ctx->hop_threshold || hops[pix] > 8-led_ctx->hop_threshold) {
+                out->data[0][pix] = 0xFF;
+                out->data[1][pix] = 0x80;
+                out->data[2][pix] = 0x80;
+            } else {
+                out->data[0][pix] = 0x00;
+                out->data[1][pix] = 0x80;
+                out->data[2][pix] = 0x80;
+            }
+        }
+    }
+
+    // PINTA TODO NEGRO
+    /*
+    for (y = 0; y < led_ctx->height; y++) {
+        for (x = 0; x < led_ctx->width; x++) {
+            offset = x + y * out->linesize[0];
+
+            out->data[0][offset] = 0x00;
+            out->data[1][offset] = 0x80;
+            out->data[2][offset] = 0x80;
+        }
+    }*/
+
+}
 
 static void config_ctx(LheEdgeDetectContext *led_ctx, AVFrame *in){ //// cambiados parametros (AVCodecContext avctx)
-	LheContext *s = led_ctx->lhe_ctx;
+	
+    LheContext *s = led_ctx->lhe_ctx;
 	
 	//s->ql_reconf = -1;
     s->down_mode_reconf = -1;
@@ -501,6 +833,7 @@ static void config_ctx(LheEdgeDetectContext *led_ctx, AVFrame *in){ //// cambiad
     for (int i = 0; i < MAX_RECTANGLES; i++){
         s->protected_rectangles_reconf[i].active = false;    
     }
+
     s->pr_metrics_active_reconf = false;
     s->skip_frames_reconf = -1;
     //s->gop_reconf = -1;
@@ -590,7 +923,6 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
 
 	config_ctx(led_ctx, in);
 
-
 	// Check if AVFrame parameter is writable.
 		// If it is, configs the next part to edit it
 		// If not, reserves space for an equal size one
@@ -613,9 +945,75 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
 
 
 
+////////////////////////*********************************////////////////////////
+//  AVCodecContext *avctx,     AVPacket *pkt,     const AVFrame *frame,      int *got_packet)
+
+    uint8_t *component_original_data_Y, *component_original_data_U, *component_original_data_V;
+    uint32_t total_blocks_width, total_blocks_height, pixels_block;
+    uint32_t image_size_Y, image_size_UV;
+    
+    uint8_t mode; 
+    int ret;   
+
+    //gettimeofday(&before , NULL);
+
+    LheContext *s = led_ctx->lhe_ctx;
+
+    image_size_Y = (&s->procY)->width * (&s->procY)->height;
+    image_size_UV = (&s->procUV)->width * (&s->procUV)->height;
+    total_blocks_width = HORIZONTAL_BLOCKS;
+    pixels_block = in->width / HORIZONTAL_BLOCKS;
+    total_blocks_height = in->height / pixels_block;
+
+    
+    //Pointers to different color components
+    component_original_data_Y = in->data[0];
+    component_original_data_U = in->data[1];
+    component_original_data_V = in->data[2];
+
+    //mlhe_reconfig(avctx, s);
+
+    //s->basic_lhe=1; // basic lhe
+    if (s->basic_lhe) {  
+        //BASIC LHE
+        mode = BASIC_LHE;
+        total_blocks_height = 1;
+        total_blocks_width = 1;
+
+        //Calculate the coordinates for 1 block
+        lhe_calculate_block_coordinates (&s->procY, &s->procUV, 1, 1, 0, 0);
+        
+        // Borders are detected on luminance only
+        lhe_advanced_encode_block2_sequential (&s->prec, &s->procY, &s->lheY, component_original_data_Y, 1, 0,  0, BASIC_LHE, in->linesize[0]); 
+        //static void lhe_advanced_encode_block2_sequential (LheBasicPrec *prec, LheProcessing *proc, LheImage *lhe, uint8_t *original_data, int total_blocks_width, int block_x, int block_y, int lhe_type, int linesize)
+
+    } /*else {   
+        mode = ADVANCED_LHE;
+        //for (int i = 0; i < 1000; i++){
+        lhe_advanced_encode (s, in, component_original_data_Y, component_original_data_U, component_original_data_V,
+                                total_blocks_width, total_blocks_height);
+        //}         
+    }*/
 
 
 
+
+//////////////////******************************************/////////////////////
+    //printf("%d\n", inlink->h);
+    //printf("%d\n", inlink->w);
+    //printf("%d\n", out->data[0][0]);
+    set_edges(led_ctx, out);
+    /*int x, y, offset;
+    for (y = 0; y < inlink->h; y++) {
+        for (x = 0; x < inlink->w; x++) {
+            offset = 3 * x + y * inlink->w;
+
+            out->data[0][offset + 0] = 0xFF; // Y
+            out->data[0][offset + 1] = 0xFF; // U
+            out->data[0][offset + 2] = 0xFF; // V
+            
+        }
+    } */
 
 	// Outputs the processed frame to the next filter
 	if (!direct) //only frees input if it is not the output
@@ -635,7 +1033,7 @@ static const AVFilterPad lheedgedetect_inputs[] = {
 	{
 		.name         = "default",
 		.type         = AVMEDIA_TYPE_VIDEO,
-		//.config_props = config_props,
+		.config_props = config_props,
 		.filter_frame = filter_frame,
 	},
 	{ NULL }
@@ -651,7 +1049,7 @@ static const AVFilterPad lheedgedetect_outputs[] = {
 
 AVFilter ff_vf_lheedgedetect = {
 	.name          = "lheedgedetect",
-	.description   = NULL_IF_CONFIG_SMALL("Detect and draw edges with LHE kernel."),
+	.description   = NULL_IF_CONFIG_SMALL("Detect and draw edges with LHE hop interpretation."),
 	.priv_size     = sizeof(LheEdgeDetectContext),
 	.init          = init,
 	.uninit        = uninit,
