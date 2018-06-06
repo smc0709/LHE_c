@@ -32,7 +32,8 @@
 #include "libavcodec/avcodec.h"
 #include "libavcodec/lhe.h"
 #include "libavcodec/put_bits.h"
-//#include <stdio.h>
+#include <stdio.h>
+#include <math.h>
 
 static uint8_t *intermediate_downsample_Y, *intermediate_downsample_U, *intermediate_downsample_V;
 static double microsec;//, num_bloques_nulos;
@@ -114,6 +115,7 @@ typedef struct LheEdgeDetectContext {
     int height;
     int width;
     bool basic_lhe;
+    bool absolute_hop; // Whether the hops are or not fully interpreted or just their absolute value
 } LheEdgeDetectContext;
 
 
@@ -478,10 +480,10 @@ static void lhe_advanced_encode_block2_sequential (LheBasicPrec *prec, LheProces
                                        int total_blocks_width, int block_x, int block_y, int lhe_type, int linesize)
 {
 
-    int h1, emin, error, dif_line, dif_pix, pix, pix_original_data, soft_counter, soft_threshold;
+    int h1, emin, error, dif_line, dif_pix, pix, pix_original_data/*, soft_counter, soft_threshold*/;
     int oc, hop0, quantum, hop_value, hop_number, prev_color;
-    bool last_small_hop, small_hop, soft_mode;
-    int xini, xfin, yini, yfin, num_block, soft_h1, grad;
+    bool last_small_hop, small_hop/*, soft_mode*/;
+    int xini, xfin, yini, yfin, num_block, /*soft_h1,*/ grad;
     uint8_t *component_original_data, *component_prediction, *hops;
     const int max_h1 = 10;
     const int min_h1 = 4;
@@ -739,8 +741,9 @@ static void lhe_advanced_encode_block2_sequential (LheBasicPrec *prec, LheProces
 #define FLAGS AV_OPT_FLAG_FILTERING_PARAM|AV_OPT_FLAG_VIDEO_PARAM
 static const AVOption lheedgedetect_options[] = {
 	// SYNTAX: {name, description, offset, type, default_value, min, max, flags},
-	{"hopth", "sets the hop threshold", OFFSET(hop_threshold), AV_OPT_TYPE_INT, {.i64=3}, 0, 4, FLAGS}, // defaul th is 3
+	{"hopth", "sets the hop threshold", OFFSET(hop_threshold), AV_OPT_TYPE_INT, {.i64=1}, 1, 4, FLAGS}, // default threshold is 1. Note that 1 gives all the hops greyscale and 4 a plain grey/black
     {"basic", "enables the basic mode", OFFSET(basic_lhe), AV_OPT_TYPE_BOOL, {.i64=1}, 0, 1, FLAGS}, // basic lhe is ON by default
+    {"abshop", "only absolute value of hops is interpreted", OFFSET(absolute_hop), AV_OPT_TYPE_BOOL, {.i64=0}, 0, 1, FLAGS}, // only absolute value of hops is interpreted OFF by default
 	{ NULL }
 };
 
@@ -757,7 +760,6 @@ static av_cold int init(AVFilterContext *ctx)
 
 static int query_formats(AVFilterContext *ctx)
 {
-	//const LheEdgeDetectContext *led_ctx = ctx->priv;
 
 	AVFilterFormats *fmts_list;
 	const enum AVPixelFormat *pix_fmts = (const enum AVPixelFormat[]){
@@ -788,27 +790,44 @@ static int config_props(AVFilterLink *inlink)
 
 
 static void set_edges(LheEdgeDetectContext *led_ctx, AVFrame *out){
-    int x, y, pix;
+    int x, y, pix, k, hop_threshold;
     uint8_t *hops;
+    uint8_t hop, bg_color;
+    bool negative_hop;
     LheContext *lhe_ctx = led_ctx->lhe_ctx;
     hops = (lhe_ctx->lheY).hops;
+    hop_threshold = led_ctx->hop_threshold;
 
     for (y = 0; y < led_ctx->height; y++) {
         for (x = 0; x < led_ctx->width; x++) {
             pix = x + y * out->linesize[0];
-            if (hops[pix] < led_ctx->hop_threshold || hops[pix] > 8-led_ctx->hop_threshold) {
-                out->data[0][pix] = 0xFF;
-                out->data[1][pix] = 0x80;
-                out->data[2][pix] = 0x80;
-            } else {
-                out->data[0][pix] = 0x00;
-                out->data[1][pix] = 0x80;
-                out->data[2][pix] = 0x80;
+            if (led_ctx->absolute_hop){
+                k=63;
+                bg_color=0x00;
+                negative_hop=0;
+                hop = (uint8_t) abs(((int8_t)hops[pix])-4);
+                if (hop<hop_threshold) hop=0;
+            }else{ // hop has sign
+                k=31;
+                bg_color=0x80;
+                hop = (uint8_t) abs(((int8_t)hops[pix])-4);
+                if (hop<hop_threshold) hop=0;
+                if (((int8_t)hops[pix])-4 < 0) negative_hop=1;
+                else negative_hop=0;
             }
+
+            if (negative_hop){
+                out->data[0][pix] = bg_color - hop*k; // Y
+            } else{
+                out->data[0][pix] = bg_color + hop*k; // Y
+            }
+            out->data[1][pix] = 0x80; // Cr
+            out->data[2][pix] = 0x80; // Cb
+
         }
     }
 
-    // PINTA TODO NEGRO
+    // PAINTS ALL BLACK
     /*
     for (y = 0; y < led_ctx->height; y++) {
         for (x = 0; x < led_ctx->width; x++) {
@@ -921,8 +940,6 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
 	LheEdgeDetectContext *led_ctx = ctx->priv;
 	AVFilterLink *outlink = ctx->outputs[0];
 
-	config_ctx(led_ctx, in);
-
 	// Check if AVFrame parameter is writable.
 		// If it is, configs the next part to edit it
 		// If not, reserves space for an equal size one
@@ -939,13 +956,10 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
 		av_frame_copy_props(out, in);
 	}
 
+    config_ctx(led_ctx, out);
+
+
 	///// THE PROCESSING ITSELF /////
-	// out->data[...] = foobar(in->data[...])
-	//LheContext *s = led_ctx->lhe_ctx;
-
-
-
-////////////////////////*********************************////////////////////////
 //  AVCodecContext *avctx,     AVPacket *pkt,     const AVFrame *frame,      int *got_packet)
 
     uint8_t *component_original_data_Y, *component_original_data_U, *component_original_data_V;
@@ -953,7 +967,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
     uint32_t image_size_Y, image_size_UV;
     
     uint8_t mode; 
-    int ret;   
+    //int ret;   
 
     //gettimeofday(&before , NULL);
 
@@ -973,7 +987,6 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
 
     //mlhe_reconfig(avctx, s);
 
-    //s->basic_lhe=1; // basic lhe
     if (s->basic_lhe) {  
         //BASIC LHE
         mode = BASIC_LHE;
@@ -995,25 +1008,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
         //}         
     }*/
 
-
-
-
-//////////////////******************************************/////////////////////
-    //printf("%d\n", inlink->h);
-    //printf("%d\n", inlink->w);
-    //printf("%d\n", out->data[0][0]);
     set_edges(led_ctx, out);
-    /*int x, y, offset;
-    for (y = 0; y < inlink->h; y++) {
-        for (x = 0; x < inlink->w; x++) {
-            offset = 3 * x + y * inlink->w;
-
-            out->data[0][offset + 0] = 0xFF; // Y
-            out->data[0][offset + 1] = 0xFF; // U
-            out->data[0][offset + 2] = 0xFF; // V
-            
-        }
-    } */
 
 	// Outputs the processed frame to the next filter
 	if (!direct) //only frees input if it is not the output
@@ -1024,8 +1019,10 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
 static av_cold void uninit(AVFilterContext *ctx)
 {
     LheEdgeDetectContext *led_ctx = ctx->priv;
+    //faltaría hacer un lhe_free_tables()  ???
     av_free(led_ctx->lhe_ctx);
-    av_free(led_ctx);
+    //av_free(led_ctx); // uninit() does not need to deallocate ctx->priv itself
+    //avfilter_unref_buffer();
 }
 
 
