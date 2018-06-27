@@ -29,11 +29,18 @@ if (hop<=HOP_POS_1 && hop>=HOP_NEG_1)                   \
     }                                                   \
     last_small_hop=small_hop;
     
-    
+// SSS: struct LheEdgeDetectContext
+typedef struct LheEdgeDetectContext {
+    //const AVClass *class;
+    int  hop_threshold; // The minimum hop (absolute value) required to trigger the edge detection.
+    bool absolute_hop; // Whether the hops are or not fully interpreted or just their absolute value
+} LheEdgeDetectContext;
+
+ 
 typedef struct LheState {
     AVClass *class;  
     LheBasicPrec prec;
-    AVFrame * frame;
+    AVFrame *frame;
     GetBitContext gb;
     LheProcessing procY;
     LheProcessing procUV;
@@ -48,7 +55,73 @@ typedef struct LheState {
     uint32_t total_blocks_width;
     uint32_t total_blocks_height;
     uint64_t global_frames_count;
+    ///SSS
+    char *filter;
+    //bool filter;
+    LheEdgeDetectContext led_ctx;
+    //LHESelectiveKernelContext lsk_ctx
 } LheState;
+
+// SSS funcion set_edges()
+static void set_edges(LheState *lhe_ctx, AVFrame *out){
+    int x, y, pix, k, hop_threshold;
+    uint8_t *hops;
+    uint8_t hop, bg_color;
+    bool negative_hop;
+    uint32_t width, height;
+    LheEdgeDetectContext *led_ctx;
+
+    led_ctx = &lhe_ctx->led_ctx;
+    hops = (lhe_ctx->lheY).hops; //es lo mismo que:    (&lhe_ctx->lheY)->hops
+    hop_threshold = led_ctx->hop_threshold;
+
+    width = (lhe_ctx->procY).width;
+    height = (lhe_ctx->procY).height;
+
+    // DETECTS BORDERS
+    
+    for (y = 0; y < height; y++) {
+        for (x = 0; x < width; x++) {
+            pix = x + y * out->linesize[0];
+            if (led_ctx->absolute_hop){     //hop treated as absolute value
+                k=63;
+                bg_color=0x00;
+                hop = (uint8_t) abs(((int8_t)hops[pix])-4);
+                if (hop<hop_threshold) hop=0;
+                negative_hop=0;
+            }else{                          // hop treated with sign
+                k=31;
+                bg_color=0x80;
+                hop = (uint8_t) abs(((int8_t)hops[pix])-4);
+                if (hop<hop_threshold) hop=0;
+                if (((int8_t)hops[pix])-4 < 0) negative_hop=1;
+                else negative_hop=0;
+            }
+
+            if (negative_hop){
+                out->data[0][pix] = bg_color - hop*k; // Y
+            } else{
+                out->data[0][pix] = bg_color + hop*k; // Y
+            }
+            out->data[1][pix] = 0x80; // Cr
+            out->data[2][pix] = 0x80; // Cb
+        }
+    }
+
+    // PAINTS ALL BLACK - just for testing
+    /*
+    int offset;
+    for (y = 0; y < height; y++) {
+        //av_log(NULL, AV_LOG_INFO, "\nLinea nueva: %i", y);
+        for (x = 0; x < width; x++) {
+            offset = x + y * out->linesize[0];
+            //av_log(NULL, AV_LOG_INFO, "%i,", x);
+            out->data[0][offset] = 0x00;
+            out->data[1][offset] = 0x80;
+            out->data[2][offset] = 0x80;
+        }
+    }*/
+}
 
 uint8_t *intermediate_interpolated_Y, *intermediate_interpolated_U, *intermediate_interpolated_V;
 uint8_t *delta_prediction_Y_dec, *delta_prediction_U_dec, *delta_prediction_V_dec;
@@ -75,13 +148,13 @@ static void lhe_init_pixel_format (AVCodecContext *avctx, LheState *s)
         s->chroma_factor_width = 1;
         s->chroma_factor_height = 1;
     } else
-    {
-        avctx->pix_fmt = AV_PIX_FMT_YUV420P;
-        avctx->width = 1280;//512;
-        avctx->height = 720;//384;
-        av_log(NULL, AV_LOG_INFO, "Pix fmt 420 con el else\n");
-        s->chroma_factor_width = 2;
-        s->chroma_factor_height = 2;
+    {   // SSS
+        avctx->pix_fmt = AV_PIX_FMT_YUV444P; //AV_PIX_FMT_YUV420P;
+        avctx->width = 256; //1280;//512;  //introducir los valores de alto y ancho manualmente
+        avctx->height = 256; //720;//384;
+        av_log(NULL, AV_LOG_INFO, "Pix fmt 444 con el else\n"); //"Pix fmt 420 con el else\n");
+        s->chroma_factor_width = 1; //2;
+        s->chroma_factor_height = 1; //2;
     }
 }
 
@@ -2511,17 +2584,30 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
         (&s->procUV)->num_hopsU = image_size_UV;
         (&s->procUV)->num_hopsV = image_size_UV;
         lhe_advanced_read_file_symbols2 (s, &s->procY, (&s->lheY)->hops, 0, s->total_blocks_height, 1, BASIC_LHE, 0);
-        lhe_advanced_read_file_symbols2 (s, &s->procUV, (&s->lheU)->hops, 0, s->total_blocks_height, 1, BASIC_LHE, 1);            
-        lhe_advanced_read_file_symbols2 (s, &s->procUV, (&s->lheV)->hops, 0, s->total_blocks_height, 1, BASIC_LHE, 2);
-        
-        lhe_basic_decode_frame_sequential (s);    
-    
+        av_log(NULL, AV_LOG_INFO, "PASA POR AQUI FUERA\n");
+
+        // SSS: añadir if-else y llamada a set_edges().  Faltaría ver como va el selective kernel
+        av_log(NULL, AV_LOG_INFO, "%s\n", s->filter);
+        if (!strcmp(s->filter, "edgedetect")){
+            set_edges(s, s->frame); // interprets hops as luminance and writes it in the frame
+            av_log(NULL, AV_LOG_INFO, "PASA POR EL IF\n");
+        }else if (!strcmp(s->filter, "none")){
+            av_log(NULL, AV_LOG_INFO, "PASA POR EL ELSE\n");
+            lhe_advanced_read_file_symbols2 (s, &s->procUV, (&s->lheU)->hops, 0, s->total_blocks_height, 1, BASIC_LHE, 1);
+            lhe_advanced_read_file_symbols2 (s, &s->procUV, (&s->lheV)->hops, 0, s->total_blocks_height, 1, BASIC_LHE, 2);
+            
+            lhe_basic_decode_frame_sequential (s);
+        }
     }
-
-    if ((ret = av_frame_ref(data, s->frame)) < 0)
+    av_log(NULL, AV_LOG_INFO, "justo antes del ret=av_frame_ref\n");
+    av_log(NULL, AV_LOG_INFO, "data: %p, s->frame: %p\n", data, s->frame);
+    if ((ret = av_frame_ref(data, s->frame)) < 0){
+        av_log(NULL, AV_LOG_INFO, "ERROR: %i\n", ret);
         return ret;
-    *got_frame = 1;
+    }
+    av_log(NULL, AV_LOG_INFO, "justo antes del got_frame\n");
 
+    *got_frame = 1;
 
     return avpkt->size;//Hay que devolver el numero de bytes leidos (puede ser la solución a la doble ejecución del decoder).
 }
@@ -2697,13 +2783,13 @@ static int mlhe_decode_video(AVCodecContext *avctx, void *data, int *got_frame, 
         memcpy((&s->procUV)->last_advanced_block[i], (&s->procUV)->advanced_block[i], sizeof(AdvancedLheBlock) * (s->total_blocks_width));
     }   
     
-    memcpy ((&s->lheY)->last_downsampled_image, (&s->lheY)->downsampled_image, image_size_Y);    
+    memcpy ((&s->lheY)->last_downsampled_image, (&s->lheY)->downsampled_image, image_size_Y);
     memcpy ((&s->lheU)->last_downsampled_image, (&s->lheU)->downsampled_image, image_size_UV);
     memcpy ((&s->lheV)->last_downsampled_image, (&s->lheV)->downsampled_image, image_size_UV);
     
     memset((&s->lheY)->downsampled_image, 0, image_size_Y);
     memset((&s->lheU)->downsampled_image, 0, image_size_UV);
-    memset((&s->lheV)->downsampled_image, 0, image_size_UV);     
+    memset((&s->lheV)->downsampled_image, 0, image_size_UV);
     
     if ((ret = av_frame_ref(data, s->frame)) < 0) 
         return ret;
@@ -2724,9 +2810,34 @@ static av_cold int lhe_decode_close(AVCodecContext *avctx)
     return 0;
 }
 
+
+//SSS OFFSET functions and AVOptions
+#define VD AV_OPT_FLAG_VIDEO_PARAM | AV_OPT_FLAG_DECODING_PARAM
+#define OFFSET(x) offsetof(LheState, x)
+#define OFFSET_ED(x) offsetof(LheEdgeDetectContext, x) + OFFSET(led_ctx)
+//#define OFFSET_SK(x) offsetof(LHESelectiveKernelContext, x) + OFFSET(led_ctx)
+
+static const AVOption options[] = {
+    // SYNTAX: {name, description, offset, type, default_value, min, max},
+    {"filter", "sets a filter type (none by default)", OFFSET(filter), AV_OPT_TYPE_STRING, {.str="none"}, 0, 0, VD}, // (default) "none", "edgedetect", "selectivekernel" 
+    //{"filter", "sets if the filter is applied (0 by default)", OFFSET(filter), AV_OPT_TYPE_BOOL, {.i64=1}, 0, 1, VD}, // (default) "none", "edgedetect", "selectivekernel" 
+
+
+    // LHE Edge Detection options    
+    {"hopth", "sets the hop threshold", OFFSET_ED(hop_threshold), AV_OPT_TYPE_INT, {.i64=1}, 1, 4, VD}, // default threshold is 1. Note that 1 gives all the hops greyscale and 4 a plain grey/black
+    //{"basic", "enables the basic mode", OFFSET_ED(basic_lhe), AV_OPT_TYPE_BOOL, {.i64=1}, 0, 1, VD}, // basic lhe is ON by default
+    {"abshop", "only absolute value of hops is interpreted", OFFSET_ED(absolute_hop), AV_OPT_TYPE_BOOL, {.i64=0}, 0, 1, VD}, // only absolute value of hops is interpreted. OFF by default
+
+    // LHE Selective Kernel options
+    // ...
+    { NULL },
+};
+
+
 static const AVClass decoder_class = {
     .class_name = "lhe decoder",
     .item_name  = av_default_item_name,
+    .option     = options, //SSS lhe_options
     .version    = LIBAVUTIL_VERSION_INT,
     .category   = AV_CLASS_CATEGORY_DECODER,
 };
