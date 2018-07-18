@@ -7,6 +7,8 @@
 #include "internal.h"
 #include "lhe.h"
 #include "unistd.h"
+// SSS include "libavutil/avstring.h"
+#include "libavutil/avstring.h"
 
 
 #define H1_ADAPTATION                                   \
@@ -31,12 +33,19 @@ if (hop<=HOP_POS_1 && hop>=HOP_NEG_1)                   \
     
 // SSS: struct LheEdgeDetectContext
 typedef struct LheEdgeDetectContext {
-    //const AVClass *class;
     int  hop_threshold; // The minimum hop (absolute value) required to trigger the edge detection.
-    bool absolute_hop; // Whether the hops are or not fully interpreted or just their absolute value
+    bool absolute_hop; // Whether the hops are or not fully interpreted or just their absolute value.
 } LheEdgeDetectContext;
 
- 
+// SSS: struct LheSelectiveKernelContext
+typedef struct LheSelectiveKernelContext {
+    //char *predefined;     // A predefined convolutional filter name.
+    char *kernel_str;       // The 3x3 matrix kernel: 9 integers (space separated). Default (identity): "0 0 0 0 1 0 0 0 0"
+    int kernel[9];          // The 3x3 matrix kernel. Default (identity): [0 0 0 0 1 0 0 0 0]
+    char *selection_str;    // To which hop (h-4, h-3, ... h+4) kernel is applied. Space separated booleans. Default (all): "1 1 1 1 1 1 1 1 1"
+    bool selection[9];      // To which hop (h-4, h-3, ... h+4) kernel is applied. Default (all): [1 1 1 1 1 1 1 1 1"]
+} LheSelectiveKernelContext;
+
 typedef struct LheState {
     AVClass *class;  
     LheBasicPrec prec;
@@ -55,15 +64,14 @@ typedef struct LheState {
     uint32_t total_blocks_width;
     uint32_t total_blocks_height;
     uint64_t global_frames_count;
-    ///SSS
+    ///SSS campos: filter, led_ctx, lsk_ctx
     char *filter;
-    //bool filter;
     LheEdgeDetectContext led_ctx;
-    //LHESelectiveKernelContext lsk_ctx
+    LheSelectiveKernelContext lsk_ctx
 } LheState;
 
-// SSS funcion set_edges()
-static void set_edges(LheState *lhe_ctx, AVFrame *out){
+// SSS funcion detect_edges()
+static void detect_edges(LheState *lhe_ctx, AVFrame *out){
     int x, y, pix, k, hop_threshold;
     uint8_t *hops;
     uint8_t hop, bg_color;
@@ -78,8 +86,7 @@ static void set_edges(LheState *lhe_ctx, AVFrame *out){
     width = (lhe_ctx->procY).width;
     height = (lhe_ctx->procY).height;
 
-    // DETECTS BORDERS
-    
+    // PRINTS THE HOPS IN GRAYSCALE
     for (y = 0; y < height; y++) {
         for (x = 0; x < width; x++) {
             pix = x + y * out->linesize[0];
@@ -99,12 +106,12 @@ static void set_edges(LheState *lhe_ctx, AVFrame *out){
             }
 
             if (negative_hop){
-                out->data[0][pix] = bg_color - hop*k; // Y
+                out->data[0][pix] = bg_color - hop*k; // Y channel
             } else{
-                out->data[0][pix] = bg_color + hop*k; // Y
+                out->data[0][pix] = bg_color + hop*k; // Y channel
             }
-            out->data[1][pix] = 0x80; // Cr
-            out->data[2][pix] = 0x80; // Cb
+            out->data[1][pix] = 0x80; // Cr channel
+            out->data[2][pix] = 0x80; // Cb channel
         }
     }
 
@@ -122,6 +129,158 @@ static void set_edges(LheState *lhe_ctx, AVFrame *out){
         }
     }*/
 }
+
+// SSS funcion de inicializacion del selective kernel
+static void selective_kernel_init(LheState *lhe_ctx, LheSelectiveKernelContext *lsk_ctx, AVFrame *input, uint8_t *output[3]){
+    //av_log(NULL, AV_LOG_INFO, "Inicia selective_kernel_init\n");
+
+    int i;
+    char *p, *token, *av_saveptr = NULL;
+    p = lsk_ctx->kernel_str;
+
+    // PARSE KERNEL INPUT
+    for (i = 0; i < 9; i++) {
+        if (!(token = av_strtok(p, " ", &av_saveptr)))
+            break;
+        p = NULL;
+        sscanf(token, "%d", &lsk_ctx->kernel[i]);
+    }
+
+    token, av_saveptr = NULL;
+    p = lsk_ctx->selection_str;
+
+    // PARSE HOP SELECTION INPUT
+    for (i = 0; i < 9; i++) {
+        if (!(token = av_strtok(p, " ", &av_saveptr)))
+            break;
+        p = NULL;
+        sscanf(token, "%d", &lsk_ctx->selection[i]);
+    }
+    
+    // SHOW INFO - comment this part to avoid logs
+    av_log(NULL, AV_LOG_INFO, "\nThe kernel in use is:\n");
+    int j;
+    for (i = 0; i < 3; i++) {
+        for (j = 0; j < 3; j++) {
+            av_log(NULL, AV_LOG_INFO, "%d\t", lsk_ctx->kernel[i*3+j]);
+        }
+        av_log(NULL, AV_LOG_INFO, "\n");
+    }
+    av_log(NULL, AV_LOG_INFO, "\nThe selected hops are the following:\t");
+    for (i = 0; i < 9; i++) {
+        if (lsk_ctx->selection[i]){
+            av_log(NULL, AV_LOG_INFO, "h%d  ", i-4);
+        }
+    }
+    av_log(NULL, AV_LOG_INFO, "\n\n");
+
+
+    // OUTPUT DATA MEMORY RESERVATION AND INITIALIZATION
+    for (i = 0; i < 3; ++i) {
+        output[i] = (uint8_t *)malloc(lhe_ctx->frame->width * lhe_ctx->frame->height * sizeof(uint8_t));
+    }
+
+    int y, x, pix, plane;
+    for (plane = 0; plane < 3; plane++){
+        for (y = 0; y < (lhe_ctx->procY).height; y++) {
+            for (x = 0; x < (lhe_ctx->procY).width; x++) {
+                pix = x + y * input->linesize[0];
+                output[plane][pix] = (input->data)[plane][pix];
+            }
+        }
+    }
+
+    //av_log(NULL, AV_LOG_INFO, "Acaba selective_kernel_init\n");
+}
+
+// SSS funcion apply_kernel
+static void apply_kernel(int pix, uint32_t width, uint32_t height, int kernel[9], AVFrame *in, uint8_t *out[3]){
+    //av_log(NULL, AV_LOG_INFO, "Inicia apply_kernel, pix = %d\n", pix);
+
+    int i, j, plane, ij_pix, kernel_sum, kernel_index, conv[3];
+
+    kernel_sum = 0;
+    for (plane = 0; plane < 3; ++plane){
+        conv[plane]=0;
+        // i, j: relative coordinates with respect to pix
+        for (i = -1; i < 2; ++i){       //scanline++
+            for (j = -1; j < 2; ++j){   //pixel++
+                if (!(  (j==-1 && pix%width==0)         ||
+                        (i==-1 && pix < width)          ||
+                        (j==1 && pix%width==(width-1))  ||
+                        (i==1 && pix > height*width-1)  )){ // only if the pixel does not go out of the borders
+                    
+                    kernel_index = (j+1) + 3*(i+1);
+                    ij_pix = pix + i*width +j;
+
+                    if (plane==0) {
+                        kernel_sum += kernel[kernel_index];
+                    } 
+                    conv[plane] += ((int)(in->data[plane][ij_pix])) * ((int)kernel[kernel_index]);
+                }
+            }
+        }
+        out[plane][pix] = (uint8_t) (conv[plane] / kernel_sum);
+    }
+
+    //av_log(NULL, AV_LOG_INFO, "Acaba apply_kernel\n");
+}
+
+// SSS function selective_kernel()
+static void selective_kernel(LheState *lhe_ctx, AVFrame *in, uint8_t *out[3]){
+    //av_log(NULL, AV_LOG_INFO, "Inicia selective_kernel\n");
+
+    int x, y, pix;
+    uint8_t *hops;
+    uint8_t hop, bg_color;
+    uint32_t width, height;
+    LheSelectiveKernelContext *lsk_ctx;
+
+    lsk_ctx = &lhe_ctx->lsk_ctx;
+    hops = (lhe_ctx->lheY).hops; //es lo mismo que:    (&lhe_ctx->lheY)->hops
+
+    width = (lhe_ctx->procY).width;
+    height = (lhe_ctx->procY).height;
+
+    // SEARCHES FOR SELECTED HOPS AND APPLIES THE KERNEL
+    for (y = 0; y < height; y++) {
+        for (x = 0; x < width; x++) {
+            pix = x + y * in->linesize[0];
+            if (lsk_ctx->selection[hops[pix]]){
+                apply_kernel(pix, width, height, lsk_ctx->kernel, in, out);
+            }
+        }
+    }
+
+    //av_log(NULL, AV_LOG_INFO, "Acaba selective_kernel\n");
+}
+
+// SSS selective_kernel_uninit
+static void selective_kernel_uninit(LheState *lhe_ctx,/*LheSelectiveKernelContext *lsk_ctx, */AVFrame *input, uint8_t *output[3]){
+    //av_log(NULL, AV_LOG_INFO, "Inicia selective_kernel_uninit\n");
+    
+    int i, y, x, pix, plane;
+
+    // OVERWRITE THE ORIGINAL DATA WITH THE MODIFIED ONE
+    for (plane = 0; plane < 3; plane++){
+        for (y = 0; y < (lhe_ctx->procY).height; y++) {
+            for (x = 0; x < (lhe_ctx->procY).width; x++) {
+                pix = x + y * input->linesize[0];
+                if (output[plane][pix]!=0)
+                    (input->data)[plane][pix] = output[plane][pix];
+            }
+        }
+    }
+
+    // FREE
+    for (i = 0; i < 3; ++i) {
+        av_free(output[i]);
+    }
+
+    //av_log(NULL, AV_LOG_INFO, "Acaba selective_kernel_uninit\n");
+}
+
+
 
 uint8_t *intermediate_interpolated_Y, *intermediate_interpolated_U, *intermediate_interpolated_V;
 uint8_t *delta_prediction_Y_dec, *delta_prediction_U_dec, *delta_prediction_V_dec;
@@ -2584,28 +2743,34 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
         (&s->procUV)->num_hopsU = image_size_UV;
         (&s->procUV)->num_hopsV = image_size_UV;
         lhe_advanced_read_file_symbols2 (s, &s->procY, (&s->lheY)->hops, 0, s->total_blocks_height, 1, BASIC_LHE, 0);
-        av_log(NULL, AV_LOG_INFO, "PASA POR AQUI FUERA\n");
 
-        // SSS: añadir if-else y llamada a set_edges().  Faltaría ver como va el selective kernel
+        // SSS: añadir if-else y llamadas a detect_edges() y selective_kernel()
         av_log(NULL, AV_LOG_INFO, "%s\n", s->filter);
         if (!strcmp(s->filter, "edgedetect")){
-            set_edges(s, s->frame); // interprets hops as luminance and writes it in the frame
-            av_log(NULL, AV_LOG_INFO, "PASA POR EL IF\n");
-        }else if (!strcmp(s->filter, "none")){
-            av_log(NULL, AV_LOG_INFO, "PASA POR EL ELSE\n");
+            av_log(NULL, AV_LOG_INFO, "Using edgedetect filter\n");
+            detect_edges(s, s->frame); // interprets hops as luminance and writes it in the frame
+        }else {
             lhe_advanced_read_file_symbols2 (s, &s->procUV, (&s->lheU)->hops, 0, s->total_blocks_height, 1, BASIC_LHE, 1);
             lhe_advanced_read_file_symbols2 (s, &s->procUV, (&s->lheV)->hops, 0, s->total_blocks_height, 1, BASIC_LHE, 2);
             
             lhe_basic_decode_frame_sequential (s);
         }
+
+        if (!strcmp(s->filter, "selectivekernel")){
+            av_log(NULL, AV_LOG_INFO, "Using selectivekernel filter\n");
+            uint8_t * output[3];
+            selective_kernel_init(s, &(s->lsk_ctx), s->frame, output);
+            selective_kernel(s, s->frame, output); // applies the kernel selectively in function of the hops and writes it in the frame
+            selective_kernel_uninit(s, s->frame, output);
+        }
     }
-    av_log(NULL, AV_LOG_INFO, "justo antes del ret=av_frame_ref\n");
-    av_log(NULL, AV_LOG_INFO, "data: %p, s->frame: %p\n", data, s->frame);
+    //av_log(NULL, AV_LOG_INFO, "justo antes del ret=av_frame_ref\n");
+    //av_log(NULL, AV_LOG_INFO, "data: %p, s->frame: %p\n", data, s->frame);
     if ((ret = av_frame_ref(data, s->frame)) < 0){
-        av_log(NULL, AV_LOG_INFO, "ERROR: %i\n", ret);
+        //av_log(NULL, AV_LOG_INFO, "ERROR: %i\n", ret);
         return ret;
     }
-    av_log(NULL, AV_LOG_INFO, "justo antes del got_frame\n");
+    //av_log(NULL, AV_LOG_INFO, "justo antes del got_frame\n");
 
     *got_frame = 1;
 
@@ -2815,21 +2980,21 @@ static av_cold int lhe_decode_close(AVCodecContext *avctx)
 #define VD AV_OPT_FLAG_VIDEO_PARAM | AV_OPT_FLAG_DECODING_PARAM
 #define OFFSET(x) offsetof(LheState, x)
 #define OFFSET_ED(x) offsetof(LheEdgeDetectContext, x) + OFFSET(led_ctx)
-//#define OFFSET_SK(x) offsetof(LHESelectiveKernelContext, x) + OFFSET(led_ctx)
+#define OFFSET_SK(x) offsetof(LheSelectiveKernelContext, x) + OFFSET(lsk_ctx)
 
 static const AVOption options[] = {
     // SYNTAX: {name, description, offset, type, default_value, min, max},
-    {"filter", "sets a filter type (none by default)", OFFSET(filter), AV_OPT_TYPE_STRING, {.str="none"}, 0, 0, VD}, // (default) "none", "edgedetect", "selectivekernel" 
-    //{"filter", "sets if the filter is applied (0 by default)", OFFSET(filter), AV_OPT_TYPE_BOOL, {.i64=1}, 0, 1, VD}, // (default) "none", "edgedetect", "selectivekernel" 
-
+    {"filter",  "sets a filter type (none by default)", OFFSET(filter), AV_OPT_TYPE_STRING, {.str="none"}, 0, 0, VD}, // (default) "none", "edgedetect", "selectivekernel" 
 
     // LHE Edge Detection options    
-    {"hopth", "sets the hop threshold", OFFSET_ED(hop_threshold), AV_OPT_TYPE_INT, {.i64=1}, 1, 4, VD}, // default threshold is 1. Note that 1 gives all the hops greyscale and 4 a plain grey/black
-    //{"basic", "enables the basic mode", OFFSET_ED(basic_lhe), AV_OPT_TYPE_BOOL, {.i64=1}, 0, 1, VD}, // basic lhe is ON by default
-    {"abshop", "only absolute value of hops is interpreted", OFFSET_ED(absolute_hop), AV_OPT_TYPE_BOOL, {.i64=0}, 0, 1, VD}, // only absolute value of hops is interpreted. OFF by default
+    //{"basic", "enables the basic mode",                     OFFSET_ED(basic_lhe),     AV_OPT_TYPE_BOOL, {.i64=1}, 0, 1, VD}, // basic lhe is ON by default
+    {"hopth",   "sets the hop threshold",                     OFFSET_ED(hop_threshold), AV_OPT_TYPE_INT,  {.i64=1}, 1, 4, VD}, // default threshold is 1. Note that 1 gives all the hops greyscale and 4 a plain grey/black
+    {"abshop",  "only absolute value of hops is interpreted", OFFSET_ED(absolute_hop),  AV_OPT_TYPE_BOOL, {.i64=0}, 0, 1, VD}, // only absolute value of hops is interpreted. OFF by default
 
     // LHE Selective Kernel options
-    // ...
+    //{"predefined", "Use a predefined kernel (identity)", OFFSET_SK(predefined), AV_OPT_TYPE_STRING, {.str=""}, 0, 0, VD}, // A predefined convolutional filter (ignores other parameters when used)
+    {"kernel",     "the 3x3 matrix kernel: 9 ints (space separated)", OFFSET_SK(kernel_str), AV_OPT_TYPE_STRING, {.str="0 0 0 0 1 0 0 0 0"}, 0, 0, VD}, // The 3x3 kernel (9 space separated floats)
+    {"selection",  "to which hop (h-4, h-3, ... h+4) kernel is applied", OFFSET_SK(selection_str), AV_OPT_TYPE_STRING, {.str="1 1 1 1 1 1 1 1 1"}, 0, 0, VD}, //Select the hops h-4, h-3, h-2, ... h+3, h+4 to be affected by the kernel. Input space separated booleans
     { NULL },
 };
 
