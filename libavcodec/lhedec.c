@@ -136,6 +136,10 @@ static void detect_edges(LheState *lhe_ctx, AVFrame *out){
     }*/
 }
 
+// SSS the lsk filtered output
+uint8_t *output;
+
+
 // SSS funcion de inicializacion del selective kernel
 /**
  * Parses the String inputs to arrays and allocates memory for the output and initializates it.
@@ -143,9 +147,9 @@ static void detect_edges(LheState *lhe_ctx, AVFrame *out){
  * @param *lhe_ctx      - The LHE State
  * @param *lsk_ctx      - The selective kernel filtering contex
  * @param *input        - The AVFrame with the original data and properties
- * @param *output[3]    - The pointer to save the filtered data planes
+ * @param *output       - The pointer to save the filtered data plane
  */
-static void selective_kernel_init(LheState *lhe_ctx, LheSelectiveKernelContext *lsk_ctx, AVFrame *input, uint8_t *output[3]){
+static void selective_kernel_init(LheState *lhe_ctx, LheSelectiveKernelContext *lsk_ctx, AVFrame *input/*, uint8_t *output*/){
     //av_log(NULL, AV_LOG_INFO, "Inicia selective_kernel_init\n");
 
     int i;
@@ -192,40 +196,36 @@ static void selective_kernel_init(LheState *lhe_ctx, LheSelectiveKernelContext *
 
 
     // OUTPUT DATA MEMORY ALLOCATION AND INITIALIZATION
-    for (i = 0; i < 3; ++i) {
-        output[i] = (uint8_t *)malloc(lhe_ctx->frame->width * lhe_ctx->frame->height * sizeof(uint8_t));
-    }
+    //av_log(NULL, AV_LOG_INFO, "lhe_ctx->frame->width * lhe_ctx->frame->height = %d * %d = %d\n", lhe_ctx->frame->width, lhe_ctx->frame->height, lhe_ctx->frame->width * lhe_ctx->frame->height);
+    output = (uint8_t *)av_malloc(lhe_ctx->frame->width * lhe_ctx->frame->height * sizeof(uint8_t));
 
-    int y, x, pix, plane;
+    int y, x, pix;
 
     if (lsk_ctx->greyscale) {
         for (y = 0; y < (lhe_ctx->procY).height; y++) {
             for (x = 0; x < (lhe_ctx->procY).width; x++) {
                 pix = x + y * input->linesize[0];
-                output[0][pix] = (input->data)[0][pix];
-                output[1][pix] = 0x80;
-                output[2][pix] = 0x80;
+                output[pix] = (input->data)[0][pix];
+                (input->data)[1][pix] = 0x80;
+                (input->data)[2][pix] = 0x80;
             }
         }
     } else {
-        for (plane = 0; plane < 3; plane++){
-            for (y = 0; y < (lhe_ctx->procY).height; y++) {
-                for (x = 0; x < (lhe_ctx->procY).width; x++) {
-                    pix = x + y * input->linesize[0];
-                    output[plane][pix] = (input->data)[plane][pix];
-                }
+        for (y = 0; y < (lhe_ctx->procY).height; y++) {
+            for (x = 0; x < (lhe_ctx->procY).width; x++) {
+                pix = x + y * input->linesize[0];
+                output[pix] = (input->data)[0][pix];
             }
         }
     }
-
 
     //av_log(NULL, AV_LOG_INFO, "Acaba selective_kernel_init\n");
 }
 
 
 // SSS max and min functions
-#define max(x,y) ((x) >= (y)) ? (x) : (y)
-#define min(x,y) ((x) <= (y)) ? (x) : (y)
+//#define max(x,y) ((x) >= (y)) ? (x) : (y)
+//#define min(x,y) ((x) <= (y)) ? (x) : (y)
 
 
 // SSS funcion apply_kernel
@@ -238,10 +238,10 @@ static void selective_kernel_init(LheState *lhe_ctx, LheSelectiveKernelContext *
  * @param kernel[9]     - The kernel to apply
  * @param kernel_sum    - The sum of the elements of the kernel
  * @param *input        - The original image
- * @param *output[3]    - The pointer to save the filtered data planes
+ * @param *output       - The pointer to save the filtered data plane
  */
 static void apply_kernel(const int pix, const uint32_t width, const uint32_t height, const int kernel[9], \
-                         const int kernel_sum, const AVFrame *input, uint8_t *output[3]){
+                         const int kernel_sum, const AVFrame *input/*, uint8_t *output*/){
     //av_log(NULL, AV_LOG_INFO, "Inicia apply_kernel, pix = %d\n", pix);
 
     int i, j, ij_pix, kernel_index;
@@ -258,16 +258,18 @@ static void apply_kernel(const int pix, const uint32_t width, const uint32_t hei
                 
                 kernel_index = (j+1) + 3*(i+1);
                 ij_pix = pix + i*width +j;
-
+                //av_log(NULL, AV_LOG_INFO, "ij_pix= %d\n", ij_pix);
                 conv += ((int)(input->data[0][ij_pix])) * ((int)kernel[kernel_index]);
             }
         }
     }
-
+    //av_log(NULL, AV_LOG_INFO, "MEDIO   kernel_sum= %d\n", kernel_sum);
     if (kernel_sum){ // kernel_sum != 0
-        output[0][pix] = (uint8_t) min(255, max(0, conv / kernel_sum));
+        //av_log(NULL, AV_LOG_INFO, "kernel_sum!=0\n");
+        output[pix] = (uint8_t) min(255, max(0, conv / kernel_sum));
     } else {
-        output[0][pix] = (uint8_t) min(255, max(0, conv));
+        //av_log(NULL, AV_LOG_INFO, "kernel_sum==0\n");
+        output[pix] = (uint8_t) min(255, max(0, conv));
     }
 
     //av_log(NULL, AV_LOG_INFO, "Acaba apply_kernel\n");
@@ -279,14 +281,13 @@ static void apply_kernel(const int pix, const uint32_t width, const uint32_t hei
  * 
  * @param *lhe_ctx      - The LHE State
  * @param *input        - The AVFrame with the original data and properties
- * @param *output[3]    - The pointer to save the filtered data planes
+ * @param *output       - The pointer to save the filtered data plane
  */
-static void selective_kernel(LheState *lhe_ctx, AVFrame *input, uint8_t *output[3]){
+static void selective_kernel(LheState *lhe_ctx, AVFrame *input/*, uint8_t *output*/){
     //av_log(NULL, AV_LOG_INFO, "Inicia selective_kernel\n");
 
     int x, y, pix, kernel_sum;
     uint8_t *hops;
-    uint8_t hop, bg_color;
     uint32_t width, height;
     LheSelectiveKernelContext *lsk_ctx;
 
@@ -307,7 +308,7 @@ static void selective_kernel(LheState *lhe_ctx, AVFrame *input, uint8_t *output[
         for (x = 0; x < width; x++) {
             pix = x + y * input->linesize[0];
             if (lsk_ctx->selection[hops[pix]]){
-                apply_kernel(pix, width, height, lsk_ctx->kernel, kernel_sum, input, output);
+                apply_kernel(pix, width, height, lsk_ctx->kernel, kernel_sum, input/*, output*/);
                 n_pix_proc++;
             }
         }
@@ -323,28 +324,24 @@ static void selective_kernel(LheState *lhe_ctx, AVFrame *input, uint8_t *output[
  * 
  * @param *lhe_ctx      - The LHE State
  * @param *input        - The AVFrame with the original data and properties
- * @param *output[3]    - The pointer to save the filtered data planes
+ * @param *output       - The pointer to save the filtered data plane
  */
-static void selective_kernel_uninit(LheState *lhe_ctx, AVFrame *input, uint8_t *output[3]){
+static void selective_kernel_uninit(LheState *lhe_ctx, AVFrame *input/*, uint8_t *output*/){
     //av_log(NULL, AV_LOG_INFO, "Inicia selective_kernel_uninit\n");
     
-    int i, y, x, pix, plane;
+    int i, y, x, pix;
 
     // OVERWRITE THE ORIGINAL DATA WITH THE MODIFIED ONE
-    for (plane = 0; plane < 3; plane++){
-        for (y = 0; y < (lhe_ctx->procY).height; y++) {
-            for (x = 0; x < (lhe_ctx->procY).width; x++) {
-                pix = x + y * input->linesize[0];
-                (input->data)[plane][pix] = output[plane][pix];
-            }
+    for (y = 0; y < (lhe_ctx->procY).height; y++) {
+        for (x = 0; x < (lhe_ctx->procY).width; x++) {
+            pix = x + y * input->linesize[0];
+            (input->data)[0][pix] = output[pix];
         }
     }
 
     // FREE
-    for (i = 0; i < 3; ++i) {
-        av_free(output[i]);
-    }
-
+    av_free(output);
+    
     //av_log(NULL, AV_LOG_INFO, "Acaba selective_kernel_uninit\n");
 }
 
@@ -1415,11 +1412,14 @@ static void lhe_basic_decode_frame_sequential (LheState *s)
     //Luminance
     lhe_basic_decode_one_hop_per_pixel(prec, procY, lheY, frame->linesize[0]);
 
-    //Chrominance U
-    lhe_basic_decode_one_hop_per_pixel(prec, procUV, lheU, frame->linesize[1]);
+    // SSS: hacer solo si no es selectivekernel o si es selectivekernel sin greyscale activo
+    if (strcmp(s->filter, "selectivekernel") || (!strcmp(s->filter, "selectivekernel") && !((s->lsk_ctx).greyscale))) {
+        //Chrominance U
+        lhe_basic_decode_one_hop_per_pixel(prec, procUV, lheU, frame->linesize[1]);
 
-    //Chrominance V
-    lhe_basic_decode_one_hop_per_pixel(prec, procUV, lheV, frame->linesize[2]);
+        //Chrominance V
+        lhe_basic_decode_one_hop_per_pixel(prec, procUV, lheV, frame->linesize[2]);
+    }
 }
 
 /**
@@ -2817,19 +2817,21 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
         if (!strcmp(s->filter, "edgedetect")){
             av_log(NULL, AV_LOG_INFO, "Using edgedetect filter\n");
             detect_edges(s, s->frame); // interprets hops as luminance and writes it in the frame
-        }else {
-            lhe_advanced_read_file_symbols2 (s, &s->procUV, (&s->lheU)->hops, 0, s->total_blocks_height, 1, BASIC_LHE, 1);
-            lhe_advanced_read_file_symbols2 (s, &s->procUV, (&s->lheV)->hops, 0, s->total_blocks_height, 1, BASIC_LHE, 2);
-            
-            lhe_basic_decode_frame_sequential (s);
+        }else{
+            if (!(strcmp(s->filter, "none")) || (!strcmp(s->filter, "selectivekernel") && !((s->lsk_ctx).greyscale))) {
+
+                lhe_advanced_read_file_symbols2 (s, &s->procUV, (&s->lheU)->hops, 0, s->total_blocks_height, 1, BASIC_LHE, 1);
+                lhe_advanced_read_file_symbols2 (s, &s->procUV, (&s->lheV)->hops, 0, s->total_blocks_height, 1, BASIC_LHE, 2);
+            }
+            lhe_basic_decode_frame_sequential (s);////////aqui hacer solo Y si es grayscale
         }
 
-        if (!strcmp(s->filter, "selectivekernel")){
+        if (!strcmp(s->filter, "selectivekernel")) {
             av_log(NULL, AV_LOG_INFO, "Using selectivekernel filter\n");
-            uint8_t * output[3];
-            selective_kernel_init(s, &(s->lsk_ctx), s->frame, output);
-            selective_kernel(s, s->frame, output); // applies the kernel selectively in function of the hops and writes it in the frame
-            selective_kernel_uninit(s, s->frame, output);
+            //uint8_t *output;
+            selective_kernel_init(s, &(s->lsk_ctx), s->frame/*, output*/);
+            selective_kernel(s, s->frame/*, output*/); // applies the kernel selectively in function of the hops and writes it in the frame
+            selective_kernel_uninit(s, s->frame/*, output*/);
         }
     }
 
