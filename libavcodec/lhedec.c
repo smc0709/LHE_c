@@ -223,11 +223,6 @@ static void selective_kernel_init(LheState *lhe_ctx, LheSelectiveKernelContext *
 }
 
 
-// SSS max and min functions
-//#define max(x,y) ((x) >= (y)) ? (x) : (y)
-//#define min(x,y) ((x) <= (y)) ? (x) : (y)
-
-
 // SSS funcion apply_kernel
 /**
  * Applies the kernel to the pixel given and stores the result in the output data pointer.
@@ -251,15 +246,42 @@ static void apply_kernel(const int pix, const uint32_t width, const uint32_t hei
     // i, j: relative coordinates with respect to pix
     for (i = -1; i < 2; ++i){       //scanline++
         for (j = -1; j < 2; ++j){   //pixel++
+            kernel_index = (j+1) + 3*(i+1);
+
+            // This "if" makes the kernel have a crop bahaviour for the edge-handling (skips out of border pixels)
             if (!(  (j==-1 && pix%width==0)             ||
                     (i==-1 && pix < width)              ||
                     (j==1 && pix%width==(width-1))      ||
-                    (i==1 && pix >= (height-1)*width)   )) { // only if the pixel does not go out of the borders
+                    (i==1 && pix >= (height-1)*width)   )) {
                 
-                kernel_index = (j+1) + 3*(i+1);
                 ij_pix = pix + i*width +j;
                 //av_log(NULL, AV_LOG_INFO, "ij_pix= %d\n", ij_pix);
                 conv += ((int)(input->data[0][ij_pix])) * ((int)kernel[kernel_index]);
+
+            } else {    // This else takes into account all the out of bounds pixels with an extend behaviour for the edge-handling
+                if (i==-1 && pix < width) {                                                     // Extended upper border
+                    if (pix==0 && j==-1) {                                                          // Extended top left corner
+                        conv += ((int)(input->data[0][pix])) * ((int)kernel[kernel_index]);
+                    } else if (pix==width-1 && j==1) {                                              // Extended top right corner
+                        conv += ((int)(input->data[0][pix])) * ((int)kernel[kernel_index]);
+                    } else {                                                                        // Extended upper border without corners
+                        conv += ((int)(input->data[0][pix+j])) * ((int)kernel[kernel_index]);
+                    }
+                } else if (i==1 && pix >= (height-1)*width) {                                   // Extended lower border
+                    if (pix==(height-1)*width && j==-1) {                                           // Extended bottom left corner
+                        conv += ((int)(input->data[0][pix])) * ((int)kernel[kernel_index]);
+                    } else if (pix==height*width-1 && j==1) {                                       // Extended bottom right corner
+                        conv += ((int)(input->data[0][pix])) * ((int)kernel[kernel_index]);
+                    } else {                                                                        // Extended lower border without corners
+                        conv += ((int)(input->data[0][pix+j])) * ((int)kernel[kernel_index]);
+                    }
+                } else if (pix%width==0 && j==-1) {                                             // Extended left border (without corners)
+                    conv += ((int)(input->data[0][pix+width*i])) * ((int)kernel[kernel_index]);
+                } else if (pix%width==(width-1) && j==1) {                                      // Extended right border (without corners)
+                    conv += ((int)(input->data[0][pix+width*i])) * ((int)kernel[kernel_index]);
+                } else {
+                    av_log(NULL, AV_LOG_INFO, "\nERROR applying kernel to the image. pix: %d\ti: %d\tj: %d\n\n", pix, i, j);
+                }
             }
         }
     }
