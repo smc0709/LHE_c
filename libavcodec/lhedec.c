@@ -70,304 +70,6 @@ typedef struct LheState {
     LheSelectiveKernelContext lsk_ctx
 } LheState;
 
-// SSS funcion detect_edges()
-/**
- * Interprets hops as luminances, which gives the edges appearance of the original image.
- * 
- * @param *lhe_ctx  - The LHE State
- * @param *out      - The frame that will be displayed with the edges of the original image
- */
-static void detect_edges(LheState *lhe_ctx, AVFrame *out){
-    int x, y, pix, k, hop_threshold;
-    uint8_t *hops;
-    uint8_t hop, bg_color;
-    bool negative_hop;
-    uint32_t width, height;
-    LheEdgeDetectContext *led_ctx;
-
-    led_ctx = &lhe_ctx->led_ctx;
-    hops = (lhe_ctx->lheY).hops; //es lo mismo que:    (&lhe_ctx->lheY)->hops
-    hop_threshold = led_ctx->hop_threshold;
-
-    width = (lhe_ctx->procY).width;
-    height = (lhe_ctx->procY).height;
-
-    // PRINTS THE HOPS IN GREYSCALE
-    for (y = 0; y < height; y++) {
-        for (x = 0; x < width; x++) {
-            pix = x + y * out->linesize[0];
-            if (led_ctx->absolute_hop){     //hop treated as absolute value
-                k=63;
-                bg_color=0x00;
-                hop = (uint8_t) abs(((int8_t)hops[pix])-4);
-                if (hop<hop_threshold) hop=0;
-                negative_hop=0;
-            }else{                          // hop treated with sign
-                k=31;
-                bg_color=0x80;
-                hop = (uint8_t) abs(((int8_t)hops[pix])-4);
-                if (hop<hop_threshold) hop=0;
-                if (((int8_t)hops[pix])-4 < 0) negative_hop=1;
-                else negative_hop=0;
-            }
-
-            if (negative_hop){
-                out->data[0][pix] = bg_color - hop*k; // Y channel
-            } else{
-                out->data[0][pix] = bg_color + hop*k; // Y channel
-            }
-            out->data[1][pix] = 0x80; // Cr channel
-            out->data[2][pix] = 0x80; // Cb channel
-        }
-    }
-
-    // PAINTS ALL BLACK - just for testing
-    /*
-    int offset;
-    for (y = 0; y < height; y++) {
-        //av_log(NULL, AV_LOG_INFO, "\nLinea nueva: %i", y);
-        for (x = 0; x < width; x++) {
-            offset = x + y * out->linesize[0];
-            //av_log(NULL, AV_LOG_INFO, "%i,", x);
-            out->data[0][offset] = 0x00;
-            out->data[1][offset] = 0x80;
-            out->data[2][offset] = 0x80;
-        }
-    }*/
-}
-
-// SSS the lsk filtered output
-uint8_t *output;
-
-
-// SSS funcion de inicializacion del selective kernel
-/**
- * Parses the String inputs to arrays and allocates memory for the output and initializates it.
- * 
- * @param *lhe_ctx      - The LHE State
- * @param *lsk_ctx      - The selective kernel filtering contex
- * @param *input        - The AVFrame with the original data and properties
- * @param *output       - The pointer to save the filtered data plane
- */
-static void selective_kernel_init(LheState *lhe_ctx, LheSelectiveKernelContext *lsk_ctx, AVFrame *input/*, uint8_t *output*/){
-    //av_log(NULL, AV_LOG_INFO, "Inicia selective_kernel_init\n");
-
-    int i;
-    char *p, *token, *av_saveptr = NULL;
-    p = lsk_ctx->kernel_str;
-
-    // PARSE KERNEL INPUT
-    for (i = 0; i < 9; i++) {
-        if (!(token = av_strtok(p, " ", &av_saveptr)))
-            break;
-        p = NULL;
-        sscanf(token, "%d", &lsk_ctx->kernel[i]);
-    }
-
-    token, av_saveptr = NULL;
-    p = lsk_ctx->selection_str;
-
-
-    // PARSE HOP SELECTION INPUT
-    for (i = 0; i < 9; i++) {
-        if (!(token = av_strtok(p, " ", &av_saveptr)))
-            break;
-        p = NULL;
-        sscanf(token, "%d", &lsk_ctx->selection[i]);
-    }
-    
-
-    // SHOW INFO - comment this part to avoid logs
-    av_log(NULL, AV_LOG_INFO, "\nThe kernel in use is:\n");
-    int j;
-    for (i = 0; i < 3; i++) {
-        for (j = 0; j < 3; j++) {
-            av_log(NULL, AV_LOG_INFO, "%d\t", lsk_ctx->kernel[i*3+j]);
-        }
-        av_log(NULL, AV_LOG_INFO, "\n");
-    }
-    av_log(NULL, AV_LOG_INFO, "\nThe selected hops are the following:\t");
-    for (i = 0; i < 9; i++) {
-        if (lsk_ctx->selection[i]){
-            av_log(NULL, AV_LOG_INFO, "h%d  ", i-4);
-        }
-    }
-    av_log(NULL, AV_LOG_INFO, "\n\n");
-
-
-    // OUTPUT DATA MEMORY ALLOCATION AND INITIALIZATION
-    //av_log(NULL, AV_LOG_INFO, "lhe_ctx->frame->width * lhe_ctx->frame->height = %d * %d = %d\n", lhe_ctx->frame->width, lhe_ctx->frame->height, lhe_ctx->frame->width * lhe_ctx->frame->height);
-    output = (uint8_t *)av_malloc(lhe_ctx->frame->width * lhe_ctx->frame->height * sizeof(uint8_t));
-
-    int y, x, pix;
-
-    if (lsk_ctx->greyscale) {
-        for (y = 0; y < (lhe_ctx->procY).height; y++) {
-            for (x = 0; x < (lhe_ctx->procY).width; x++) {
-                pix = x + y * input->linesize[0];
-                output[pix] = (input->data)[0][pix];
-                (input->data)[1][pix] = 0x80;
-                (input->data)[2][pix] = 0x80;
-            }
-        }
-    } else {
-        for (y = 0; y < (lhe_ctx->procY).height; y++) {
-            for (x = 0; x < (lhe_ctx->procY).width; x++) {
-                pix = x + y * input->linesize[0];
-                output[pix] = (input->data)[0][pix];
-            }
-        }
-    }
-
-    //av_log(NULL, AV_LOG_INFO, "Acaba selective_kernel_init\n");
-}
-
-
-// SSS funcion apply_kernel
-/**
- * Applies the kernel to the pixel given and stores the result in the output data pointer.
- * 
- * @param pix           - The pixel to which the kernel will be applied
- * @param width         - The width of the image
- * @param heigth        - The height of the image
- * @param kernel[9]     - The kernel to apply
- * @param kernel_sum    - The sum of the elements of the kernel
- * @param *input        - The original image
- * @param *output       - The pointer to save the filtered data plane
- */
-static void apply_kernel(const int pix, const uint32_t width, const uint32_t height, const int kernel[9], \
-                         const int kernel_sum, const AVFrame *input/*, uint8_t *output*/){
-    //av_log(NULL, AV_LOG_INFO, "Inicia apply_kernel, pix = %d\n", pix);
-
-    int i, j, ij_pix, kernel_index;
-    int32_t conv = 0;
-
-    // KERNEL WILL ONLY APPLY TO LUMINANCE
-    // i, j: relative coordinates with respect to pix
-    for (i = -1; i < 2; ++i){       //scanline++
-        for (j = -1; j < 2; ++j){   //pixel++
-            kernel_index = (j+1) + 3*(i+1);
-
-            // This "if" makes the kernel have a crop bahaviour for the edge-handling (skips out of border pixels)
-            if (!(  (j==-1 && pix%width==0)             ||
-                    (i==-1 && pix < width)              ||
-                    (j==1 && pix%width==(width-1))      ||
-                    (i==1 && pix >= (height-1)*width)   )) {
-                
-                ij_pix = pix + i*width +j;
-                //av_log(NULL, AV_LOG_INFO, "ij_pix= %d\n", ij_pix);
-                conv += ((int)(input->data[0][ij_pix])) * ((int)kernel[kernel_index]);
-
-            } else {    // This else takes into account all the out of bounds pixels with an extend behaviour for the edge-handling
-                if (i==-1 && pix < width) {                                                     // Extended upper border
-                    if (pix==0 && j==-1) {                                                          // Extended top left corner
-                        conv += ((int)(input->data[0][pix])) * ((int)kernel[kernel_index]);
-                    } else if (pix==width-1 && j==1) {                                              // Extended top right corner
-                        conv += ((int)(input->data[0][pix])) * ((int)kernel[kernel_index]);
-                    } else {                                                                        // Extended upper border without corners
-                        conv += ((int)(input->data[0][pix+j])) * ((int)kernel[kernel_index]);
-                    }
-                } else if (i==1 && pix >= (height-1)*width) {                                   // Extended lower border
-                    if (pix==(height-1)*width && j==-1) {                                           // Extended bottom left corner
-                        conv += ((int)(input->data[0][pix])) * ((int)kernel[kernel_index]);
-                    } else if (pix==height*width-1 && j==1) {                                       // Extended bottom right corner
-                        conv += ((int)(input->data[0][pix])) * ((int)kernel[kernel_index]);
-                    } else {                                                                        // Extended lower border without corners
-                        conv += ((int)(input->data[0][pix+j])) * ((int)kernel[kernel_index]);
-                    }
-                } else if (pix%width==0 && j==-1) {                                             // Extended left border (without corners)
-                    conv += ((int)(input->data[0][pix+width*i])) * ((int)kernel[kernel_index]);
-                } else if (pix%width==(width-1) && j==1) {                                      // Extended right border (without corners)
-                    conv += ((int)(input->data[0][pix+width*i])) * ((int)kernel[kernel_index]);
-                } else {
-                    av_log(NULL, AV_LOG_INFO, "\nERROR applying kernel to the image. pix: %d\ti: %d\tj: %d\n\n", pix, i, j);
-                }
-            }
-        }
-    }
-    //av_log(NULL, AV_LOG_INFO, "MEDIO   kernel_sum= %d\n", kernel_sum);
-    if (kernel_sum){ // kernel_sum != 0
-        //av_log(NULL, AV_LOG_INFO, "kernel_sum!=0\n");
-        output[pix] = (uint8_t) min(255, max(0, conv / kernel_sum));
-    } else {
-        //av_log(NULL, AV_LOG_INFO, "kernel_sum==0\n");
-        output[pix] = (uint8_t) min(255, max(0, conv));
-    }
-
-    //av_log(NULL, AV_LOG_INFO, "Acaba apply_kernel\n");
-}
-
-// SSS function selective_kernel()
-/**
- * Filters the image given with the kernel stored in the context only in the points which hop coincides with the selected.
- * 
- * @param *lhe_ctx      - The LHE State
- * @param *input        - The AVFrame with the original data and properties
- * @param *output       - The pointer to save the filtered data plane
- */
-static void selective_kernel(LheState *lhe_ctx, AVFrame *input/*, uint8_t *output*/){
-    //av_log(NULL, AV_LOG_INFO, "Inicia selective_kernel\n");
-
-    int x, y, pix, kernel_sum;
-    uint8_t *hops;
-    uint32_t width, height;
-    LheSelectiveKernelContext *lsk_ctx;
-
-    lsk_ctx = &lhe_ctx->lsk_ctx;
-    hops = (lhe_ctx->lheY).hops; //es lo mismo que:    (&lhe_ctx->lheY)->hops
-
-    width = (lhe_ctx->procY).width;
-    height = (lhe_ctx->procY).height;
-
-    kernel_sum = 0;
-    for (x = 0; x < 9; x++) {
-        kernel_sum+=lsk_ctx->kernel[x];
-    }
-
-    // SEARCHES FOR SELECTED HOPS AND APPLIES THE KERNEL
-    int n_pix_proc = 0;
-    for (y = 0; y < height; y++) {
-        for (x = 0; x < width; x++) {
-            pix = x + y * input->linesize[0];
-            if (lsk_ctx->selection[hops[pix]]){
-                apply_kernel(pix, width, height, lsk_ctx->kernel, kernel_sum, input/*, output*/);
-                n_pix_proc++;
-            }
-        }
-    }
-    av_log(NULL, AV_LOG_INFO, "Total pixels: %d\nPixels processed: %d\nUnprocessed percentage (savings): %f%\n", width*height, n_pix_proc, 100-100*((float)n_pix_proc)/(width*height));
-
-    //av_log(NULL, AV_LOG_INFO, "Acaba selective_kernel\n");
-}
-
-// SSS selective_kernel_uninit
-/**
- * Copies the output data to the original AVFrame (input) and frees the output pointer.
- * 
- * @param *lhe_ctx      - The LHE State
- * @param *input        - The AVFrame with the original data and properties
- * @param *output       - The pointer to save the filtered data plane
- */
-static void selective_kernel_uninit(LheState *lhe_ctx, AVFrame *input/*, uint8_t *output*/){
-    //av_log(NULL, AV_LOG_INFO, "Inicia selective_kernel_uninit\n");
-    
-    int i, y, x, pix;
-
-    // OVERWRITE THE ORIGINAL DATA WITH THE MODIFIED ONE
-    for (y = 0; y < (lhe_ctx->procY).height; y++) {
-        for (x = 0; x < (lhe_ctx->procY).width; x++) {
-            pix = x + y * input->linesize[0];
-            (input->data)[0][pix] = output[pix];
-        }
-    }
-
-    // FREE
-    av_free(output);
-    
-    //av_log(NULL, AV_LOG_INFO, "Acaba selective_kernel_uninit\n");
-}
-
-
 
 uint8_t *intermediate_interpolated_Y, *intermediate_interpolated_U, *intermediate_interpolated_V;
 uint8_t *delta_prediction_Y_dec, *delta_prediction_U_dec, *delta_prediction_V_dec;
@@ -397,7 +99,7 @@ static void lhe_init_pixel_format (AVCodecContext *avctx, LheState *s)
     {   // SSS
         avctx->pix_fmt = AV_PIX_FMT_YUV444P; //AV_PIX_FMT_YUV420P;
         avctx->width = 512; //1280;//512;  //introducir los valores de alto y ancho manualmente
-        avctx->height = 512; //720;//384;
+        avctx->height = 768; //720;//384;
         av_log(NULL, AV_LOG_INFO, "Pix fmt 444 con el else\n"); //"Pix fmt 420 con el else\n");
         s->chroma_factor_width = 1; //2;
         s->chroma_factor_height = 1; //2;
@@ -1154,7 +856,6 @@ static void lhe_advanced_read_mesh (LheState *s, LheHuffEntry *he_mesh, float pp
     lhe_advanced_read_perceptual_relevance_interval (s, he_mesh, procY->perceptual_relevance_x);
     
     lhe_advanced_read_perceptual_relevance_interval (s, he_mesh, procY->perceptual_relevance_y);
-    
     
     for (int block_y=0; block_y<s->total_blocks_height; block_y++)
     {
@@ -2353,7 +2054,348 @@ static void lhe_advanced_filter_epxp (LheState *s, int block_x, int block_y)
 
 }
 
+// SSS funcion detect_edges()
+/**
+ * Interprets hops as luminances, which gives the edges appearance of the original image.
+ * 
+ * @param *lhe_ctx  - The LHE State
+ * @param *out      - The frame that will be displayed with the edges of the original image
+ */
+static void detect_edges(LheState *lhe_ctx, AVFrame *out){
+    int x, y, pix, k, hop_threshold;
+    uint8_t *hops;
+    uint8_t hop, bg_color;
+    bool negative_hop;
+    uint32_t width, height;
+    LheEdgeDetectContext *led_ctx;
 
+    led_ctx = &lhe_ctx->led_ctx;
+    hops = (lhe_ctx->lheY).hops; //es lo mismo que:    (&lhe_ctx->lheY)->hops
+    hop_threshold = led_ctx->hop_threshold;
+
+    width = (lhe_ctx->procY).width;
+    height = (lhe_ctx->procY).height;
+
+    // PRINTS THE HOPS IN GREYSCALE
+    for (y = 0; y < height; y++) {
+        for (x = 0; x < width; x++) {
+            pix = x + y * out->linesize[0];
+            if (led_ctx->absolute_hop){     //hop treated as absolute value
+                k=63;
+                bg_color=0x00;
+                hop = (uint8_t) abs(((int8_t)hops[pix])-4);
+                if (hop<hop_threshold) hop=0;
+                negative_hop=0;
+            }else{                          // hop treated with sign
+                k=31;
+                bg_color=0x80;
+                hop = (uint8_t) abs(((int8_t)hops[pix])-4);
+                if (hop<hop_threshold) hop=0;
+                if (((int8_t)hops[pix])-4 < 0) negative_hop=1;
+                else negative_hop=0;
+            }
+
+            if (negative_hop){
+                out->data[0][pix] = bg_color - hop*k; // Y channel
+            } else{
+                out->data[0][pix] = bg_color + hop*k; // Y channel
+            }
+            out->data[1][pix] = 0x80; // Cr channel
+            out->data[2][pix] = 0x80; // Cb channel
+        }
+    }
+
+    // PAINTS ALL BLACK - just for testing
+    /*
+    int offset;
+    for (y = 0; y < height; y++) {
+        //av_log(NULL, AV_LOG_INFO, "\nLinea nueva: %i", y);
+        for (x = 0; x < width; x++) {
+            offset = x + y * out->linesize[0];
+            //av_log(NULL, AV_LOG_INFO, "%i,", x);
+            out->data[0][offset] = 0x00;
+            out->data[1][offset] = 0x80;
+            out->data[2][offset] = 0x80;
+        }
+    }*/
+}
+
+// SSS the lsk filtered output
+uint8_t *output;
+
+
+// SSS funcion de inicializacion del selective kernel
+/**
+ * Parses the String inputs to arrays and allocates memory for the output and initializates it.
+ * 
+ * @param *lhe_ctx      - The LHE State
+ * @param *lsk_ctx      - The selective kernel filtering contex
+ * @param *input        - The AVFrame with the original data and properties
+ * @param *output       - The pointer to save the filtered data plane
+ */
+static void selective_kernel_init(LheState *lhe_ctx, LheSelectiveKernelContext *lsk_ctx, AVFrame *input/*, uint8_t *output*/){
+    //av_log(NULL, AV_LOG_INFO, "Inicia selective_kernel_init\n");
+
+    int i;
+    char *p, *token, *av_saveptr = NULL;
+    p = lsk_ctx->kernel_str;
+
+    // PARSE KERNEL INPUT
+    for (i = 0; i < 9; i++) {
+        if (!(token = av_strtok(p, " ", &av_saveptr)))
+            break;
+        p = NULL;
+        sscanf(token, "%d", &lsk_ctx->kernel[i]);
+    }
+
+    token, av_saveptr = NULL;
+    p = lsk_ctx->selection_str;
+
+
+    // PARSE HOP SELECTION INPUT
+    for (i = 0; i < 9; i++) {
+        if (!(token = av_strtok(p, " ", &av_saveptr)))
+            break;
+        p = NULL;
+        sscanf(token, "%d", &lsk_ctx->selection[i]);
+    }
+    
+
+    // SHOW INFO - comment this part to avoid logs
+    av_log(NULL, AV_LOG_INFO, "\nThe kernel in use is:\n");
+    int j;
+    for (i = 0; i < 3; i++) {
+        for (j = 0; j < 3; j++) {
+            av_log(NULL, AV_LOG_INFO, "%d\t", lsk_ctx->kernel[i*3+j]);
+        }
+        av_log(NULL, AV_LOG_INFO, "\n");
+    }
+    av_log(NULL, AV_LOG_INFO, "\nThe selected hops are the following:\t");
+    for (i = 0; i < 9; i++) {
+        if (lsk_ctx->selection[i]){
+            av_log(NULL, AV_LOG_INFO, "h%d  ", i-4);
+        }
+    }
+    av_log(NULL, AV_LOG_INFO, "\n\n");
+
+
+    // OUTPUT DATA MEMORY ALLOCATION AND INITIALIZATION
+    //av_log(NULL, AV_LOG_INFO, "lhe_ctx->frame->width * lhe_ctx->frame->height = %d * %d = %d\n", lhe_ctx->frame->width, lhe_ctx->frame->height, lhe_ctx->frame->width * lhe_ctx->frame->height);
+    output = (uint8_t *)av_malloc(lhe_ctx->frame->width * lhe_ctx->frame->height * sizeof(uint8_t));
+
+    int y, x, pix;
+
+    if (lsk_ctx->greyscale) {
+        for (y = 0; y < (lhe_ctx->procY).height; y++) {
+            for (x = 0; x < (lhe_ctx->procY).width; x++) {
+                pix = x + y * input->linesize[0];
+                output[pix] = (input->data)[0][pix];
+                (input->data)[1][pix] = 0x80;
+                (input->data)[2][pix] = 0x80;
+            }
+        }
+    } else {
+        for (y = 0; y < (lhe_ctx->procY).height; y++) {
+            for (x = 0; x < (lhe_ctx->procY).width; x++) {
+                pix = x + y * input->linesize[0];
+                output[pix] = (input->data)[0][pix];
+            }
+        }
+    }
+
+    //av_log(NULL, AV_LOG_INFO, "Acaba selective_kernel_init\n");
+}
+
+
+// SSS funcion apply_kernel
+/**
+ * Applies the kernel to the pixel given and stores the result in the output data pointer.
+ * 
+ * @param pix           - The pixel to which the kernel will be applied
+ * @param width         - The width of the image
+ * @param heigth        - The height of the image
+ * @param kernel[9]     - The kernel to apply
+ * @param kernel_sum    - The sum of the elements of the kernel
+ * @param *input        - The original image
+ * @param *output       - The pointer to save the filtered data plane
+ */
+static void apply_kernel(const int pix, const uint32_t width, const uint32_t height, const int kernel[9], \
+                         const int kernel_sum, const AVFrame *input/*, uint8_t *output*/){
+    //av_log(NULL, AV_LOG_INFO, "Inicia apply_kernel, pix = %d\n", pix);
+
+    int i, j, ij_pix, kernel_index;
+    int32_t conv = 0;
+
+    // KERNEL WILL ONLY APPLY TO LUMINANCE
+    // i, j: relative coordinates with respect to pix
+    for (i = -1; i < 2; ++i){       //scanline++
+        for (j = -1; j < 2; ++j){   //pixel++
+            kernel_index = (j+1) + 3*(i+1);
+
+            // This "if" makes the kernel have a crop bahaviour for the edge-handling (skips out of border pixels)
+            if (!(  (j==-1 && pix%width==0)             ||
+                    (i==-1 && pix < width)              ||
+                    (j==1 && pix%width==(width-1))      ||
+                    (i==1 && pix >= (height-1)*width)   )) {
+                
+                ij_pix = pix + i*width +j;
+                //av_log(NULL, AV_LOG_INFO, "ij_pix= %d\n", ij_pix);
+                conv += ((int)(input->data[0][ij_pix])) * ((int)kernel[kernel_index]);
+
+            } else {    // This else takes into account all the out of bounds pixels with an extend behaviour for the edge-handling
+                if (i==-1 && pix < width) {                                                     // Extended upper border
+                    if (pix==0 && j==-1) {                                                          // Extended top left corner
+                        conv += ((int)(input->data[0][pix])) * ((int)kernel[kernel_index]);
+                    } else if (pix==width-1 && j==1) {                                              // Extended top right corner
+                        conv += ((int)(input->data[0][pix])) * ((int)kernel[kernel_index]);
+                    } else {                                                                        // Extended upper border without corners
+                        conv += ((int)(input->data[0][pix+j])) * ((int)kernel[kernel_index]);
+                    }
+                } else if (i==1 && pix >= (height-1)*width) {                                   // Extended lower border
+                    if (pix==(height-1)*width && j==-1) {                                           // Extended bottom left corner
+                        conv += ((int)(input->data[0][pix])) * ((int)kernel[kernel_index]);
+                    } else if (pix==height*width-1 && j==1) {                                       // Extended bottom right corner
+                        conv += ((int)(input->data[0][pix])) * ((int)kernel[kernel_index]);
+                    } else {                                                                        // Extended lower border without corners
+                        conv += ((int)(input->data[0][pix+j])) * ((int)kernel[kernel_index]);
+                    }
+                } else if (pix%width==0 && j==-1) {                                             // Extended left border (without corners)
+                    conv += ((int)(input->data[0][pix+width*i])) * ((int)kernel[kernel_index]);
+                } else if (pix%width==(width-1) && j==1) {                                      // Extended right border (without corners)
+                    conv += ((int)(input->data[0][pix+width*i])) * ((int)kernel[kernel_index]);
+                } else {
+                    av_log(NULL, AV_LOG_INFO, "\nERROR applying kernel to the image. pix: %d\ti: %d\tj: %d\n\n", pix, i, j);
+                }
+            }
+        }
+    }
+    //av_log(NULL, AV_LOG_INFO, "MEDIO   kernel_sum= %d\n", kernel_sum);
+    if (kernel_sum){ // kernel_sum != 0
+        //av_log(NULL, AV_LOG_INFO, "kernel_sum!=0\n");
+        output[pix] = (uint8_t) min(255, max(0, conv / kernel_sum));
+    } else {
+        //av_log(NULL, AV_LOG_INFO, "kernel_sum==0\n");
+        output[pix] = (uint8_t) min(255, max(0, conv));
+    }
+
+    //av_log(NULL, AV_LOG_INFO, "Acaba apply_kernel\n");
+}
+
+// SSS function selective_kernel()
+/**
+ * Filters the image given with the kernel stored in the context only in the points which hop coincides with the selected.
+ * 
+ * @param *lhe_ctx      - The LHE State
+ * @param *input        - The AVFrame with the original data and properties
+ * @param *output       - The pointer to save the filtered data plane
+ */
+static void selective_kernel(LheState *lhe_ctx, AVFrame *input/*, uint8_t *output*/){
+    //av_log(NULL, AV_LOG_INFO, "Inicia selective_kernel\n");
+
+    int x, y, pix, kernel_sum;
+    uint8_t *hops;
+    uint32_t width, height;
+    LheSelectiveKernelContext *lsk_ctx;
+
+    lsk_ctx = &lhe_ctx->lsk_ctx;
+    hops = (lhe_ctx->lheY).hops; //es lo mismo que:    (&lhe_ctx->lheY)->hops
+
+    width = (lhe_ctx->procY).width;
+    height = (lhe_ctx->procY).height;
+
+    kernel_sum = 0;
+    for (x = 0; x < 9; x++) {
+        kernel_sum+=lsk_ctx->kernel[x];
+    }
+
+    // SEARCHES FOR SELECTED HOPS AND APPLIES THE KERNEL
+    int n_pix_proc = 0;
+    for (y = 0; y < height; y++) {
+        for (x = 0; x < width; x++) {
+            pix = x + y * input->linesize[0];
+            if (lsk_ctx->selection[hops[pix]]){
+                apply_kernel(pix, width, height, lsk_ctx->kernel, kernel_sum, input/*, output*/);
+                n_pix_proc++;
+            }
+        }
+    }
+    av_log(NULL, AV_LOG_INFO, "Total pixels: %d\nPixels processed: %d\nUnprocessed percentage (savings): %f%\n", width*height, n_pix_proc, 100-100*((float)n_pix_proc)/(width*height));
+
+    //av_log(NULL, AV_LOG_INFO, "Acaba selective_kernel\n");
+}
+
+// SSS function selective_kernel_uninit
+/**
+ * Copies the output data to the original AVFrame (input) and frees the output pointer.
+ * 
+ * @param *lhe_ctx      - The LHE State
+ * @param *input        - The AVFrame with the original data and properties
+ * @param *output       - The pointer to save the filtered data plane
+ */
+static void selective_kernel_uninit(LheState *lhe_ctx, AVFrame *input/*, uint8_t *output*/){
+    //av_log(NULL, AV_LOG_INFO, "Inicia selective_kernel_uninit\n");
+    
+    int i, y, x, pix;
+
+    // OVERWRITE THE ORIGINAL DATA WITH THE MODIFIED ONE
+    for (y = 0; y < (lhe_ctx->procY).height; y++) {
+        for (x = 0; x < (lhe_ctx->procY).width; x++) {
+            pix = x + y * input->linesize[0];
+            (input->data)[0][pix] = output[pix];
+        }
+    }
+
+    // FREE
+    av_free(output);
+    
+    //av_log(NULL, AV_LOG_INFO, "Acaba selective_kernel_uninit\n");
+}
+
+
+//SSS: function pr_image_update_props(lhe_ctx, frame);
+/**
+ * Updates the frame properties to have the correct dimensions (33 pixels wide and same aspect ratio than the original image), 1 pixel per block.
+ * 
+ * @param *lhe_ctx      - The LHE State
+ * @param *he_mesh      - Huffman params for LHE mesh
+ * @param *frame        - The AVFrame with the original data and properties. Should be changed in size and new data added.
+ */
+static void pr_image_update_props(LheState *lhe_ctx, AVFrame *frame){
+    frame->linesize[0] = lhe_ctx->total_blocks_width;
+    frame->linesize[1] = lhe_ctx->total_blocks_width;
+    frame->linesize[2] = lhe_ctx->total_blocks_width;
+    frame->width = lhe_ctx->total_blocks_width;
+    frame->height = lhe_ctx->total_blocks_height;
+}
+
+
+// SSS: function pr_to_image
+/**
+ * Reads all the pr values and creates a greyscale image with it.
+ * 
+ * @param *lhe_ctx      - The LHE State
+ * @param *he_mesh      - Huffman params for LHE mesh
+ * @param *frame        - The AVFrame with the original data and properties. Should be changed in size and new data added.
+ */
+static void pr_to_image(LheState *lhe_ctx, LheHuffEntry *he_mesh, AVFrame *frame){
+    int x, y, pix;
+    LheProcessing *procY = &lhe_ctx->procY;
+
+    lhe_advanced_read_perceptual_relevance_interval (lhe_ctx, he_mesh, procY->perceptual_relevance_x);
+    
+    lhe_advanced_read_perceptual_relevance_interval (lhe_ctx, he_mesh, procY->perceptual_relevance_y);
+
+    pr_image_update_props(lhe_ctx, frame);
+
+    for (y=0; y <= lhe_ctx->total_blocks_height; y++) {
+        for (x=0; x <= lhe_ctx->total_blocks_width; x++) {
+            pix = x + y * frame->linesize[0];
+            frame->data[0][pix] = 255/2*(procY->perceptual_relevance_x[y][x]+procY->perceptual_relevance_y[y][x]); // Y channel
+            frame->data[1][pix] = 0x80; // Cr channel
+            frame->data[2][pix] = 0x80; // Cb channel
+        }
+    }
+}
 
 
 
@@ -2722,7 +2764,7 @@ static void mlhe_decode_delta_frame (LheState *s, LheHuffEntry *he_Y, LheHuffEnt
 //==================================================================
 
 /**
- * Read and decodes LHE image
+ * Read and decodes LHE image and applies specified filters.
  *
  * @param *avctx Codec context
  * @param *data data from file
@@ -2789,8 +2831,19 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
     (&s->lheU)->component_prediction  = s->frame->data[1];
     (&s->lheV)->component_prediction  = s->frame->data[2];
     
+
+    // SSS: add here an "if" with ALL the filter possibilities (including the no-filter "none") and error if other thing was writen
+    if ( strcmp(s->filter, "none") && strcmp(s->filter, "edgedetect") && strcmp(s->filter, "selectivekernel") && strcmp(s->filter, "primage") ){
+        av_log(NULL, AV_LOG_INFO, "\nERROR: the filter espacified does not exist. Abnormal behavior might happen.\n\n");
+        return avpkt->size;
+    }
+ 
     if (s->lhe_mode == ADVANCED_LHE) /*ADVANCED LHE*/
     {
+        // SSS: add here an "if" with ALL the filter possibilities (including the no-filter "none") that apply to advanced lhe and error if other thing was writen
+        if ( strcmp(s->filter, "none") && strcmp(s->filter, "primage") ){
+            av_log(NULL, AV_LOG_INFO, "\nERROR: the filter espacified does not apply for advanced lhe. Abnormal behavior might happen.\n\n");
+        }
 
         (&s->procY)-> theoretical_block_width = (&s->procY)->width / s->total_blocks_width;    
         (&s->procY)-> theoretical_block_height = (&s->procY)->height / s->total_blocks_height;   
@@ -2819,16 +2872,27 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
             }
         }*/
 
-        lhe_advanced_read_mesh(s, he_mesh, ppp_max_theoric, compression_factor);
+        // SSS: if-else de primage
+        if (!strcmp(s->filter, "primage")){
 
-        lhe_advanced_read_all_file_symbols (s, he_Y, he_UV);
-              
-        lhe_advanced_decode_symbols (s, he_Y, he_UV, image_size_Y, image_size_UV);     
-        
+            pr_to_image(s, he_mesh, s->frame);
+
+        } else {
+            lhe_advanced_read_mesh(s, he_mesh, ppp_max_theoric, compression_factor);
+
+            lhe_advanced_read_all_file_symbols (s, he_Y, he_UV);
+                  
+            lhe_advanced_decode_symbols (s, he_Y, he_UV, image_size_Y, image_size_UV);     
+        }
     }
 
     else /*BASIC LHE*/       
     {
+        // SSS: add here an "if" with ALL the filter possibilities (including the no-filter "none") that apply to basic lhe and error if other thing was writen
+        if ( strcmp(s->filter, "none") && strcmp(s->filter, "edgedetect") && strcmp(s->filter, "selectivekernel") ){
+            av_log(NULL, AV_LOG_INFO, "\nERROR: the filter espacified does not apply for basic lhe. Abnormal behavior might happen.\n\n");
+        }
+
         (&s->procY)->num_hopsY = image_size_Y;
         (&s->procUV)->num_hopsU = image_size_UV;
         (&s->procUV)->num_hopsV = image_size_UV;
@@ -2845,7 +2909,7 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
                 lhe_advanced_read_file_symbols2 (s, &s->procUV, (&s->lheU)->hops, 0, s->total_blocks_height, 1, BASIC_LHE, 1);
                 lhe_advanced_read_file_symbols2 (s, &s->procUV, (&s->lheV)->hops, 0, s->total_blocks_height, 1, BASIC_LHE, 2);
             }
-            lhe_basic_decode_frame_sequential (s);////////aqui hacer solo Y si es grayscale
+            lhe_basic_decode_frame_sequential (s); //aqui hacer solo Y si es grayscale
         }
 
         if (!strcmp(s->filter, "selectivekernel")) {
@@ -2856,6 +2920,7 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
             selective_kernel_uninit(s, s->frame/*, output*/);
         }
     }
+   
 
     if ((ret = av_frame_ref(data, s->frame)) < 0){
         av_log(NULL, AV_LOG_INFO, "ERROR: %i\n", ret);
@@ -3075,7 +3140,7 @@ static av_cold int lhe_decode_close(AVCodecContext *avctx)
 static const AVOption options[] = {
     // SYNTAX: {name, description, offset, type, default_value, min, max, flags},
 
-    {"lhefilter",  "sets a filter type (none by default)", OFFSET(filter), AV_OPT_TYPE_STRING, {.str="none"}, 0, 0, VD}, // (default) "none", "edgedetect", "selectivekernel" 
+    {"lhefilter",  "sets a filter type (none by default)", OFFSET(filter), AV_OPT_TYPE_STRING, {.str="none"}, 0, 0, VD}, // (default) "none", "edgedetect", "selectivekernel", "primage"
 
     // LHE Edge Detection options    
     {"hopth",   "sets the hop threshold",                     OFFSET_ED(hop_threshold), AV_OPT_TYPE_INT,  {.i64=1}, 1, 4, VD}, // Default threshold is 1. Note that 1 gives all the hops greyscale and 4 a plain grey/black
