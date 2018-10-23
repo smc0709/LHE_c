@@ -97,12 +97,12 @@ static void lhe_init_pixel_format (AVCodecContext *avctx, LheState *s)
         s->chroma_factor_height = 1;
     } else
     {   // SSS
-        avctx->pix_fmt = AV_PIX_FMT_YUV444P; //AV_PIX_FMT_YUV420P;
-        avctx->width = 512; //1280;//512;  //introducir los valores de alto y ancho manualmente
-        avctx->height = 768; //720;//384;
-        av_log(NULL, AV_LOG_INFO, "Pix fmt 444 con el else\n"); //"Pix fmt 420 con el else\n");
-        s->chroma_factor_width = 1; //2;
-        s->chroma_factor_height = 1; //2;
+        avctx->pix_fmt = AV_PIX_FMT_YUV444P; //AV_PIX_FMT_YUV444P; //AV_PIX_FMT_YUV420P;
+        avctx->width = 100; //1280;//512;  //introducir los valores de alto y ancho manualmente
+        avctx->height = 100; //720;//384;
+        av_log(NULL, AV_LOG_INFO, "Pix fmt 444 con el else\n");  //"Pix fmt 444 con el else\n"); //"Pix fmt 420 con el else\n");
+        s->chroma_factor_width = 1; //1; //2;
+        s->chroma_factor_height = 1; //1; //2;
     }
 }
 
@@ -2062,11 +2062,11 @@ static void lhe_advanced_filter_epxp (LheState *s, int block_x, int block_y)
  * @param *out      - The frame that will be displayed with the edges of the original image
  */
 static void detect_edges(LheState *lhe_ctx, AVFrame *out){
-    int x, y, pix, k, hop_threshold;
+    int x, y, hop_pix, actual_pix, k, hop_threshold;
     uint8_t *hops;
     uint8_t hop, bg_color;
     bool negative_hop;
-    uint32_t width, height;
+    uint32_t width, height, i, widthUV, heightUV;
     LheEdgeDetectContext *led_ctx;
 
     led_ctx = &lhe_ctx->led_ctx;
@@ -2075,37 +2075,60 @@ static void detect_edges(LheState *lhe_ctx, AVFrame *out){
 
     width = (lhe_ctx->procY).width;
     height = (lhe_ctx->procY).height;
+    widthUV = (&lhe_ctx->procUV)->width;
+    heightUV = (&lhe_ctx->procUV)->width;
+
+    //av_log(NULL, AV_LOG_INFO, "Width=%d\nHeight=%d\nLinesize=%d\n", width, height, out->linesize[0]);
+    //av_log(NULL, AV_LOG_INFO, "WidthChroma=%d\nHeightChroma=%d\nLinesizeChroma=%d\n", (&lhe_ctx->procY)->width, (&lhe_ctx->procY)->height, out->linesize[1]);
+    //av_log(NULL, AV_LOG_INFO, "WCr=%d\nHCr=%d\n", heightUV, widthUV);
 
     // PRINTS THE HOPS IN GREYSCALE
+    // Luminance
     for (y = 0; y < height; y++) {
         for (x = 0; x < width; x++) {
-            pix = x + y * out->linesize[0];
+            hop_pix = x + y * width;
+            actual_pix = x + y * out->linesize[0];
+
             if (led_ctx->absolute_hop){     //hop treated as absolute value
                 k=63;
                 bg_color=0x00;
-                hop = (uint8_t) abs(((int8_t)hops[pix])-4);
+                hop = (uint8_t) abs(((int8_t)hops[hop_pix])-4);
                 if (hop<hop_threshold) hop=0;
                 negative_hop=0;
             }else{                          // hop treated with sign
                 k=31;
                 bg_color=0x80;
-                hop = (uint8_t) abs(((int8_t)hops[pix])-4);
+                hop = (uint8_t) abs(((int8_t)hops[hop_pix])-4);
                 if (hop<hop_threshold) hop=0;
-                if (((int8_t)hops[pix])-4 < 0) negative_hop=1;
+                if (((int8_t)hops[hop_pix])-4 < 0) negative_hop=1;
                 else negative_hop=0;
             }
 
             if (negative_hop){
-                out->data[0][pix] = bg_color - hop*k; // Y channel
+                out->data[0][actual_pix] = bg_color - hop*k; // Y channel
             } else{
-                out->data[0][pix] = bg_color + hop*k; // Y channel
+                out->data[0][actual_pix] = bg_color + hop*k; // Y channel
             }
-            out->data[1][pix] = 0x80; // Cr channel
-            out->data[2][pix] = 0x80; // Cb channel
+
+            //av_log(NULL, AV_LOG_INFO, "hop_pix=%d,\tactual_pix%d processed\t", hop_pix, actual_pix);
+
         }
     }
+    // Chrominances
+    for (y = 0; y < heightUV; y++) {
+        for (x = 0; x < widthUV; x++) {
+            actual_pix = x + y * out->linesize[1];  // note that: out->linesize[1]==out->linesize[2]
 
-    // PAINTS ALL BLACK - just for testing
+            out->data[1][actual_pix] = 0x80; // Cr channel
+            out->data[2][actual_pix] = 0x80; // Cb channel
+            //av_log(NULL, AV_LOG_INFO, "actual_pix=%d processed\t", actual_pix);
+
+        }
+    }
+    //av_log(NULL, AV_LOG_INFO, "\nPixel processing finished\n");
+
+
+    // PAINTS ALL BLACK - for testing purposes (only works for yuv444p and images with linesize equal to width)
     /*
     int offset;
     for (y = 0; y < height; y++) {
@@ -2180,25 +2203,24 @@ static void selective_kernel_init(LheState *lhe_ctx, LheSelectiveKernelContext *
 
 
     // OUTPUT DATA MEMORY ALLOCATION AND INITIALIZATION
-    //av_log(NULL, AV_LOG_INFO, "lhe_ctx->frame->width * lhe_ctx->frame->height = %d * %d = %d\n", lhe_ctx->frame->width, lhe_ctx->frame->height, lhe_ctx->frame->width * lhe_ctx->frame->height);
-    output = (uint8_t *)av_malloc(lhe_ctx->frame->width * lhe_ctx->frame->height * sizeof(uint8_t));
+    // output buffer has same dimensions than input luminance buffer (right padding for non 128 pixel multiples included)
+    output = (uint8_t *)av_malloc(input->linesize[0] * lhe_ctx->frame->height * sizeof(uint8_t));
 
     int y, x, pix;
 
-    if (lsk_ctx->greyscale) {
-        for (y = 0; y < (lhe_ctx->procY).height; y++) {
-            for (x = 0; x < (lhe_ctx->procY).width; x++) {
-                pix = x + y * input->linesize[0];
-                output[pix] = (input->data)[0][pix];
+    for (y = 0; y < (lhe_ctx->procY).height; y++) {         // Luminance is copied to output buffer
+        for (x = 0; x < (lhe_ctx->procY).width; x++) {
+            pix = x + y * input->linesize[0];
+            output[pix] = (input->data)[0][pix];
+        }
+    }
+
+    if (lsk_ctx->greyscale) {                               // If greyscale is active
+        for (y = 0; y < (lhe_ctx->procUV).height; y++) {        // Chromas are changed to neutral values
+            for (x = 0; x < (lhe_ctx->procUV).width; x++) {
+                pix = x + y * input->linesize[1];
                 (input->data)[1][pix] = 0x80;
                 (input->data)[2][pix] = 0x80;
-            }
-        }
-    } else {
-        for (y = 0; y < (lhe_ctx->procY).height; y++) {
-            for (x = 0; x < (lhe_ctx->procY).width; x++) {
-                pix = x + y * input->linesize[0];
-                output[pix] = (input->data)[0][pix];
             }
         }
     }
@@ -2223,8 +2245,9 @@ static void apply_kernel(const int pix, const uint32_t width, const uint32_t hei
                          const int kernel_sum, const AVFrame *input/*, uint8_t *output*/){
     //av_log(NULL, AV_LOG_INFO, "Inicia apply_kernel, pix = %d\n", pix);
 
-    int i, j, ij_pix, kernel_index;
+    int i, j, ij_pix, kernel_index, linesize;
     int32_t conv = 0;
+    linesize = input->linesize[0];
 
     // KERNEL WILL ONLY APPLY TO LUMINANCE
     // i, j: relative coordinates with respect to pix
@@ -2232,13 +2255,13 @@ static void apply_kernel(const int pix, const uint32_t width, const uint32_t hei
         for (j = -1; j < 2; ++j){   //pixel++
             kernel_index = (j+1) + 3*(i+1);
 
-            // This "if" makes the kernel have a crop bahaviour for the edge-handling (skips out of border pixels)
-            if (!(  (j==-1 && pix%width==0)             ||
-                    (i==-1 && pix < width)              ||
-                    (j==1 && pix%width==(width-1))      ||
-                    (i==1 && pix >= (height-1)*width)   )) {
+            // This "if" skips out of border pixels (makes the kernel have a crop bahaviour for the edge-handling, if the else part is commented)
+            if (!(  (j==-1 && (pix%linesize)==0)            ||
+                    (i==-1 && pix < width)                  ||
+                    (j==1 && (pix%linesize)==(width-1))     ||
+                    (i==1 && pix >= (height-1)*linesize)    )) {
                 
-                ij_pix = pix + i*width +j;
+                ij_pix = pix + i*linesize +j;
                 //av_log(NULL, AV_LOG_INFO, "ij_pix= %d\n", ij_pix);
                 conv += ((int)(input->data[0][ij_pix])) * ((int)kernel[kernel_index]);
 
@@ -2251,17 +2274,17 @@ static void apply_kernel(const int pix, const uint32_t width, const uint32_t hei
                     } else {                                                                        // Extended upper border without corners
                         conv += ((int)(input->data[0][pix+j])) * ((int)kernel[kernel_index]);
                     }
-                } else if (i==1 && pix >= (height-1)*width) {                                   // Extended lower border
-                    if (pix==(height-1)*width && j==-1) {                                           // Extended bottom left corner
+                } else if (i==1 && pix >= (height-1)*linesize) {                                // Extended lower border
+                    if (pix==((height-2)*linesize)+width && j==-1) {                                // Extended bottom left corner
                         conv += ((int)(input->data[0][pix])) * ((int)kernel[kernel_index]);
-                    } else if (pix==height*width-1 && j==1) {                                       // Extended bottom right corner
+                    } else if (pix==(height-1)*linesize+width-1 && j==1) {                          // Extended bottom right corner
                         conv += ((int)(input->data[0][pix])) * ((int)kernel[kernel_index]);
                     } else {                                                                        // Extended lower border without corners
                         conv += ((int)(input->data[0][pix+j])) * ((int)kernel[kernel_index]);
                     }
-                } else if (pix%width==0 && j==-1) {                                             // Extended left border (without corners)
+                } else if (j==-1 && (pix%linesize)==0) {                                        // Extended left border (without corners)
                     conv += ((int)(input->data[0][pix+width*i])) * ((int)kernel[kernel_index]);
-                } else if (pix%width==(width-1) && j==1) {                                      // Extended right border (without corners)
+                } else if (j==1 && (pix%linesize)==(width-1)) {                                 // Extended right border (without corners)
                     conv += ((int)(input->data[0][pix+width*i])) * ((int)kernel[kernel_index]);
                 } else {
                     av_log(NULL, AV_LOG_INFO, "\nERROR applying kernel to the image. pix: %d\ti: %d\tj: %d\n\n", pix, i, j);
@@ -2290,15 +2313,15 @@ static void apply_kernel(const int pix, const uint32_t width, const uint32_t hei
  * @param *output       - The pointer to save the filtered data plane
  */
 static void selective_kernel(LheState *lhe_ctx, AVFrame *input/*, uint8_t *output*/){
-    //av_log(NULL, AV_LOG_INFO, "Inicia selective_kernel\n");
+    av_log(NULL, AV_LOG_INFO, "Inicia selective_kernel\n");
 
-    int x, y, pix, kernel_sum;
+    int x, y, hop_pix, actual_pix, kernel_sum;
     uint8_t *hops;
     uint32_t width, height;
     LheSelectiveKernelContext *lsk_ctx;
 
     lsk_ctx = &lhe_ctx->lsk_ctx;
-    hops = (lhe_ctx->lheY).hops; //es lo mismo que:    (&lhe_ctx->lheY)->hops
+    hops = (lhe_ctx->lheY).hops;        // equivalent to:    (&lhe_ctx->lheY)->hops
 
     width = (lhe_ctx->procY).width;
     height = (lhe_ctx->procY).height;
@@ -2312,16 +2335,21 @@ static void selective_kernel(LheState *lhe_ctx, AVFrame *input/*, uint8_t *outpu
     int n_pix_proc = 0;
     for (y = 0; y < height; y++) {
         for (x = 0; x < width; x++) {
-            pix = x + y * input->linesize[0];
-            if (lsk_ctx->selection[hops[pix]]){
-                apply_kernel(pix, width, height, lsk_ctx->kernel, kernel_sum, input/*, output*/);
+            hop_pix = x + y * width;
+            actual_pix = x + y * input->linesize[0];
+            if (lsk_ctx->selection[hops[hop_pix]]){
+                apply_kernel(actual_pix, width, height, lsk_ctx->kernel, kernel_sum, input/*, output*/);
                 n_pix_proc++;
+            }else {
+                if (lsk_ctx->greyscale) {           // In grayscale images non processed pixels are turned black (generally grayscale is used for
+                    output[actual_pix] = 0x00;      // edge detection and this method gives better results to that end)
+                }
             }
         }
     }
     av_log(NULL, AV_LOG_INFO, "Total pixels: %d\nPixels processed: %d\nUnprocessed percentage (savings): %f%\n", width*height, n_pix_proc, 100-100*((float)n_pix_proc)/(width*height));
 
-    //av_log(NULL, AV_LOG_INFO, "Acaba selective_kernel\n");
+    av_log(NULL, AV_LOG_INFO, "Acaba selective_kernel\n");
 }
 
 // SSS function selective_kernel_uninit
@@ -2834,7 +2862,7 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
 
     // SSS: add here an "if" with ALL the filter possibilities (including the no-filter "none") and error if other thing was writen
     if ( strcmp(s->filter, "none") && strcmp(s->filter, "edgedetect") && strcmp(s->filter, "selectivekernel") && strcmp(s->filter, "primage") ){
-        av_log(NULL, AV_LOG_INFO, "\nERROR: the filter espacified does not exist. Abnormal behavior might happen.\n\n");
+        av_log(NULL, AV_LOG_INFO, "\nERROR: the filter especified does not exist. Abnormal behavior might happen.\n\n");
         return avpkt->size;
     }
  
@@ -2842,7 +2870,7 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
     {
         // SSS: add here an "if" with ALL the filter possibilities (including the no-filter "none") that apply to advanced lhe and error if other thing was writen
         if ( strcmp(s->filter, "none") && strcmp(s->filter, "primage") ){
-            av_log(NULL, AV_LOG_INFO, "\nERROR: the filter espacified does not apply for advanced lhe. Abnormal behavior might happen.\n\n");
+            av_log(NULL, AV_LOG_INFO, "\nERROR: the filter especified does not apply for advanced lhe. Abnormal behavior might happen.\n\n");
         }
 
         (&s->procY)-> theoretical_block_width = (&s->procY)->width / s->total_blocks_width;    
@@ -2890,7 +2918,7 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
     {
         // SSS: add here an "if" with ALL the filter possibilities (including the no-filter "none") that apply to basic lhe and error if other thing was writen
         if ( strcmp(s->filter, "none") && strcmp(s->filter, "edgedetect") && strcmp(s->filter, "selectivekernel") ){
-            av_log(NULL, AV_LOG_INFO, "\nERROR: the filter espacified does not apply for basic lhe. Abnormal behavior might happen.\n\n");
+            av_log(NULL, AV_LOG_INFO, "\nERROR: the filter especified does not apply for basic lhe. Abnormal behavior might happen.\n\n");
         }
 
         (&s->procY)->num_hopsY = image_size_Y;
@@ -2920,7 +2948,6 @@ static int lhe_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
             selective_kernel_uninit(s, s->frame/*, output*/);
         }
     }
-   
 
     if ((ret = av_frame_ref(data, s->frame)) < 0){
         av_log(NULL, AV_LOG_INFO, "ERROR: %i\n", ret);
